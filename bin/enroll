@@ -59,6 +59,12 @@ repo_json=$(gh api "repos/$TARGET" 2>/dev/null) \
   || die "cannot read $TARGET (does it exist, and are you logged in as its owner?)"
 DEFAULT_BRANCH=$(printf '%s' "$repo_json" | jq -r '.default_branch')
 [ "$(printf '%s' "$repo_json" | jq -r '.archived')" = "false" ] || die "$TARGET is archived — nothing to enroll"
+# A fork's dependency config belongs to whoever we forked from; enrolling one means fighting
+# upstream on every sync. Refuse by default rather than quietly creating that conflict.
+if [ "$(printf '%s' "$repo_json" | jq -r '.fork')" = "true" ] && [ "${ALLOW_FORK:-}" != "1" ]; then
+  die "$TARGET is a FORK. Its dependabot.yml is upstream's, and enrolling it means a merge
+       conflict on every sync. If you really mean to, re-run with ALLOW_FORK=1."
+fi
 VISIBILITY=$(printf '%s' "$repo_json" | jq -r '.visibility')
 AUTO_MERGE_ALREADY=$(printf '%s' "$repo_json" | jq -r '.allow_auto_merge')
 say "   default branch: $DEFAULT_BRANCH   visibility: $VISIBILITY"

@@ -211,3 +211,57 @@ with stop-usage on, Actions then **stop running on private repos entirely**. The
 here reduce the run rate (remembrall roughly halves its run count; eachie drops ~231
 vacuous minutes a month) but they do not close a gap that size on their own. Worth a
 deliberate look at where the remaining minutes go before month end.
+
+---
+
+## 2026-09-11 — verification pass
+
+Everything below was observed, not assumed.
+
+**`repo-standards` CI: green on both pushes to main.** `checks` = actionlint (+shellcheck
+on every `run:` block), template parse, script shellcheck, and the ecosystem-detector
+fixture.
+
+**Admin bypass on a live ruleset: CONFIRMED.** Pushing the BUILD-LOG commit to
+`repo-standards` `main` while its `standards-ci` ruleset was active succeeded and printed:
+
+```
+remote: Bypassed rule violations for refs/heads/main:
+remote: - Required status check "checks" is expected.
+```
+
+That is the exact behaviour every `enroll`-created ruleset is designed for: Kevin is never
+blocked, the bot still has to satisfy the check.
+
+**eachie PR #203 — all four jobs behaved as designed.**
+
+| job | result | what it proves |
+|---|---|---|
+| `unit` | pass, 1m24s | unchanged |
+| `db` | **pass, 7m49s** | the `!cancelled()` guard DOES let `db` run when `nightly_gate` is skipped — this was on the unverified list, now resolved. It also ran against the real Neon branch, so the new fail-on-missing-secret path did not fire, which is correct |
+| `nightly_gate` | skipping | correct: it is `schedule`-only |
+| `automerge` | skipping | correct: the PR author is khglynn, not dependabot[bot] |
+
+**remembrall PR #1 — `check` pass, 5m52s.** One run for the push, as intended.
+
+### Two fixes the verification pass found
+
+1. **Forks were being reported as drift.** `google_workspace_mcp` — a fork the brief says
+   to leave alone — came out as `drift: gets update PRs but nothing merges them`, which
+   would have sent a future session to "fix" upstream's config. `bin/audit` now gives forks
+   their own status, and `bin/enroll` refuses a fork outright (`ALLOW_FORK=1` overrides).
+   Six of the 39 repos are forks.
+2. **An inaccurate assertion message** in `check-templates.py` claimed the `dependencies`
+   label was what lets the audit find bot PRs. It is not — the audit searches by
+   `author:app/dependabot`. Reworded to say what the label is actually for.
+
+### Final state of the audit
+
+```
+39 active repos under `khglynn`: 1 enrolled, 28 security-only, 6 forks, 4 drifting.
+```
+
+The four drifting are exactly the four the brief scoped: `eachie` (PR #203 open, which
+takes it to enrolled), and `kevinhg-com` / `list-maker` / `festival-navigator` (dry-run
+only, deliberately not enrolled in Phase 1). Full table:
+`scratchpad/build/audit-after.md`.

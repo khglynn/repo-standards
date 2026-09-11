@@ -129,12 +129,16 @@ end; the audit will flag it as `drift: still has its own private copy of the mer
 bin/audit
 ```
 
-Read-only, writes nothing, takes about 90 seconds for 39 repos. It prints a markdown table
+Read-only, writes nothing, takes about 90 seconds across 39 repos (measured 2026-09-11). It prints a markdown table
 with one row per repo and one **status** word at the end:
 
 - `enrolled` — updates land by themselves here
 - `security-only` — protected against known vulnerabilities, not kept current. A fine
   resting state for a repo nobody deploys
+- `fork — upstream's config, leave it alone` — a fork's `dependabot.yml` belongs to whoever
+  you forked from. Enrolling one means a merge conflict on every sync, so forks are never
+  counted as drift. `enroll` refuses them outright (`ALLOW_FORK=1` overrides, if you ever
+  genuinely own a fork's config)
 - `drift: <reason>` — half-enrolled, and the reason says which half
 
 That status column is the drift check. Run it monthly, or when something feels stale.
@@ -156,8 +160,16 @@ controls the repository, and this workflow runs with write permission in yours.
 **2026-09-11 — rulesets let repository admins bypass, always.**
 A `required_status_checks` rule blocks direct pushes to the branch as well as merges. Kevin
 pushes straight to `main` in several repos, so every ruleset `enroll` creates lists
-repository admins as a bypass actor. The bot is `github-actions`, not an admin, so the check
-still genuinely gates the automated path.
+repository admins as a bypass actor (`actor_id: 5`, `bypass_mode: always`). The bot is
+`github-actions`, not an admin, so the check still genuinely gates the automated path.
+**Confirmed working the same day:** a push to this repo's `main` while its `checks` ruleset
+was active went through and printed `remote: Bypassed rule violations for refs/heads/main`.
+
+**2026-09-11 — forks are out of scope, and `enroll` refuses them.**
+Six of the 39 repos are forks (`google_workspace_mcp`, `okta-mcp-server`,
+`trimmedia.github.io`, `awesome-mcp-servers`, `starter`, `patchwork`). Their dependency
+config is upstream's; overwriting it buys a merge conflict on every sync. The audit gives
+them their own status word so they never show up as drift to chase.
 
 **2026-09-11 — ⚠ UNVERIFIED: whether Dependabot obeys a comment from `github-actions[bot]`.**
 When a PR has fallen behind `main` *and* a required check is red, the workflow refreshes the

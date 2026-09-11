@@ -32,8 +32,8 @@ for t in gh jq python3; do command -v "$t" >/dev/null || { echo "missing tool: $
 echo "Reading $OWNER's repos…" >&2
 
 repos=$(gh repo list "$OWNER" --limit 300 --no-archived \
-          --json name,visibility,pushedAt,defaultBranchRef \
-          --jq '.[] | [.name, .visibility, .pushedAt, (.defaultBranchRef.name // "")] | @tsv')
+          --json name,visibility,pushedAt,defaultBranchRef,isFork \
+          --jq '.[] | [.name, .visibility, .pushedAt, (.defaultBranchRef.name // ""), (.isFork|tostring)] | @tsv')
 
 # One search for every open Dependabot PR the account has, rather than one call per repo.
 dependabot_prs=$(gh api -X GET search/issues \
@@ -44,9 +44,9 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 printf '%s\n' "$dependabot_prs" > "$TMP/prs.tsv"
 
 rows=""
-total=0; enrolled=0; security_only=0; drifting=0
+total=0; enrolled=0; security_only=0; drifting=0; forks=0
 
-while IFS=$'\t' read -r name visibility pushed_at default_branch; do
+while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   [ -n "$name" ] || continue
   total=$((total + 1))
   R="$OWNER/$name"
@@ -103,7 +103,11 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
   fi
 
   # --- the verdict
-  if [ "$has_stub" = "source" ] && [ "$has_dependabot" = "yes" ]; then
+  # A fork's dependabot.yml belongs to whoever we forked FROM. Enrolling one means fighting
+  # upstream on every sync, so a fork is never drift — it is just not ours to standardise.
+  if [ "$is_fork" = "true" ]; then
+    status="fork — upstream's config, leave it alone"
+  elif [ "$has_stub" = "source" ] && [ "$has_dependabot" = "yes" ]; then
     status="enrolled (this repo IS the standard)"
   elif [ "$has_stub" = "inline" ]; then
     status="drift: still has its own private copy of the merge rules"
@@ -128,6 +132,7 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
   case "$status" in
     enrolled*)      enrolled=$((enrolled + 1)) ;;
     security-only*) security_only=$((security_only + 1)) ;;
+    fork*)          forks=$((forks + 1)) ;;
     *)              drifting=$((drifting + 1)) ;;
   esac
 
@@ -140,7 +145,7 @@ printf '                                             \r' >&2
 
 echo "# Repo standards audit — $(date +%Y-%m-%d)"
 echo
-echo "$total active repos under \`$OWNER\`: **$enrolled enrolled**, $security_only security-only, **$drifting drifting**."
+echo "$total active repos under \`$OWNER\`: **$enrolled enrolled**, $security_only security-only, $forks forks, **$drifting drifting**."
 echo
 echo "| repo | vis | last push | manifest | dependabot.yml | stub | auto-merge | required checks | open bot PRs | status |"
 echo "|---|---|---|---|---|---|---|---|---|---|"
