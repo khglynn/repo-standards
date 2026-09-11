@@ -465,3 +465,32 @@ Input validation was scattered across three steps, and `stale-strategy`'s check 
 label a PR `dependabot-needs-human` about a pull request that was, at that moment, already
 queued to merge. Two contradictory signals out of one run. All five inputs are now checked
 in the workflow's first step, before a single label, approval or comment.
+
+### Two things observed while verifying, not changed
+
+1. **eachie's `db` job has no `timeout-minutes`.** It normally takes ~7m50s; with no
+   timeout it inherits GitHub's 6-hour default, so one hang costs up to 360 minutes of a
+   3,000-minute monthly allowance that was already at 2,058 on 2026-09-11. `unit` has the
+   same gap; remembrall's `check` correctly sets `timeout-minutes: 20`. Not changed here
+   because pushing it would restart the whole suite mid-verification, and the `db` job's
+   repo-wide concurrency group (`cancel-in-progress: false`) means a new run queues
+   *behind* the old one rather than replacing it. One line each, worth doing next.
+
+2. **A false alarm worth recording, because the habit is the point.** Midway through
+   verification the `db` job looked like it had been running 55 minutes against a 7m49s
+   baseline, and the next move was going to be "cancel it and add a timeout". Checking the
+   clock first — `date -u` said 16:12, the step started 16:04 — showed it was at eight
+   minutes and entirely normal. The measurement was wrong, not the system. Same lesson as
+   the "five subdomains down, probably TLS" case that was actually a stale DNS cache.
+
+### Where the branches stand at the end of this pass
+
+| | |
+|---|---|
+| `repo-standards` `main` | 8 commits past the Phase-1 state, CI green |
+| eachie `standards/dependabot` | PR #203, `unit` green, `db` green, `automerge` correctly skipping (author is khglynn, not dependabot[bot]) |
+| remembrall `standards/ci-trim` | PR #1, both `check` runs green (5m58s and 5m51s) |
+
+Neither PR is merged. eachie #203 is `BLOCKED` only because `protect-main` requires one
+approving review — Kevin approves it himself or uses his admin bypass; it is not waiting
+on CI.
