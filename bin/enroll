@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+# enroll — put one repo under the shared Dependabot standards.
+#
+#   bin/enroll <owner/repo> [--ci-check <check name>] [--dry-run]
+#
+# What it does, in the order it does it:
+#   1. creates the four labels the shared workflow uses (create-or-update, always safe)
+#   2. looks at the repo's files and works out which package ecosystems it has
+#   3. writes .github/dependabot.yml — ONLY if the repo does not already have one
+#   4. writes .github/workflows/dependabot-automerge.yml, the ten-line pointer stub
+#      (replacing an older inline copy of the merge rules if it finds one)
+#   5. opens a PULL REQUEST with those changes. It never pushes to the default branch.
+#   6. turns on the repo's "allow auto-merge" setting
+#   7. with --ci-check, creates/updates a ruleset called `standards-ci` on the default
+#      branch requiring that check — with repository admins allowed to bypass, so Kevin
+#      can still push straight to main, while the bot has to satisfy the check.
+#
+# Running it twice does nothing the second time. That is the point: it is safe to re-run
+# over every repo whenever the standards change.
+#
+# Written 2026-09-11. Needs: gh (authenticated), jq, git, python3.
+
+set -euo pipefail
+
+STD_REPO="khglynn/repo-standards"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEMPLATES="$HERE/templates"
+BRANCH_NAME="standards/enroll"
+
+DRY_RUN=false
+CI_CHECK=""
+TARGET=""
+FILES_PROPOSED=""
+
+die()  { echo "error: $*" >&2; exit 1; }
+say()  { echo "$*"; }
+step() { echo; echo "── $*"; }
+
+# ---------------------------------------------------------------------------- args
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run)  DRY_RUN=true; shift ;;
+    --ci-check) CI_CHECK="${2:-}"; [ -n "$CI_CHECK" ] || die "--ci-check needs a check name"; shift 2 ;;
+    -h|--help)  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*)         die "unknown option: $1" ;;
+    *)          [ -z "$TARGET" ] || die "give exactly one owner/repo"; TARGET="$1"; shift ;;
+  esac
+done
+[ -n "$TARGET" ] || die "usage: bin/enroll <owner/repo> [--ci-check <check>] [--dry-run]"
+case "$TARGET" in */*) : ;; *) die "repo must be owner/repo, got '$TARGET'" ;; esac
+for t in gh jq git python3; do command -v "$t" >/dev/null || die "missing required tool: $t"; done
+
+if $DRY_RUN; then say "DRY RUN — nothing below is actually written."; fi
+say "Enrolling $TARGET"
+
+# --------------------------------------------------------------------- repo basics
+# The REST view, not `gh repo view` — `allow_auto_merge` is only exposed here.
+repo_json=$(gh api "repos/$TARGET" 2>/dev/null) \
+  || die "cannot read $TARGET (does it exist, and are you logged in as its owner?)"
+DEFAULT_BRANCH=$(printf '%s' "$repo_json" | jq -r '.default_branch')
+[ "$(printf '%s' "$repo_json" | jq -r '.archived')" = "false" ] || die "$TARGET is archived — nothing to enroll"
+VISIBILITY=$(printf '%s' "$repo_json" | jq -r '.visibility')
+AUTO_MERGE_ALREADY=$(printf '%s' "$repo_json" | jq -r '.allow_auto_merge')
+say "   default branch: $DEFAULT_BRANCH   visibility: $VISIBILITY"
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# ------------------------------------------------------------------------- 1. labels
+step "Labels"
+label() {
+  if $DRY_RUN; then
+    echo "   would ensure label: $1"
+  else
+    gh label create "$1" --force --color "$2" --description "$3" --repo "$TARGET" >/dev/null
+    echo "   ensured: $1"
+  fi
+}
+label "dependencies"           "0366d6" "Dependency updates (Dependabot)"
+label "major-review-needed"    "d93f0b" "Major version bump — a human must review before merge"
+label "dependabot-needs-human" "b60205" "Auto-merge could not classify this update (or the run broke)"
+label "no-ci-gate"             "fbca04" "No required status check on the base branch, so nothing was auto-merged"
+
+# ------------------------------------------------------- 2. which ecosystems is this?
+step "Ecosystems"
+# One API call for the whole file list; the classifier decides what counts.
+gh api "repos/$TARGET/git/trees/$DEFAULT_BRANCH?recursive=1" \
+   --jq '.tree[] | select(.type=="blob") | .path' > "$WORK/paths.txt" 2>/dev/null \
+  || : > "$WORK/paths.txt"
+python3 "$HERE/bin/lib/detect-ecosystems.py" < "$WORK/paths.txt" > "$WORK/eco.tsv"
+
+if [ ! -s "$WORK/eco.tsv" ]; then
+  say "   none found (no package.json / pyproject.toml / requirements.txt / workflows)"
+else
+  while IFS=$'\t' read -r eco dir; do say "   $eco  in  $dir"; done < "$WORK/eco.tsv"
+fi
+
+# -------------------------------------------------- build the dependabot.yml we WANT
+want_dependabot="$WORK/dependabot.yml"
+: > "$want_dependabot"
+if [ -s "$WORK/eco.tsv" ]; then
+  cat "$TEMPLATES/dependabot/_header.yml" > "$want_dependabot"
+  while IFS=$'\t' read -r eco dir; do
+    frag="$TEMPLATES/dependabot/$eco.yml"
+    [ -f "$frag" ] || continue
+    echo >> "$want_dependabot"
+    sed "s|{{DIRECTORY}}|$dir|g" "$frag" >> "$want_dependabot"
+  done < "$WORK/eco.tsv"
+fi
+
+# ------------------------------------------------- 3+4. the file changes, via a branch
+step "Files"
+CLONE="$WORK/repo"
+git clone --quiet --depth 1 --branch "$DEFAULT_BRANCH" "https://github.com/$TARGET.git" "$CLONE" \
+  || die "could not clone $TARGET"
+mkdir -p "$CLONE/.github/workflows"
+
+# --- dependabot.yml: write only if absent; otherwise report the difference and move on.
+#     An existing file is a decision someone made. We never overwrite it.
+existing_db=""
+for cand in "$CLONE/.github/dependabot.yml" "$CLONE/.github/dependabot.yaml"; do
+  [ -f "$cand" ] && existing_db="$cand"
+done
+if [ ! -s "$want_dependabot" ]; then
+  say "   dependabot.yml: skipped — nothing to keep updated in this repo"
+elif [ -n "$existing_db" ]; then
+  say "   dependabot.yml: ALREADY EXISTS — leaving it exactly as it is."
+  # Compare the SETTINGS, not the prose. Both files are mostly explanatory comments, and a
+  # raw diff of them buries the one line that actually differs under seventy that do not.
+  strip() { grep -vE '^[[:space:]]*(#|$)' "$1" > "$2" || :; }
+  strip "$existing_db" "$WORK/db.a"; strip "$want_dependabot" "$WORK/db.b"
+  if diff -u "$WORK/db.a" "$WORK/db.b" > "$WORK/db.diff" 2>/dev/null; then
+    say "   its settings already match the template."
+  else
+    say "   settings that differ from the template (comments ignored):"
+    say "     '-' = what this repo has today   '+' = what the template would say"
+    sed -e '1,2d' -e 's/^/      /' "$WORK/db.diff"
+  fi
+else
+  cp "$want_dependabot" "$CLONE/.github/dependabot.yml"
+  FILES_PROPOSED="$FILES_PROPOSED .github/dependabot.yml(new)"
+  say "   dependabot.yml: writing a new one"
+fi
+
+# --- the caller stub, which is what actually points this repo at the shared rules.
+stub="$CLONE/.github/workflows/dependabot-automerge.yml"
+if [ -f "$stub" ]; then
+  if grep -q "$STD_REPO/.github/workflows/dependabot-automerge.yml" "$stub"; then
+    stub_note="already points at the shared rules"
+  else
+    stub_note="REPLACING an older inline copy of the merge rules"
+  fi
+else
+  stub_note="new"
+fi
+cp "$TEMPLATES/caller-stub.yml" "$stub"
+say "   automerge stub: $stub_note"
+
+# --- did anything actually change?
+if [ -z "$(git -C "$CLONE" status --porcelain)" ]; then
+  say "   no file changes needed — this repo's files are already correct."
+  PR_URL="(none needed)"
+else
+  [ -n "$FILES_PROPOSED" ] || FILES_PROPOSED=" .github/workflows/dependabot-automerge.yml"
+  git -C "$CLONE" status --porcelain | sed 's/^/      /'
+  if $DRY_RUN; then
+    say
+    say "   would open a pull request on branch '$BRANCH_NAME' containing:"
+    git -C "$CLONE" --no-pager diff -- . | sed 's/^/      /'
+    git -C "$CLONE" status --porcelain | awk '$1=="??"{print $2}' | while read -r f; do
+      echo "      ┄┄ new file: $f"
+      sed 's/^/      + /' "$CLONE/$f"
+    done
+    PR_URL="(dry run — not opened)"
+  else
+    git -C "$CLONE" checkout -q -b "$BRANCH_NAME"
+    git -C "$CLONE" add -A
+    git -C "$CLONE" commit -q -m "standards: enroll in shared Dependabot auto-merge
+
+Points this repo at khglynn/repo-standards for the merge rules, so the policy lives
+in one place instead of drifting per repo.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    # --force is safe here: this branch is only ever generated by this script, and we
+    # only reach this line when the regenerated content differs from the default branch.
+    git -C "$CLONE" push -q --force -u origin "$BRANCH_NAME"
+
+    existing_pr=$(gh pr list --repo "$TARGET" --head "$BRANCH_NAME" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+    if [ -n "$existing_pr" ]; then
+      PR_URL="$existing_pr"
+      say "   pull request already open, updated it: $PR_URL"
+    else
+      body_file="$WORK/pr-body.md"
+      {
+        echo "Enrolls this repo in the shared Dependabot standards at [khglynn/repo-standards](https://github.com/$STD_REPO)."
+        echo
+        echo "**What changes:** a \`dependabot.yml\` (only if the repo had none) asking Dependabot for weekly updates, plus a ten-line workflow that points at the shared merge rules."
+        echo
+        echo "**What it means day to day:** patch and minor dependency updates approve and merge themselves once CI is green. Major bumps get a \`major-review-needed\` label and wait for you. If the branch has no required CI check, nothing merges automatically at all — the PR gets a \`no-ci-gate\` label explaining why."
+        echo
+        echo "**To undo it:** delete \`.github/workflows/dependabot-automerge.yml\`."
+      } > "$body_file"
+      if PR_URL=$(gh pr create --repo "$TARGET" --base "$DEFAULT_BRANCH" --head "$BRANCH_NAME" \
+            --title "standards: enroll in shared Dependabot auto-merge" --body-file "$body_file" 2>&1); then
+        say "   pull request: $PR_URL"
+      else
+        say "   could not open the PR automatically ($PR_URL). The branch IS pushed; run:"
+        say "      gh pr create --repo $TARGET --base $DEFAULT_BRANCH --head $BRANCH_NAME --fill"
+        PR_URL="(branch pushed, PR not opened)"
+      fi
+    fi
+  fi
+fi
+
+# ------------------------------------------------------------- 6. allow auto-merge
+step "Repo setting: allow auto-merge"
+if [ "$AUTO_MERGE_ALREADY" = "true" ]; then
+  say "   already on"
+elif $DRY_RUN; then
+  say "   would turn it on (gh api -X PATCH repos/$TARGET -F allow_auto_merge=true)"
+else
+  gh api -X PATCH "repos/$TARGET" -F allow_auto_merge=true --silent
+  say "   turned on"
+fi
+
+# ------------------------------------------------------------------ 7. the CI gate
+step "CI gate (ruleset 'standards-ci')"
+if [ -z "$CI_CHECK" ]; then
+  say "   skipped — no --ci-check given."
+  say "   Without a required status check on $DEFAULT_BRANCH the shared workflow will"
+  say "   deliberately refuse to auto-merge, and label PRs 'no-ci-gate' instead."
+else
+  # Repository admins bypass ALWAYS. A required-status-checks rule also blocks direct
+  # pushes to the branch, and Kevin pushes straight to main in several repos — this is
+  # what keeps him unblocked while the bot (github-actions, not an admin) still has to
+  # satisfy the check. actor_id 5 / RepositoryRole is the built-in repository-admin role.
+  ruleset_body=$(jq -n --arg check "$CI_CHECK" '{
+    name: "standards-ci",
+    target: "branch",
+    enforcement: "active",
+    conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
+    bypass_actors: [ { actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" } ],
+    rules: [ {
+      type: "required_status_checks",
+      parameters: {
+        strict_required_status_checks_policy: false,
+        do_not_enforce_on_create: false,
+        required_status_checks: [ { context: $check } ]
+      }
+    } ]
+  }')
+  existing_id=$(gh api "repos/$TARGET/rulesets" --jq '.[] | select(.name=="standards-ci") | .id' 2>/dev/null | head -1 || true)
+  if $DRY_RUN; then
+    if [ -n "$existing_id" ]; then
+      say "   would UPDATE existing ruleset id $existing_id"
+    else
+      say "   would CREATE ruleset 'standards-ci'"
+    fi
+    say "   requiring check '$CI_CHECK' on $DEFAULT_BRANCH, repository admins bypass always"
+  elif [ -n "$existing_id" ]; then
+    printf '%s' "$ruleset_body" | gh api -X PUT "repos/$TARGET/rulesets/$existing_id" --input - --silent
+    say "   updated ruleset $existing_id: '$CI_CHECK' required on $DEFAULT_BRANCH"
+  else
+    printf '%s' "$ruleset_body" | gh api -X POST "repos/$TARGET/rulesets" --input - --silent
+    say "   created ruleset 'standards-ci': '$CI_CHECK' required on $DEFAULT_BRANCH"
+  fi
+fi
+
+# ----------------------------------------------------------------------- summary
+if $DRY_RUN; then outcome="dry run — nothing changed"; else outcome="done"; fi
+echo
+echo "════════════════════════════════════════════════════════════════════"
+echo " $TARGET — $outcome"
+echo "════════════════════════════════════════════════════════════════════"
+echo " Ecosystems found:$(if [ -s "$WORK/eco.tsv" ]; then awk -F'\t' '{printf " %s(%s)", $1, $2}' "$WORK/eco.tsv"; else echo ' none'; fi)"
+echo " Files proposed:${FILES_PROPOSED:- none}"
+echo " Pull request: ${PR_URL:-none}"
+if [ -n "$CI_CHECK" ]; then
+  echo " CI gate: '$CI_CHECK' required on $DEFAULT_BRANCH (you can still push directly)"
+else
+  echo " CI gate: NONE. Nothing will auto-merge here until this repo has one."
+fi
+echo
+if $DRY_RUN; then
+  echo " YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it."
+else
+  echo " YOUR MOVE: review and merge the pull request above. Nothing takes effect until"
+  echo " it lands on $DEFAULT_BRANCH — GitHub only runs a workflow that is already on"
+  echo " the default branch."
+fi

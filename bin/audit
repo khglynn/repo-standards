@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# audit — one read-only picture of where every repo stands.
+#
+#   bin/audit [--owner khglynn] [--markdown|--plain]
+#
+# Reads nothing but the GitHub API and writes nothing anywhere. Safe to run any time,
+# from any machine, as often as you like. Written 2026-09-11.
+#
+# The status column is the thing to read:
+#   enrolled       — dependabot.yml + the pointer stub + auto-merge on + a required check.
+#                    Routine updates land by themselves here.
+#   security-only  — no version-update config. Still covered by account-wide Dependabot
+#                    security alerts and fixes; just not kept current for its own sake.
+#                    A perfectly fine state for a repo nobody deploys.
+#   drift: …       — half-enrolled, and the reason says which half. This is the column
+#                    that makes drift impossible to not notice.
+
+set -euo pipefail
+
+OWNER="khglynn"
+STD_PATH="khglynn/repo-standards/.github/workflows/dependabot-automerge.yml"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --owner) OWNER="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+for t in gh jq python3; do command -v "$t" >/dev/null || { echo "missing tool: $t" >&2; exit 1; }; done
+
+echo "Reading $OWNER's repos…" >&2
+
+repos=$(gh repo list "$OWNER" --limit 300 --no-archived \
+          --json name,visibility,pushedAt,defaultBranchRef \
+          --jq '.[] | [.name, .visibility, .pushedAt, (.defaultBranchRef.name // "")] | @tsv')
+
+# One search for every open Dependabot PR the account has, rather than one call per repo.
+dependabot_prs=$(gh api -X GET search/issues \
+  -f q="is:pr is:open author:app/dependabot user:$OWNER" --paginate \
+  --jq '.items[] | [(.repository_url|split("/")|last), .created_at] | @tsv' 2>/dev/null || true)
+
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+printf '%s\n' "$dependabot_prs" > "$TMP/prs.tsv"
+
+rows=""
+total=0; enrolled=0; security_only=0; drifting=0
+
+while IFS=$'\t' read -r name visibility pushed_at default_branch; do
+  [ -n "$name" ] || continue
+  total=$((total + 1))
+  R="$OWNER/$name"
+  printf '  %-55s\r' "$R" >&2
+
+  # --- the repo's own settings
+  auto_merge=$(gh api "repos/$R" --jq '.allow_auto_merge' 2>/dev/null || echo "?")
+
+  # --- the file list (one call), which answers three questions at once
+  paths=$(gh api "repos/$R/git/trees/$default_branch?recursive=1" \
+            --jq '.tree[] | select(.type=="blob") | .path' 2>/dev/null || true)
+  # Here-strings, not pipes: `grep -q` exits on its first match, and a pipe feeding it then
+  # takes SIGPIPE and prints "write error: Broken pipe" for a search that actually succeeded.
+  has_manifest=no
+  # GitHub Actions are dependencies too — a repo with workflows and no app manifest still has
+  # something Dependabot can keep current, so it counts here.
+  grep -qE '(^|/)(package\.json|requirements\.txt|pyproject\.toml|go\.mod|Gemfile|Cargo\.toml)$|^\.github/workflows/.*\.ya?ml$' <<< "$paths" && has_manifest=yes
+  has_dependabot=no
+  grep -qE '^\.github/dependabot\.ya?ml$' <<< "$paths" && has_dependabot=yes
+
+  # A repo is "stubbed" when ANY of its workflows calls the shared rules. The standards repo
+  # itself holds the DEFINITION at the obvious path, so its own stub has a different name —
+  # check both, and recognise the definition rather than mistaking it for a stale inline copy.
+  has_stub=no
+  for cand in .github/workflows/dependabot-automerge.yml .github/workflows/dependabot-automerge-self.yml; do
+    grep -qF "$cand" <<< "$paths" || continue
+    content=$(gh api "repos/$R/contents/$cand" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)
+    if grep -qF "$STD_PATH" <<< "$content"; then has_stub=yes; break; fi
+    if grep -q 'workflow_call:' <<< "$content"; then has_stub=source; break; fi
+    has_stub=inline   # an older, per-repo copy of the rules — the thing we are replacing
+  done
+
+  # --- required status checks on the default branch: rulesets first, classic as fallback
+  checks=$(gh api "repos/$R/rules/branches/${default_branch//\//%2F}" 2>/dev/null \
+            | jq -r '[.[] | select(.type=="required_status_checks")
+                          | .parameters.required_status_checks[]?.context] | unique | join(", ")' 2>/dev/null || true)
+  if [ -z "$checks" ]; then
+    checks=$(gh api "repos/$R/branches/${default_branch//\//%2F}/protection" 2>/dev/null \
+              | jq -r '(((.required_status_checks.checks // []) | map(.context))
+                        + (.required_status_checks.contexts // [])) | unique | join(", ")' 2>/dev/null || true)
+  fi
+  [ -n "$checks" ] || checks="—"
+
+  # --- open Dependabot pull requests, and how long the oldest has been sitting there
+  pr_count=$(awk -F'\t' -v r="$name" '$1==r' "$TMP/prs.tsv" | wc -l | tr -d ' ')
+  pr_cell="0"
+  if [ "$pr_count" -gt 0 ]; then
+    oldest=$(awk -F'\t' -v r="$name" '$1==r {print $2}' "$TMP/prs.tsv" | sort | head -1)
+    age=$(python3 -c "
+import datetime,sys
+d=datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
+    pr_cell="$pr_count (oldest ${age}d)"
+  fi
+
+  # --- the verdict
+  if [ "$has_stub" = "source" ] && [ "$has_dependabot" = "yes" ]; then
+    status="enrolled (this repo IS the standard)"
+  elif [ "$has_stub" = "inline" ]; then
+    status="drift: still has its own private copy of the merge rules"
+  elif [ "$has_dependabot" = "no" ] && [ "$has_stub" = "no" ]; then
+    if [ "$has_manifest" = "yes" ]; then
+      status="security-only"
+    else
+      status="security-only (nothing to update)"
+    fi
+  elif [ "$has_dependabot" = "yes" ] && [ "$has_stub" = "no" ]; then
+    status="drift: gets update PRs but nothing merges them"
+  elif [ "$has_stub" = "yes" ] && [ "$has_dependabot" = "no" ]; then
+    status="drift: merge rules but no dependabot.yml, so no update PRs"
+  elif [ "$auto_merge" != "true" ]; then
+    status="drift: repo setting 'allow auto-merge' is off"
+  elif [ "$checks" = "—" ]; then
+    status="drift: no required check, so nothing can safely auto-merge"
+  else
+    status="enrolled"
+  fi
+
+  case "$status" in
+    enrolled*)      enrolled=$((enrolled + 1)) ;;
+    security-only*) security_only=$((security_only + 1)) ;;
+    *)              drifting=$((drifting + 1)) ;;
+  esac
+
+  pushed_day=${pushed_at%%T*}
+  rows="$rows| \`$name\` | $visibility | $pushed_day | $has_manifest | $has_dependabot | $has_stub | $auto_merge | $checks | $pr_cell | $status |
+"
+done <<< "$repos"
+
+printf '                                             \r' >&2
+
+echo "# Repo standards audit — $(date +%Y-%m-%d)"
+echo
+echo "$total active repos under \`$OWNER\`: **$enrolled enrolled**, $security_only security-only, **$drifting drifting**."
+echo
+echo "| repo | vis | last push | manifest | dependabot.yml | stub | auto-merge | required checks | open bot PRs | status |"
+echo "|---|---|---|---|---|---|---|---|---|---|"
+printf '%s' "$rows"
+echo
+echo "_\`manifest\` counts GitHub Actions workflows as well as app dependency files — an action_"
+echo "_is a dependency that runs with the repo's token, and nobody updates those by hand._"
+echo
+echo "_Security alerts and security update PRs are on account-wide and need no file, so_"
+echo "_\`security-only\` means \"protected against known vulnerabilities, not kept current\"._"
+echo "_To move a repo from security-only to enrolled: \`bin/enroll $OWNER/<name> --ci-check <check>\`._"

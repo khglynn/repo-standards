@@ -1,0 +1,62 @@
+# CI for the standards repo itself.
+#
+# WHY THIS MATTERS MORE THAN NORMAL CI: the workflow in this repo runs, with write
+# permission, inside every repo that points at it. A typo here is a typo everywhere at
+# once, and it would surface as "Dependabot PRs quietly stopped merging" — the kind of
+# silence nobody notices for a month. So the shared workflow gets linted before it ships.
+#
+# This job is also this repo's own required status check, which is what lets the standards
+# repo be enrolled in its own standard instead of being the one repo exempt from it.
+# Written 2026-09-11.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # actionlint parses every workflow AND runs shellcheck over each `run:` block, which
+      # is where the real bugs live — an unquoted variable, a typo'd jq filter.
+      - name: Lint the workflows
+        uses: rhysd/actionlint@v1.7.12
+
+      # The stub and the dependabot fragments are templates, so nothing above reads them.
+      - name: Check the templates still compose
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 bin/lib/check-templates.py
+
+      - name: Check the scripts
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck bin/enroll bin/audit
+          python3 -m py_compile bin/lib/detect-ecosystems.py bin/lib/check-templates.py
+
+      # A fixture run of the ecosystem detector: proves it still says what we think it says,
+      # independently of any live repo. If this ever disagrees, enroll is about to write the
+      # wrong dependabot.yml into somebody's repo.
+      - name: Self-test the ecosystem detector
+        run: |
+          got=$(printf '%s\n' \
+            package.json \
+            app/pyproject.toml \
+            app/requirements.txt \
+            node_modules/left-pad/package.json \
+            deep/nested/dir/package.json \
+            .github/workflows/ci.yml \
+            | python3 bin/lib/detect-ecosystems.py)
+          want=$(printf 'github-actions\t/\nnpm\t/\nuv\t/app')
+          if [ "$got" != "$want" ]; then
+            echo "detector changed behaviour."; echo "got:"; echo "$got"; echo "want:"; echo "$want"; exit 1
+          fi
+          echo "detector: ok (ignored node_modules, ignored the deep path, preferred uv over pip)"
