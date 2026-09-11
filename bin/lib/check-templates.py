@@ -61,7 +61,8 @@ def check_dependabot_fragments() -> None:
             entry = updates[0]
             check("package-ecosystem" in entry, f"{frag.name}: no package-ecosystem")
             check(entry.get("labels") == ["dependencies"],
-                  f"{frag.name}: must carry the `dependencies` label, or the audit cannot find its PRs")
+                  f"{frag.name}: must carry the `dependencies` label — it is how a human "
+                  f"skimming the PR list sees at a glance which ones are the bot's")
             check("cooldown" in entry, f"{frag.name}: lost its cooldown — that is the supply-chain soak")
         print(f"{frag.name}: ok")
 
