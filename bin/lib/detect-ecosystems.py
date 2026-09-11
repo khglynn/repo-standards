@@ -26,9 +26,28 @@ MANIFESTS = {
     "requirements.txt": "pip",
 }
 
+# Manifests Dependabot DOES support but this toolchain has no fragment for yet. They are
+# reported on stderr rather than silently ignored: `bin/audit` counts a repo with one of
+# these as "has a manifest", so staying quiet here meant `enroll` telling you a Go or Rust
+# repo had "nothing to keep updated" — a confident wrong answer — and then installing a
+# merge stub that would never see a Dependabot PR. Added 2026-09-11.
+# To support one: add templates/dependabot/<ecosystem>.yml and move its row up into
+# MANIFESTS above. The ecosystem names are Dependabot's own.
+UNSUPPORTED = {
+    "go.mod": "gomod",
+    "Gemfile": "bundler",
+    "Cargo.toml": "cargo",
+    "composer.json": "composer",
+    "pom.xml": "maven",
+    "build.gradle": "gradle",
+    "Dockerfile": "docker",
+    "main.tf": "terraform",
+}
+
 
 def main() -> int:
     found = set()
+    unsupported = set()
     has_workflows = False
 
     for line in sys.stdin:
@@ -42,9 +61,12 @@ def main() -> int:
         directory, base = os.path.split(path)
         if directory.count("/") >= 1:  # deeper than one level down
             continue
+        where = "/" + directory if directory else "/"
         eco = MANIFESTS.get(base)
         if eco:
-            found.add((eco, "/" + directory if directory else "/"))
+            found.add((eco, where))
+        elif base in UNSUPPORTED:
+            unsupported.add((UNSUPPORTED[base], where, base))
 
     # A directory holding a pyproject.toml is a uv project. A requirements.txt sitting
     # beside it is usually an export for deployment, and declaring both makes Dependabot
@@ -58,6 +80,12 @@ def main() -> int:
 
     for eco, directory in sorted(found):
         print(f"{eco}\t{directory}")
+
+    # stderr, deliberately: stdout is the machine-readable list `enroll` splices into a
+    # dependabot.yml, and an ecosystem with no fragment must never reach it.
+    for eco, directory, filename in sorted(unsupported):
+        print(f"{filename} in {directory} — Dependabot ecosystem '{eco}', no template here yet",
+              file=sys.stderr)
     return 0
 
 

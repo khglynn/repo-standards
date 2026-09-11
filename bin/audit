@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # audit — one read-only picture of where every repo stands.
 #
-#   bin/audit [--owner khglynn] [--markdown|--plain]
+#   bin/audit [--owner khglynn]
+#
+# Output is always markdown. (`--markdown|--plain` used to be documented on this line
+# and was never implemented — both hit the unknown-option arm and exited 1, so the
+# help text was actively teaching a command that errors. Removed 2026-09-11.)
 #
 # Reads nothing but the GitHub API and writes nothing anywhere. Safe to run any time,
 # from any machine, as often as you like. Written 2026-09-11.
@@ -23,7 +27,7 @@ STD_PATH="khglynn/repo-standards/.github/workflows/dependabot-automerge.yml"
 while [ $# -gt 0 ]; do
   case "$1" in
     --owner) OWNER="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -44,7 +48,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 printf '%s\n' "$dependabot_prs" > "$TMP/prs.tsv"
 
 rows=""
-total=0; enrolled=0; security_only=0; drifting=0; forks=0
+total=0; enrolled=0; security_only=0; drifting=0; forks=0; unreadable_count=0
 
 while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   [ -n "$name" ] || continue
@@ -56,14 +60,25 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   auto_merge=$(gh api "repos/$R" --jq '.allow_auto_merge' 2>/dev/null || echo "?")
 
   # --- the file list (one call), which answers three questions at once
-  paths=$(gh api "repos/$R/git/trees/$default_branch?recursive=1" \
-            --jq '.tree[] | select(.type=="blob") | .path' 2>/dev/null || true)
+  # A failed or TRUNCATED listing would otherwise look identical to "this repo has no
+  # files", and the row would quietly read security-only. audit is read-only so it does
+  # not stop the world for one repo — it marks the row instead. (2026-09-11)
+  tree=$(gh api "repos/$R/git/trees/$default_branch?recursive=1" 2>/dev/null || true)
+  paths=$(printf '%s' "$tree" | jq -r '.tree[]? | select(.type=="blob") | .path' 2>/dev/null || true)
+  unreadable=no
+  if [ -z "$tree" ] || [ "$(printf '%s' "$tree" | jq -r '.truncated // "err"' 2>/dev/null)" != "false" ]; then
+    unreadable=yes
+  fi
   # Here-strings, not pipes: `grep -q` exits on its first match, and a pipe feeding it then
   # takes SIGPIPE and prints "write error: Broken pipe" for a search that actually succeeded.
   has_manifest=no
   # GitHub Actions are dependencies too — a repo with workflows and no app manifest still has
   # something Dependabot can keep current, so it counts here.
-  if grep -qE '(^|/)(package\.json|requirements\.txt|pyproject\.toml|go\.mod|Gemfile|Cargo\.toml)$|^\.github/workflows/.*\.ya?ml$' <<< "$paths"; then
+  # This list is the UNION of bin/lib/detect-ecosystems.py's MANIFESTS and UNSUPPORTED.
+  # Keep the two in step: a file that counts as a manifest here but has no template there
+  # is a repo that audits as enrollable and then can't be enrolled — `enroll` now says so
+  # out loud rather than reporting "nothing to keep updated" (2026-09-11).
+  if grep -qE '(^|/)(package\.json|requirements\.txt|pyproject\.toml|go\.mod|Gemfile|Cargo\.toml|composer\.json|pom\.xml|build\.gradle)$|^\.github/workflows/.*\.ya?ml$' <<< "$paths"; then
     has_manifest=yes
   fi
   has_dependabot=no
@@ -107,7 +122,9 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
   # --- the verdict
   # A fork's dependabot.yml belongs to whoever we forked FROM. Enrolling one means fighting
   # upstream on every sync, so a fork is never drift — it is just not ours to standardise.
-  if [ "$is_fork" = "true" ]; then
+  if [ "$unreadable" = "yes" ]; then
+    status="unknown: could not read this repo's file list (API error or truncated tree)"
+  elif [ "$is_fork" = "true" ]; then
     status="fork — upstream's config, leave it alone"
   elif [ "$has_stub" = "source" ] && [ "$has_dependabot" = "yes" ]; then
     status="enrolled (this repo IS the standard)"
@@ -135,6 +152,7 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     enrolled*)      enrolled=$((enrolled + 1)) ;;
     security-only*) security_only=$((security_only + 1)) ;;
     fork*)          forks=$((forks + 1)) ;;
+    unknown*)       unreadable_count=$((unreadable_count + 1)) ;;
     *)              drifting=$((drifting + 1)) ;;
   esac
 
@@ -147,7 +165,9 @@ printf '                                             \r' >&2
 
 echo "# Repo standards audit — $(date +%Y-%m-%d)"
 echo
-echo "$total active repos under \`$OWNER\`: **$enrolled enrolled**, $security_only security-only, $forks forks, **$drifting drifting**."
+summary="$total active repos under \`$OWNER\`: **$enrolled enrolled**, $security_only security-only, $forks forks, **$drifting drifting**"
+if [ "$unreadable_count" -gt 0 ]; then summary="$summary, **$unreadable_count unreadable**"; fi
+echo "$summary."
 echo
 echo "| repo | vis | last push | manifest | dependabot.yml | stub | auto-merge | required checks | open bot PRs | status |"
 echo "|---|---|---|---|---|---|---|---|---|---|"

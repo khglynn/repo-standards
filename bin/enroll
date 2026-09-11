@@ -26,6 +26,9 @@ STD_REPO="khglynn/repo-standards"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATES="$HERE/templates"
 BRANCH_NAME="standards/enroll"
+# One string, used twice: to write the commit and to recognise our own past commit before
+# overwriting the branch. If these two ever drift apart, every re-run refuses to push.
+COMMIT_SUBJECT="standards: enroll in shared Dependabot auto-merge"
 
 DRY_RUN=false
 CI_CHECK=""
@@ -86,19 +89,39 @@ label "dependencies"           "0366d6" "Dependency updates (Dependabot)"
 label "major-review-needed"    "d93f0b" "Major version bump — a human must review before merge"
 label "dependabot-needs-human" "b60205" "Auto-merge could not classify this update (or the run broke)"
 label "no-ci-gate"             "fbca04" "No required status check on the base branch, so nothing was auto-merged"
+label "dependabot-opted-out"   "c5def5" "Classified fine, but this repo opted out of auto-merging that tier"
 
 # ------------------------------------------------------- 2. which ecosystems is this?
 step "Ecosystems"
 # One API call for the whole file list; the classifier decides what counts.
-gh api "repos/$TARGET/git/trees/$DEFAULT_BRANCH?recursive=1" \
-   --jq '.tree[] | select(.type=="blob") | .path' > "$WORK/paths.txt" 2>/dev/null \
-  || : > "$WORK/paths.txt"
-python3 "$HERE/bin/lib/detect-ecosystems.py" < "$WORK/paths.txt" > "$WORK/eco.tsv"
+#
+# The errors here are NOT swallowed, and that is deliberate (2026-09-11). This call is
+# the single input to "which ecosystems does this repo have", so a failed call and a
+# truncated response both turn into "this repo has no dependencies" — a confidently
+# wrong answer from the one script whose whole job is getting that answer right. The
+# recursive tree endpoint truncates SILENTLY on large repos; `.truncated` is the only tell.
+tree=$(gh api "repos/$TARGET/git/trees/$DEFAULT_BRANCH?recursive=1") \
+  || die "could not list $TARGET's files (git/trees on $DEFAULT_BRANCH failed). Nothing was changed."
+if [ "$(printf '%s' "$tree" | jq -r '.truncated')" = "true" ]; then
+  die "$TARGET's file listing came back TRUNCATED, so ecosystem detection would be
+       incomplete and the dependabot.yml would be wrong. Work this repo out by hand."
+fi
+printf '%s' "$tree" | jq -r '.tree[] | select(.type=="blob") | .path' > "$WORK/paths.txt"
+python3 "$HERE/bin/lib/detect-ecosystems.py" < "$WORK/paths.txt" > "$WORK/eco.tsv" 2> "$WORK/eco-unsupported.txt"
 
 if [ ! -s "$WORK/eco.tsv" ]; then
   say "   none found (no package.json / pyproject.toml / requirements.txt / workflows)"
 else
   while IFS=$'\t' read -r eco dir; do say "   $eco  in  $dir"; done < "$WORK/eco.tsv"
+fi
+# A manifest this toolchain has no fragment for is a real finding, not an absence. Saying
+# "nothing to keep updated" about a Go or Rust repo is how one gets enrolled with a stub
+# that will never see a Dependabot PR.
+if [ -s "$WORK/eco-unsupported.txt" ]; then
+  say "   ⚠ found manifests with no template in this toolchain yet:"
+  sed 's/^/      /' "$WORK/eco-unsupported.txt"
+  say "      → those ecosystems will NOT be added to dependabot.yml. Add a fragment in"
+  say "        templates/dependabot/ before relying on this repo being kept current."
 fi
 
 # -------------------------------------------------- build the dependabot.yml we WANT
@@ -108,7 +131,11 @@ if [ -s "$WORK/eco.tsv" ]; then
   cat "$TEMPLATES/dependabot/_header.yml" > "$want_dependabot"
   while IFS=$'\t' read -r eco dir; do
     frag="$TEMPLATES/dependabot/$eco.yml"
-    [ -f "$frag" ] || continue
+    # Loudly, not `continue`. Skipping silently produced a file that is just `updates:`
+    # with no entries under it, which Dependabot rejects outright — and the PR would have
+    # been opened anyway, so the breakage surfaced in the target repo, not here.
+    [ -f "$frag" ] || die "the detector found ecosystem '$eco' but templates/dependabot/$eco.yml does not exist.
+       Add that fragment (or teach the detector to stop reporting it) before enrolling $TARGET."
     echo >> "$want_dependabot"
     sed "s|{{DIRECTORY}}|$dir|g" "$frag" >> "$want_dependabot"
   done < "$WORK/eco.tsv"
@@ -120,6 +147,32 @@ CLONE="$WORK/repo"
 git clone --quiet --depth 1 --branch "$DEFAULT_BRANCH" "https://github.com/$TARGET.git" "$CLONE" \
   || die "could not clone $TARGET"
 mkdir -p "$CLONE/.github/workflows"
+
+# ---- validate --ci-check BEFORE anything is written anywhere ----------------------
+#
+# ⚠ A required status check is a free-text CONTEXT: GitHub happily accepts one that
+# nothing will ever report. A typo — `check` for `checks` — creates a gate that can never
+# go green: Kevin bypasses it as an admin and never notices, while every Dependabot PR
+# queues auto-merge and hangs forever. That is precisely the silent failure this whole
+# system exists to prevent, so the name is checked against the job ids the repo's own
+# workflows actually declare — and checked HERE, before a single write, so a bad name
+# costs nothing. (Added 2026-09-11.)
+if [ -n "$CI_CHECK" ]; then
+  jobs_found=$(python3 "$HERE/bin/lib/pr-job-ids.py" "$CLONE")
+  if [ -z "$jobs_found" ]; then
+    die "--ci-check '$CI_CHECK' cannot be verified: $TARGET has no workflow that runs on
+       pull_request, so no check will ever report on a PR. Add CI first, then enroll.
+       Nothing on $TARGET was changed."
+  fi
+  if ! printf '%s\n' "$jobs_found" | cut -f1 | grep -qxF "$CI_CHECK"; then
+    say "   jobs this repo actually runs on pull requests:"
+    printf '%s\n' "$jobs_found" | awk -F'\t' '{printf "      %-24s (%s, shown as \"%s\")\n", $1, $2, $3}'
+    die "--ci-check '$CI_CHECK' is not one of them. A required check that nothing reports
+       is a gate that can never go green — every Dependabot PR would queue and hang
+       forever. Pick a job id from the list above. Nothing on $TARGET was changed."
+  fi
+  say "   CI check '$CI_CHECK' is a real job that runs on pull requests here ✓"
+fi
 
 # --- dependabot.yml: write only if absent; otherwise report the difference and move on.
 #     An existing file is a decision someone made. We never overwrite it.
@@ -151,18 +204,35 @@ else
 fi
 
 # --- the caller stub, which is what actually points this repo at the shared rules.
+#
+# ⚠ A STUB THAT ALREADY POINTS HERE IS LEFT ALONE (fixed 2026-09-11). This used to be an
+# unconditional `cp`, which meant that re-running enroll over every repo — the documented
+# way to roll out a change — silently reverted every per-repo exception carved into a
+# `with:` block, and the PR body said only "a ten-line workflow", so the revert was
+# invisible to anyone reading the body rather than the diff. A repo with `merge-minor:
+# false` because a minor broke production would have had it turned back on.
+#
+# The trade: if the stub TEMPLATE itself ever changes (a new trigger type, say), enroll no
+# longer propagates it to already-pointing repos. That is the right way round — a missed
+# template refresh is visible and harmless; a reverted exception is neither. To force a
+# refresh, delete the repo's stub and re-run.
 stub="$CLONE/.github/workflows/dependabot-automerge.yml"
-if [ -f "$stub" ]; then
-  if grep -q "$STD_REPO/.github/workflows/dependabot-automerge.yml" "$stub"; then
-    stub_note="already points at the shared rules"
+if [ -f "$stub" ] && grep -q "$STD_REPO/.github/workflows/dependabot-automerge.yml" "$stub"; then
+  if grep -qE '^[[:space:]]*with:' "$stub"; then
+    say "   automerge stub: LEFT ALONE — it already points at the shared rules and carries a carved exception:"
+    sed -n '/^[[:space:]]*with:/,/^[[:space:]]*$/p' "$stub" | sed 's/^/        /'
   else
-    stub_note="REPLACING an older inline copy of the merge rules"
+    say "   automerge stub: left alone — already points at the shared rules"
   fi
 else
-  stub_note="new"
+  if [ -f "$stub" ]; then
+    stub_note="REPLACING an older inline copy of the merge rules"
+  else
+    stub_note="new"
+  fi
+  cp "$TEMPLATES/caller-stub.yml" "$stub"
+  say "   automerge stub: $stub_note"
 fi
-cp "$TEMPLATES/caller-stub.yml" "$stub"
-say "   automerge stub: $stub_note"
 
 # --- did anything actually change?
 if [ -z "$(git -C "$CLONE" status --porcelain)" ]; then
@@ -183,15 +253,32 @@ else
   else
     git -C "$CLONE" checkout -q -b "$BRANCH_NAME"
     git -C "$CLONE" add -A
-    git -C "$CLONE" commit -q -m "standards: enroll in shared Dependabot auto-merge
-
-Points this repo at khglynn/repo-standards for the merge rules, so the policy lives
+    git -C "$CLONE" commit -q -m "$COMMIT_SUBJECT" -m "Points this repo at khglynn/repo-standards for the merge rules, so the policy lives
 in one place instead of drifting per repo.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-    # --force is safe here: this branch is only ever generated by this script, and we
-    # only reach this line when the regenerated content differs from the default branch.
-    git -C "$CLONE" push -q --force -u origin "$BRANCH_NAME"
+    # NEVER a bare --force (2026-09-11). This branch is generated by this script, but an
+    # open enroll PR can carry a review fix or a hand-edited exception pushed on top, and
+    # --force destroys that silently. A shallow clone of the default branch has no
+    # remote-tracking ref for this branch, so plain --force-with-lease cannot help either:
+    # it has nothing to compare against. So we look the remote branch up explicitly, and
+    # only overwrite it when its tip is a commit THIS SCRIPT wrote.
+    remote_tip=$(git -C "$CLONE" ls-remote origin "refs/heads/$BRANCH_NAME" | awk '{print $1}')
+    if [ -n "$remote_tip" ]; then
+      git -C "$CLONE" fetch -q --depth 1 origin "$BRANCH_NAME"
+      remote_subject=$(git -C "$CLONE" log -1 --format=%s "$remote_tip" 2>/dev/null || echo "<unreadable>")
+      if [ "$remote_subject" != "$COMMIT_SUBJECT" ]; then
+        die "'$BRANCH_NAME' already exists on $TARGET and its tip is not one of mine:
+         \"$remote_subject\"
+       Someone has pushed to that branch. Look at it, then merge or delete it before
+       re-running. Nothing on $TARGET was changed."
+      fi
+      # Lease against the exact SHA we just read: if anything lands between this line and
+      # the push, the push is refused instead of overwriting it.
+      git -C "$CLONE" push -q --force-with-lease="$BRANCH_NAME:$remote_tip" -u origin "$BRANCH_NAME"
+    else
+      git -C "$CLONE" push -q -u origin "$BRANCH_NAME"
+    fi
 
     existing_pr=$(gh pr list --repo "$TARGET" --head "$BRANCH_NAME" --state open --json url --jq '.[0].url' 2>/dev/null || true)
     if [ -n "$existing_pr" ]; then
