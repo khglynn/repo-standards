@@ -29,13 +29,18 @@ jobs:
     # ------------------------------------------------------------------------------
     # THE EXCEPTION POINTS. Delete the `with:` block entirely to take every default.
     # Uncomment only the line you actually want to differ in THIS repo, and say why.
+    #
+    # Anything you write here is SAFE from `bin/enroll`: once this file points at
+    # repo-standards, re-running enroll leaves it untouched rather than re-stamping the
+    # template over your exception (fixed 2026-09-11 — it used to silently revert it).
     # ------------------------------------------------------------------------------
     # with:
     #   merge-patch: true              # x.y.Z bumps merge themselves. Default true.
     #   merge-minor: false             # x.Y.z bumps wait for a human. Use in a repo where a minor has bitten you.
     #   merge-method: merge            # squash (default) | merge | rebase
     #   require-ci: true               # never auto-merge on a branch with no required check. Leave true.
-    #   stale-strategy: comment        # update-branch (default) | comment  — how to refresh a stale, red PR
+    #   stale-strategy: comment        # none (default) | comment — what to do with a PR that is behind main AND red
     #   label-major: major-review-needed
     #   label-unparsed: dependabot-needs-human
     #   label-no-ci: no-ci-gate
+    #   label-opted-out: dependabot-opted-out

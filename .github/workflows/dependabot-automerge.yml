@@ -25,6 +25,12 @@
 # it is "auto-merge" in name only at that point. So this workflow REFUSES to enable
 # auto-merge on a branch with no required check, and labels the PR instead. A repo with
 # no CI gets visibility, never a blind merge.
+#
+# THE OTHER RULE THIS FILE OBEYS (learned the hard way, 2026-09-11): never push to a
+# pull-request branch from here. A push made with GITHUB_TOKEN does not start a new
+# workflow run, so "refresh the branch and let CI re-run" is a dead end that strands
+# the PR behind a check that will never report again. Anything that needs CI to re-run
+# has to come from Dependabot's own push. See step 6.
 
 name: dependabot-automerge (reusable)
 
@@ -52,12 +58,14 @@ on:
         default: true
       stale-strategy:
         description: >-
-          What to do when a PR has fallen behind the base branch AND a required check failed:
-          "update-branch" (merge base into the PR branch via the API — always works) or
-          "comment" (post `@dependabot rebase` and let Dependabot redo the branch — cleaner
-          history, but UNVERIFIED as of 2026-09-11: see the README decisions section).
+          What to do when a PR has fallen behind the base branch AND a required check is red:
+          "none" (default — log it and leave the PR queued) or "comment" (post
+          `@dependabot recreate` and let Dependabot rebuild the branch, whose OWN push does
+          re-run CI). UNVERIFIED as of 2026-09-11 whether Dependabot obeys a command posted
+          by github-actions[bot] — see the README decisions section.
+          A third option, "update-branch", was REMOVED 2026-09-11: see step 6's comment.
         type: string
-        default: update-branch
+        default: none
       label-major:
         description: "Label put on a PR that contains a major version bump."
         type: string
@@ -70,9 +78,17 @@ on:
         description: "Label put on a PR whose base branch has no required status check."
         type: string
         default: no-ci-gate
+      label-opted-out:
+        description: >-
+          Label put on a PR that classified perfectly but sits in a tier THIS repo turned off
+          (merge-patch: false / merge-minor: false). Deliberately not the same label as
+          "could not classify" — that one sends you to the checks tab for a broken run, and
+          there is no broken run here.
+        type: string
+        default: dependabot-opted-out
 
 permissions:
-  contents: write        # enable auto-merge, update a stale branch
+  contents: write        # enable auto-merge
   pull-requests: write   # approve, label, comment
   issues: write          # create the labels themselves (labels live on the Issues API)
 
@@ -97,7 +113,6 @@ jobs:
       # branch or title would become shell. Everything arrives as an environment variable.
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
       PR_URL: ${{ github.event.pull_request.html_url }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
@@ -109,6 +124,7 @@ jobs:
       LABEL_MAJOR: ${{ inputs.label-major }}
       LABEL_UNPARSED: ${{ inputs.label-unparsed }}
       LABEL_NO_CI: ${{ inputs.label-no-ci }}
+      LABEL_OPTED_OUT: ${{ inputs.label-opted-out }}
 
     steps:
       # ---------------------------------------------------------------------------------
@@ -123,11 +139,12 @@ jobs:
         run: |
           set -euo pipefail
           create() { gh label create "$1" --force --color "$2" --description "$3" --repo "$REPO" >/dev/null; }
-          create "dependencies"    "0366d6" "Dependency updates (Dependabot)"
-          create "$LABEL_MAJOR"    "d93f0b" "Major version bump — a human must review before merge"
-          create "$LABEL_UNPARSED" "b60205" "Auto-merge could not classify this update (or the run broke)"
-          create "$LABEL_NO_CI"    "fbca04" "No required status check on the base branch, so nothing was auto-merged"
-          echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI"
+          create "dependencies"     "0366d6" "Dependency updates (Dependabot)"
+          create "$LABEL_MAJOR"     "d93f0b" "Major version bump — a human must review before merge"
+          create "$LABEL_UNPARSED"  "b60205" "Auto-merge could not classify this update (or the run broke)"
+          create "$LABEL_NO_CI"     "fbca04" "No required status check on the base branch, so nothing was auto-merged"
+          create "$LABEL_OPTED_OUT" "c5def5" "Classified fine, but this repo opted out of auto-merging that tier"
+          echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT"
 
       # ---------------------------------------------------------------------------------
       # 2. Read what Dependabot is actually proposing.
@@ -211,8 +228,11 @@ jobs:
             major)      label="$LABEL_MAJOR"    ; why="contains a MAJOR version bump — the authors deliberately broke something." ;;
             unknown)    label="$LABEL_UNPARSED" ; why="contains an update this workflow could not classify (a null or unrecognised update type)." ;;
             # "disallowed" = every level was recognised, but this repo has merge-patch or
-            # merge-minor switched off for that tier. Not a bug; a deliberate exception.
-            disallowed) label="$LABEL_UNPARSED" ; why="contains an update tier this repo has opted out of auto-merging (see the caller stub's inputs)." ;;
+            # merge-minor switched off for that tier. Not a bug; a deliberate exception —
+            # which is why it gets its OWN label (added 2026-09-11). Filing it under
+            # "could not classify" sent you to a checks tab to hunt a broken run that
+            # never existed.
+            disallowed) label="$LABEL_OPTED_OUT" ; why="contains an update tier this repo has opted out of auto-merging (see the caller stub's inputs)." ;;
             *)          label="$LABEL_UNPARSED" ; why="produced an unexpected verdict: $VERDICT" ;;
           esac
           gh pr edit "$PR_URL" --add-label "$label"
@@ -227,15 +247,36 @@ jobs:
       # what it requires. Rulesets first (the modern mechanism, and the only one that works
       # on a personal Pro account's private repos), classic branch protection as a fallback.
       # If BOTH lookups fail we treat it as "no checks" — the safe direction.
+      #
+      # ⚠ THE CLASSIC-PROTECTION BLIND SPOT (2026-09-11): reading classic branch protection
+      # (`/branches/{b}/protection`) needs ADMIN rights, and GITHUB_TOKEN is not an admin.
+      # On a repo protected the classic way that call returns **403, not 404** — so
+      # swallowing every error and printing "no classic branch protection" states something
+      # false about the repo, and then labels it `no-ci-gate` with advice ("add a CI
+      # workflow") that is wrong for a repo which already has both. We therefore separate
+      # the two: 404 means genuinely absent; 403 means WE CANNOT SEE, which is an unknown,
+      # not a "no", and gets `label-unparsed` so the failure is diagnosable.
+      # Long term the answer is rulesets everywhere — `enroll` only ever creates those, and
+      # the ruleset endpoint is readable by a non-admin token.
       # ---------------------------------------------------------------------------------
       - name: Look up the required status checks on the base branch
         id: gate
         if: steps.classify.outputs.verdict == 'merge'
         run: |
           set -euo pipefail
+
+          # Fail CLOSED on a malformed switch. `require-ci` is the single protection the
+          # whole design rests on, so anything that is not literally true/false is a bug we
+          # want to see, never a silent "merge with no tests".
+          case "$IN_REQUIRE_CI" in
+            true|false) : ;;
+            *) echo "::error title=Bad require-ci::'$IN_REQUIRE_CI' is not true or false"; exit 1 ;;
+          esac
+
           # Branch names with a slash have to be escaped for this path segment.
           base_esc=${BASE_BRANCH//\//%2F}
           checks=""
+          unreadable=false
 
           if rules=$(gh api "repos/$REPO/rules/branches/$base_esc" 2>/dev/null); then
             checks=$(printf '%s' "$rules" | jq -r '
@@ -246,29 +287,53 @@ jobs:
           fi
 
           if [ -z "$checks" ]; then
-            if prot=$(gh api "repos/$REPO/branches/$base_esc/protection" 2>/dev/null); then
-              checks=$(printf '%s' "$prot" | jq -r '
-                (((.required_status_checks.checks // []) | map(.context))
-                 + (.required_status_checks.contexts // [])) | unique | join(",")')
-            else
-              echo "note: no classic branch protection on $BASE_BRANCH either"
-            fi
+            # `-i` keeps the status line, so a 403 (not an admin) is distinguishable from a
+            # 404 (no classic protection). Without this every failure looked like "none".
+            prot=$(gh api -i "repos/$REPO/branches/$base_esc/protection" 2>/dev/null || true)
+            status=$(printf '%s' "$prot" | head -1 | awk '{print $2}')
+            case "$status" in
+              200)
+                checks=$(printf '%s' "$prot" | sed -n '/^{/,$p' | jq -r '
+                  (((.required_status_checks.checks // []) | map(.context))
+                   + (.required_status_checks.contexts // [])) | unique | join(",")')
+                ;;
+              403)
+                unreadable=true
+                echo "note: classic branch protection on $BASE_BRANCH is UNREADABLE (403 — this token is not a repo admin). Not claiming there is none."
+                ;;
+              *)
+                echo "note: no classic branch protection on $BASE_BRANCH either (status ${status:-no response})"
+                ;;
+            esac
           fi
 
           echo "required-checks=$checks" >> "$GITHUB_OUTPUT"
+          echo "unreadable=$unreadable" >> "$GITHUB_OUTPUT"
 
           # `ok` is the single condition every later step keys off, so the "did we clear the
           # CI gate?" question is answered in exactly one place instead of re-derived three times.
-          if [ -n "$checks" ] || [ "$IN_REQUIRE_CI" != "true" ]; then ok=true; else ok=false; fi
+          if [ -n "$checks" ] || [ "$IN_REQUIRE_CI" = "false" ]; then ok=true; else ok=false; fi
           echo "ok=$ok" >> "$GITHUB_OUTPUT"
-          if [ -z "$checks" ]; then
-            echo "gate: NONE — $BASE_BRANCH has no required status check"
-          else
+          if [ -n "$checks" ]; then
             echo "gate: $BASE_BRANCH requires [$checks]"
+          elif [ "$unreadable" = "true" ]; then
+            echo "gate: UNKNOWN — cannot read $BASE_BRANCH's classic protection from this token"
+          else
+            echo "gate: NONE — $BASE_BRANCH has no required status check"
           fi
 
+      # The "we cannot see" case is not the "there is nothing" case, so it gets its own
+      # label and no misleading advice. It stops before the no-CI comment below.
+      - name: Stop — cannot tell whether this branch has a gate
+        if: steps.gate.outputs.ok == 'false' && steps.gate.outputs.unreadable == 'true'
+        run: |
+          set -euo pipefail
+          gh pr edit "$PR_URL" --add-label "$LABEL_UNPARSED"
+          echo "::warning title=Branch protection unreadable::GITHUB_TOKEN is not a repo admin, so classic branch protection on $BASE_BRANCH could not be read. Migrate this repo to a ruleset (bin/enroll --ci-check) — those are readable without admin."
+          echo "stopped WITHOUT enabling auto-merge: the gate on $BASE_BRANCH is unknown, not absent"
+
       - name: Stop — no CI gate on this branch
-        if: steps.gate.outputs.ok == 'false'
+        if: steps.gate.outputs.ok == 'false' && steps.gate.outputs.unreadable != 'true'
         run: |
           set -euo pipefail
           gh pr edit "$PR_URL" --add-label "$LABEL_NO_CI"
@@ -296,69 +361,19 @@ jobs:
           echo "stopped WITHOUT enabling auto-merge: no required check on $BASE_BRANCH"
 
       # ---------------------------------------------------------------------------------
-      # 5. If the PR has gone stale AND a required check is red, refresh the branch.
-      #
-      # A Dependabot PR that has fallen behind main can fail CI for a reason that has
-      # nothing to do with the dependency. Both conditions have to hold before we touch it:
-      # behind AND red. A red check on an up-to-date branch is a real failure and must stay.
-      # We do one refresh and stop this run — the resulting `synchronize` event starts a
-      # fresh run against the new head, which is also what stops this from looping.
-      # ---------------------------------------------------------------------------------
-      - name: Refresh the branch if it is stale and red
-        id: stale
-        if: steps.gate.outputs.ok == 'true'
-        env:
-          REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
-        run: |
-          set -euo pipefail
-          echo "refreshed=false" >> "$GITHUB_OUTPUT"
-
-          behind=$(gh api "repos/$REPO/compare/$BASE_BRANCH...$HEAD_SHA" --jq '.behind_by' 2>/dev/null || echo 0)
-          [ -n "$behind" ] || behind=0
-          echo "branch is $behind commit(s) behind $BASE_BRANCH"
-          if [ "$behind" -eq 0 ]; then echo "up to date — nothing to refresh"; exit 0; fi
-
-          # Only count failures among the checks the branch actually requires.
-          #
-          # Piped into a REAL jq rather than gh's `--jq`: gh's flag takes the expression and
-          # nothing else, so `--jq --arg req …` would silently treat "--arg" as the program.
-          # Any jq option (--arg, --argjson, --slurp) has to go to jq itself.
-          # shellcheck disable=SC2016  # the $r and $req below are jq variables, not shell
-          failed=$(gh pr view "$PR_URL" --json statusCheckRollup 2>/dev/null \
-            | jq -r --arg req "$REQUIRED_CHECKS" '
-              ($req | split(",") | map(select(. != ""))) as $r
-              | [ .statusCheckRollup[]?
-                  | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index($n)))
-                  | ((.conclusion // .state // "") | ascii_downcase)
-                  | select(. == "failure" or . == "timed_out" or . == "action_required" or . == "error") ]
-              | length' 2>/dev/null || echo 0)
-          [ -n "$failed" ] || failed=0
-          echo "$failed required check(s) currently failing"
-          if [ "$failed" -eq 0 ]; then echo "nothing red — leaving the branch alone"; exit 0; fi
-
-          if [ "$IN_STALE_STRATEGY" = "comment" ]; then
-            # UNVERIFIED as of 2026-09-11 — whether Dependabot honours a command posted by
-            # github-actions[bot] (rather than a real user) is unknown. See README decisions.
-            gh pr comment "$PR_URL" --body "@dependabot rebase"
-            echo "asked Dependabot to rebase (strategy: comment)"
-          else
-            gh pr update-branch "$PR_NUMBER" --repo "$REPO"
-            echo "merged $BASE_BRANCH into the PR branch (strategy: update-branch)"
-          fi
-          echo "refreshed=true" >> "$GITHUB_OUTPUT"
-          echo "stopping this run — the resulting push starts a fresh one against the new head"
-
-      # ---------------------------------------------------------------------------------
-      # 6. Approve and queue the merge.
+      # 5. Approve and queue the merge.
       #
       # `--match-head-commit` is the safety catch: if anything pushes to the branch between
       # the classification above and this line, GitHub refuses rather than merging a commit
       # nobody classified.
+      #
+      # This now runs BEFORE the stale check below, and unconditionally once the gate is
+      # clear. Enabling auto-merge on a PR whose check is red is harmless — GitHub simply
+      # queues it and merges nothing until the check goes green. Doing it first is what
+      # guarantees the PR is never left stranded by anything we do afterwards.
       # ---------------------------------------------------------------------------------
       - name: Approve and enable auto-merge
-        # Both halves matter: `refreshed == 'false'` (not merely "not true") also means the
-        # stale step actually RAN, so a skipped gate can never fall through to a merge.
-        if: steps.gate.outputs.ok == 'true' && steps.stale.outputs.refreshed == 'false'
+        if: steps.gate.outputs.ok == 'true'
         env:
           SUMMARY: ${{ steps.classify.outputs.summary }}
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
@@ -383,6 +398,81 @@ jobs:
           echo "auto-merge ENABLED ($IN_MERGE_METHOD) for $HEAD_SHA"
           echo "it will land once these checks pass: [${REQUIRED_CHECKS:-unknown}]"
           echo "dependencies: ${SUMMARY:-none}"
+
+      # ---------------------------------------------------------------------------------
+      # 6. A PR that is behind base AND red: say so, and optionally nudge Dependabot.
+      #
+      # ⚠ WHY THERE IS NO LONGER AN "update-branch" OPTION HERE (removed 2026-09-11).
+      # The old version called `gh pr update-branch`, which merges base into the PR branch
+      # through the API **as github-actions[bot]**. GitHub's own rule: "events triggered by
+      # the GITHUB_TOKEN … will not create a new workflow run" (workflow_dispatch and
+      # repository_dispatch are the only exemptions). So that push fired NO `pull_request`
+      # run — the required check stayed forever "expected, waiting", and on a repo whose
+      # ruleset has `dismiss_stale_reviews_on_push` (eachie's does) the push also threw away
+      # the bot's approval. The PR ended up unmergeable AND un-re-triggerable. The refresh
+      # was solving a problem that does not exist anyway: every ruleset this system creates
+      # sets `strict_required_status_checks_policy: false`, so being behind base does not
+      # block the merge at all.
+      #
+      # What CAN fix a genuinely stale branch is a push from Dependabot itself, because that
+      # is a real app and its pushes do trigger workflows. Hence `stale-strategy: comment`.
+      # Default is `none`: auto-merge is already queued above, so a red check here is far
+      # more often a real breakage — a human's problem, not a staleness problem.
+      # ---------------------------------------------------------------------------------
+      - name: Note (and optionally nudge) a PR that is stale and red
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
+        run: |
+          set -euo pipefail
+          case "$IN_STALE_STRATEGY" in
+            none|comment) : ;;
+            *) echo "::error title=Bad stale-strategy::'$IN_STALE_STRATEGY' is not none or comment"; exit 1 ;;
+          esac
+
+          behind=$(gh api "repos/$REPO/compare/$BASE_BRANCH...$HEAD_SHA" --jq '.behind_by' 2>/dev/null || echo 0)
+          [ -n "$behind" ] || behind=0
+          echo "branch is $behind commit(s) behind $BASE_BRANCH"
+          if [ "$behind" -eq 0 ]; then echo "up to date — nothing to do"; exit 0; fi
+
+          # Only count failures among the checks the branch actually requires.
+          #
+          # Piped into a REAL jq rather than gh's `--jq`: gh's flag takes the expression and
+          # nothing else, so `--jq --arg req …` would silently treat "--arg" as the program.
+          # Any jq option (--arg, --argjson, --slurp) has to go to jq itself.
+          # shellcheck disable=SC2016  # the $r and $req below are jq variables, not shell
+          failed=$(gh pr view "$PR_URL" --json statusCheckRollup 2>/dev/null \
+            | jq -r --arg req "$REQUIRED_CHECKS" '
+              ($req | split(",") | map(select(. != ""))) as $r
+              | [ .statusCheckRollup[]?
+                  | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index($n)))
+                  | ((.conclusion // .state // "") | ascii_downcase)
+                  | select(. == "failure" or . == "timed_out" or . == "action_required" or . == "error") ]
+              | length' 2>/dev/null || echo 0)
+          [ -n "$failed" ] || failed=0
+          echo "$failed required check(s) currently failing"
+          if [ "$failed" -eq 0 ]; then echo "nothing red — auto-merge stays queued as normal"; exit 0; fi
+
+          echo "::warning title=Stale and red::This PR is $behind commit(s) behind $BASE_BRANCH with $failed required check(s) failing. Auto-merge is enabled and will wait; if the failure is staleness rather than the dependency, comment '@dependabot recreate' yourself."
+
+          if [ "$IN_STALE_STRATEGY" = "comment" ]; then
+            # One nudge per head commit — the marker stops a re-run from re-commenting.
+            # UNVERIFIED as of 2026-09-11: whether Dependabot obeys a command posted by
+            # github-actions[bot] rather than a real user. See the README decisions section.
+            marker="<!-- repo-standards:recreate:$HEAD_SHA -->"
+            if gh pr view "$PR_URL" --json comments --jq '.comments[].body' | grep -qF "$marker"; then
+              echo "already nudged for this head commit — not repeating it"
+            else
+              # Written to a file rather than a multi-line --body string: a literal newline
+              # inside a YAML block scalar has to sit at exactly the block's indent, and the
+              # next edit of this file is where that silently breaks.
+              { echo "@dependabot recreate"; echo "$marker"; } > "$RUNNER_TEMP/recreate.md"
+              gh pr comment "$PR_URL" --body-file "$RUNNER_TEMP/recreate.md"
+              echo "asked Dependabot to recreate the branch (strategy: comment)"
+            fi
+          else
+            echo "strategy 'none': leaving it queued. Auto-merge fires by itself the moment the check goes green."
+          fi
 
       # ---------------------------------------------------------------------------------
       # 7. If anything above broke, say so ON THE PULL REQUEST.
