@@ -135,6 +135,32 @@ jobs:
       # It also creates `dependencies`, which every dependabot.yml stamped from this repo
       # asks for — a missing label makes Dependabot post a complaint on every PR it opens.
       # ---------------------------------------------------------------------------------
+      # Every input is checked HERE, before a single label, approval or comment. A bad
+      # value used to surface three steps later — after auto-merge had been enabled —
+      # which meant the failure handler labelled the PR dependabot-needs-human about a
+      # PR that was already queued to merge. Fail before doing anything instead.
+      - name: Check the inputs make sense
+        run: |
+          set -euo pipefail
+          # Fail CLOSED on a malformed switch. `require-ci` is the single protection the
+          # whole design rests on, so anything that is not literally true/false is a bug we
+          # want to see, never a silent "merge with no tests".
+          case "$IN_REQUIRE_CI" in
+            true|false) : ;;
+            *) echo "::error title=Bad require-ci::'$IN_REQUIRE_CI' is not true or false"; exit 1 ;;
+          esac
+          case "$IN_MERGE_PATCH" in true|false) : ;; *) echo "::error title=Bad merge-patch::'$IN_MERGE_PATCH' is not true or false"; exit 1 ;; esac
+          case "$IN_MERGE_MINOR" in true|false) : ;; *) echo "::error title=Bad merge-minor::'$IN_MERGE_MINOR' is not true or false"; exit 1 ;; esac
+          case "$IN_MERGE_METHOD" in
+            squash|merge|rebase) : ;;
+            *) echo "::error title=Bad merge-method::'$IN_MERGE_METHOD' is not squash, merge or rebase"; exit 1 ;;
+          esac
+          case "$IN_STALE_STRATEGY" in
+            none|comment) : ;;
+            *) echo "::error title=Bad stale-strategy::'$IN_STALE_STRATEGY' is not none or comment"; exit 1 ;;
+          esac
+          echo "inputs ok: patch=$IN_MERGE_PATCH minor=$IN_MERGE_MINOR method=$IN_MERGE_METHOD require-ci=$IN_REQUIRE_CI stale=$IN_STALE_STRATEGY"
+
       - name: Make sure the labels exist (idempotent)
         run: |
           set -euo pipefail
@@ -264,15 +290,6 @@ jobs:
         if: steps.classify.outputs.verdict == 'merge'
         run: |
           set -euo pipefail
-
-          # Fail CLOSED on a malformed switch. `require-ci` is the single protection the
-          # whole design rests on, so anything that is not literally true/false is a bug we
-          # want to see, never a silent "merge with no tests".
-          case "$IN_REQUIRE_CI" in
-            true|false) : ;;
-            *) echo "::error title=Bad require-ci::'$IN_REQUIRE_CI' is not true or false"; exit 1 ;;
-          esac
-
           # Branch names with a slash have to be escaped for this path segment.
           base_esc=${BASE_BRANCH//\//%2F}
           checks=""
@@ -379,11 +396,6 @@ jobs:
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
         run: |
           set -euo pipefail
-          case "$IN_MERGE_METHOD" in
-            squash|merge|rebase) : ;;
-            *) echo "::error title=Bad merge-method::'$IN_MERGE_METHOD' is not squash, merge or rebase"; exit 1 ;;
-          esac
-
           gh pr review --approve "$PR_URL" || echo "note: approval skipped (already approved by this token)"
 
           # Since March 2026 GitHub can answer 422 here when the merge requirements are not
@@ -425,11 +437,6 @@ jobs:
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
         run: |
           set -euo pipefail
-          case "$IN_STALE_STRATEGY" in
-            none|comment) : ;;
-            *) echo "::error title=Bad stale-strategy::'$IN_STALE_STRATEGY' is not none or comment"; exit 1 ;;
-          esac
-
           behind=$(gh api "repos/$REPO/compare/$BASE_BRANCH...$HEAD_SHA" --jq '.behind_by' 2>/dev/null || echo 0)
           [ -n "$behind" ] || behind=0
           echo "branch is $behind commit(s) behind $BASE_BRANCH"
