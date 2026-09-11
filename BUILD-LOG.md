@@ -451,3 +451,17 @@ gets written where, and whether the tools tell the truth about it.
 - `bin/classify-pr khglynn/eachie 116 192 162 143` run live: #116 now reads
   `major → major-review-needed`, matching what the workflow will do. The other three
   unchanged.
+- `bin/enroll khglynn/festival-navigator --ci-check checks --dry-run` run live: prints
+  `CI check 'checks' is a real job that runs on pull requests here ✓`, ensures the new
+  fifth label, and still leaves the existing dependabot.yml alone.
+- The same command with a deliberate typo (`--ci-check check`) **exits 1** having written
+  nothing, and prints the repo's real job ids. That is finding 14b's silent-failure class
+  closed: `check` would have created a required context nothing ever reports.
+
+### One structural change made while fixing the above
+
+Input validation was scattered across three steps, and `stale-strategy`'s check sat
+**after** auto-merge had been enabled — so a typo'd value made the `failure()` handler
+label a PR `dependabot-needs-human` about a pull request that was, at that moment, already
+queued to merge. Two contradictory signals out of one run. All five inputs are now checked
+in the workflow's first step, before a single label, approval or comment.
