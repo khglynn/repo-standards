@@ -24,15 +24,28 @@ jobs:
   automerge:
     uses: khglynn/repo-standards/.github/workflows/dependabot-automerge.yml@main
     # ------------------------------------------------------------------------------
-    # THE EXCEPTION POINTS. Delete the `with:` block entirely to take every default.
-    # Uncomment only the line you actually want to differ in THIS repo, and say why.
+    # THE ONE CARVED EXCEPTION IN THIS REPO, and it is deliberate (2026-09-11).
+    #
+    # Nothing auto-merges here. Every dependency this repo has is a GitHub Action, and
+    # those actions run with `contents: write` + `pull-requests: write` inside EVERY
+    # enrolled repo, including the private ones. The only required check here is
+    # `checks` — actionlint plus a template parse — which can tell you a workflow is
+    # well-formed and cannot tell you an action's new code is safe. Auto-merging a
+    # patch bump of `dependabot/fetch-metadata` would silently defeat the SHA-pinning
+    # this repo's own README argues for: pinning to a SHA stops a TAG being re-pointed,
+    # but a bot that merges the SHA change itself has put us back where we started.
+    #
+    # So both tiers wait for a person. The 7-day cooldown in .github/dependabot.yml is
+    # a soak, not a review; this is the review. Each bump here is a handful a month.
     # ------------------------------------------------------------------------------
-    # with:
-    #   merge-patch: true              # x.y.Z bumps merge themselves. Default true.
-    #   merge-minor: false             # x.Y.z bumps wait for a human. Use in a repo where a minor has bitten you.
+    with:
+      merge-patch: false   # action bumps here run privileged in every enrolled repo — a human reads each one (2026-09-11)
+      merge-minor: false   # same reason
+    # Other exception points, for reference — uncomment in a NORMAL repo's stub, not here:
     #   merge-method: merge            # squash (default) | merge | rebase
     #   require-ci: true               # never auto-merge on a branch with no required check. Leave true.
-    #   stale-strategy: comment        # update-branch (default) | comment  — how to refresh a stale, red PR
+    #   stale-strategy: comment        # none (default) | comment — what to do with a stale, red PR
     #   label-major: major-review-needed
     #   label-unparsed: dependabot-needs-human
     #   label-no-ci: no-ci-gate
+    #   label-opted-out: dependabot-opted-out

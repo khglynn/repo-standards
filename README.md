@@ -89,7 +89,8 @@ name. For example in `festival-navigator/.github/workflows/ci.yml`, the workflow
 `CI` but the job is `checks` — `checks` is the right answer. Leave the flag off and the repo
 gets labels and update PRs, but nothing will merge on its own.
 
-Running `enroll` twice does nothing the second time. Re-running it across every repo is the
+Running `enroll` twice does nothing the second time — including leaving any exception you
+carved into the stub exactly where you put it. Re-running it across every repo is the
 intended way to roll out a change.
 
 ---
@@ -107,6 +108,13 @@ For example, in a repo where a minor version once broke production:
 
 Write the reason on the line. An exception with no reason becomes cargo cult in six months.
 
+**Re-running `enroll` will not undo it.** Once a repo's stub points at repo-standards,
+`enroll` leaves that file completely alone and says so. (Until 2026-09-11 it re-stamped the
+template every run, which silently reverted exactly this — and the PR it opened described
+itself only as "a ten-line workflow", so the revert was invisible unless you read the diff.)
+The trade is the other way round now: if the *stub template itself* ever changes, already-
+enrolled repos do not pick it up. To force a refresh, delete that repo's stub and re-run.
+
 **Do not** edit the merge logic in one repo. That is the drift this whole thing exists to
 end; the audit will flag it as `drift: still has its own private copy of the merge rules`.
 
@@ -118,7 +126,8 @@ end; the audit will flag it as `drift: still has its own private copy of the mer
 |---|---|---|
 | `dependencies` | Dependabot opened it. Applied to everything. | Nothing |
 | `major-review-needed` | Major version bump. Something may genuinely break. | Read the changelog, test, merge or close |
-| `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed. | Look at the PR's checks tab |
+| `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed, or it could not read the branch's protection settings. | Look at the PR's checks tab |
+| `dependabot-opted-out` | Classified fine, but this repo has that tier switched off in its stub (`merge-minor: false`, say). Nothing is broken. | Read it and merge it yourself, or change the stub |
 | `no-ci-gate` | The repo has no required status check, so auto-merge would have been instant-merge. | Merge by hand, or give the repo a CI check and re-run `enroll` |
 
 ---
@@ -180,24 +189,68 @@ Six of the 39 repos are forks (`google_workspace_mcp`, `okta-mcp-server`,
 config is upstream's; overwriting it buys a merge conflict on every sync. The audit gives
 them their own status word so they never show up as drift to chase.
 
-**2026-09-11 — ⚠ UNVERIFIED: whether Dependabot obeys a comment from `github-actions[bot]`.**
-When a PR has fallen behind `main` *and* a required check is red, the workflow refreshes the
-branch. There are two ways to do that, and only one is proven:
+**2026-09-11 — this workflow never pushes to a pull-request branch. `update-branch` was
+removed the same day it was written.**
+The original design said: when a Dependabot PR has fallen behind `main` *and* a required
+check is red, merge `main` into the PR branch (`gh pr update-branch`) and let the resulting
+push re-run CI. That cannot work, and a review caught it before it ever ran. GitHub's rule
+for the automatic token is explicit — *"events triggered by the `GITHUB_TOKEN`, with the
+exception of `workflow_dispatch` and `repository_dispatch`, will not create a new workflow
+run"* — and `update-branch` pushes as `github-actions[bot]`. So the push would have fired
+**no** run at all: the required check would sit at "expected, waiting" forever, and on a
+repo whose ruleset dismisses stale reviews on push (eachie's does) the bot's approval would
+have been thrown away too. The PR would be left unmergeable *and* impossible to re-trigger.
 
-- `update-branch` (**the default**) merges the base branch into the PR branch through the
-  GitHub API. This always works.
-- `comment` posts `@dependabot rebase` and lets Dependabot rebuild the branch properly.
-  Cleaner history — but **nobody has confirmed Dependabot honours that command when a bot
-  posts it.** It is known to work from a real user's comment (2026-09-11), and it is known
-  *not* to work from a Claude Code cloud session, whose comments get mangled. The
-  `github-actions[bot]` case has never been run. Also note: `@dependabot merge`, `squash`,
-  `close` and `reopen` were **removed on 2026-01-27** — only `rebase` and `recreate` remain.
+It was also solving a problem that does not exist: every ruleset this system creates sets
+`strict_required_status_checks_policy: false`, so a PR being behind its base branch does
+not block the merge at all.
 
-**This is the first thing to verify once the eachie stub lands on `main`.** The test:
-switch one repo's stub to `stale-strategy: comment`, let a stale Dependabot PR hit the path,
-and see whether `dependabot[bot]` reacts to the comment within a minute or two. Record the
-answer here and delete whichever option loses. Until then the default is the boring one that
-definitely works.
+What the workflow does now: **approve and enable auto-merge first**, always, once the CI
+gate is clear. A red check simply leaves the PR queued — GitHub merges nothing until it goes
+green — so nothing can be stranded by what happens afterwards. Then, if the PR is both
+behind base *and* red, it logs a warning saying so. `stale-strategy` is `none` by default.
+
+**⚠ Still unverified: `stale-strategy: comment`.** Set it and the workflow posts
+`@dependabot recreate` (once per head commit). Dependabot's own push *does* re-run CI,
+because Dependabot is a real app and not `GITHUB_TOKEN` — so if it obeys, this works. **What
+nobody has confirmed is whether Dependabot obeys a command posted by `github-actions[bot]`
+rather than a person.** It is known to work from a real user's comment (2026-09-11), and
+known *not* to work from a Claude Code cloud session, whose comments get mangled.
+
+**The test, once the eachie stub is on `main`:** set one repo's stub to `stale-strategy:
+comment`, wait for a stale red Dependabot PR, and see whether `dependabot[bot]` reacts within
+a minute or two. Record the answer here. Also note: `@dependabot merge`, `squash`, `close`
+and `reopen` were **removed on 2026-01-27** — only `rebase` and `recreate` remain.
+
+**2026-09-11 — nothing auto-merges in *this* repo, on purpose.**
+Every dependency repo-standards has is a GitHub Action, and those actions run with write
+permission inside every enrolled repo including the private ones. The only check here is
+`checks` — actionlint and a template parse — which can say a workflow is well-formed and
+cannot say an action's new code is safe. Auto-merging a patch bump of
+`dependabot/fetch-metadata` would have undone the SHA-pinning argued for above: pinning
+stops a *tag* being re-pointed, but a bot that merges the SHA change itself puts you back
+where you started. So `dependabot-automerge-self.yml` carries
+`merge-patch: false, merge-minor: false`, and every action bump here gets a human. It is a
+handful a month.
+
+**2026-09-11 — `enroll` validates `--ci-check` before it writes anything.**
+A required status check is a free-text *context* string, and GitHub accepts one that nothing
+will ever report. A typo (`check` for `checks`) would create a gate that can never go green:
+Kevin bypasses it as an admin and never notices, while every Dependabot PR queues auto-merge
+and hangs forever — precisely the silent failure this system exists to prevent. `enroll` now
+reads the target repo's own workflows and refuses a name that is not a job id running on
+`pull_request`, printing the real names. It does this straight after the clone, before a
+single write, so a bad name costs nothing.
+
+**2026-09-11 — "no classic branch protection" is not the same as "I could not look".**
+Reading `/branches/{branch}/protection` requires **admin** rights and `GITHUB_TOKEN` is not
+an admin, so on a classically-protected repo that call returns **403, not 404**. The
+workflow used to swallow both and print "no classic branch protection on main" — a false
+statement about the repo, followed by a `no-ci-gate` label and advice ("add a CI workflow")
+that is wrong for a repo which already has one. It now separates the two: 404 means absent,
+403 means *unknown*, which gets `dependabot-needs-human` and a warning naming the cause.
+The durable fix is rulesets everywhere — `enroll` only ever creates those, and the ruleset
+endpoint is readable without admin.
 
 ---
 
@@ -213,7 +266,7 @@ definitely works.
 | `bin/enroll` | Enroll one repo. Idempotent. Opens a PR, never pushes to `main` |
 | `bin/audit` | Read-only status of every repo |
 | `bin/classify-pr` | Read-only. "What would the workflow do with this PR?" — answers it without waiting for a run |
-| `bin/lib/` | The ecosystem detector and the template self-check, both used by CI |
+| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, and the two self-checks CI runs |
 | `BUILD-LOG.md` | What was built and what was found, as it happened |
 
 **There are no secrets in this repo and there never will be.** It is public on purpose: a
