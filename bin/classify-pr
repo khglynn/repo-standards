@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# classify-pr — ask "what would the auto-merge workflow do with this pull request?"
+# without waiting for a workflow run, and without merging anything.
+#
+#   bin/classify-pr <owner/repo> <pr-number> [<pr-number> …]
+#   bin/classify-pr khglynn/eachie 162 192
+#
+# Read-only. It reads each PR's commit trailer, reshapes it exactly the way
+# `dependabot/fetch-metadata` emits `updated-dependencies-json`, and then runs the SAME jq
+# program the shared workflow runs. If this says "major", the workflow will label it major.
+#
+# It also prints what the naive gate — fetch-metadata's single aggregate `update-type`
+# output — would have seen, because the gap between those two answers is the entire reason
+# this workflow exists. Written 2026-09-11.
+#
+# ⚠ TWO CAVEATS, both real:
+#  1. If you change the classification jq in .github/workflows/dependabot-automerge.yml,
+#     change it here too. These are two copies of one rule; keeping them in step is manual.
+#  2. This reads the trailer of the PR's CURRENT head commit. Dependabot force-pushes its
+#     branches (eachie #116 was force-pushed 11 times between July and August), and the
+#     trailer can differ between rebases — so this tells you what the workflow would decide
+#     if it ran RIGHT NOW, not what it decided in the past. To learn what a past run did,
+#     read that run's log or the PR's label timeline.
+
+set -euo pipefail
+
+MERGE_PATCH="${MERGE_PATCH:-true}"
+MERGE_MINOR="${MERGE_MINOR:-true}"
+
+[ $# -ge 2 ] || { echo "usage: bin/classify-pr <owner/repo> <pr-number> [<pr-number> …]" >&2; exit 1; }
+REPO="$1"; shift
+for t in gh jq python3; do command -v "$t" >/dev/null || { echo "missing tool: $t" >&2; exit 1; }; done
+
+classify() {
+  local deps_json="$1" allowed='[]' known
+  if [ "$MERGE_PATCH" = "true" ]; then
+    allowed=$(jq -cn --argjson a "$allowed" '$a + ["version-update:semver-patch"]')
+  fi
+  if [ "$MERGE_MINOR" = "true" ]; then
+    allowed=$(jq -cn --argjson a "$allowed" '$a + ["version-update:semver-minor"]')
+  fi
+  if [ -z "$deps_json" ] || ! printf '%s' "$deps_json" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
+    echo "unknown"; return
+  fi
+  known='["version-update:semver-patch","version-update:semver-major","version-update:semver-minor"]'
+  printf '%s' "$deps_json" | jq -r --argjson allowed "$allowed" --argjson known "$known" '
+    [.[] | .updateType] as $t
+    | if   ($t | any(. == "version-update:semver-major"))           then "major"
+      elif ($t | any(. == null or . == "" or (IN($known[]) | not))) then "unknown"
+      elif ($t | all(IN($allowed[])))                              then "merge"
+      else "disallowed" end'
+}
+
+# Dependabot writes the machine-readable truth as a YAML trailer in the commit body. That is
+# the same source fetch-metadata reads, which is why this can be reproduced offline.
+trailer_to_json() {
+  python3 -c '
+import sys, yaml, json, re
+msg = sys.stdin.read()
+m = re.search(r"^updated-dependencies:\n(.*?)(?:\n\n|\Z)", msg, re.S | re.M)
+if not m:
+    print("[]"); raise SystemExit
+items = yaml.safe_load("updated-dependencies:\n" + m.group(1))["updated-dependencies"]
+print(json.dumps([{
+  "dependencyName": i.get("dependency-name"),
+  "dependencyType": i.get("dependency-type"),
+  "updateType":     i.get("update-type"),
+  "newVersion":     str(i.get("dependency-version") or i.get("new-version") or ""),
+} for i in items]))'
+}
+
+for pr in "$@"; do
+  echo "──────── $REPO PR #$pr"
+  echo "title: $(gh pr view "$pr" --repo "$REPO" --json title --jq .title)"
+  json=$(gh pr view "$pr" --repo "$REPO" --json commits --jq '.commits[-1].messageBody' | trailer_to_json)
+
+  if [ "$(printf '%s' "$json" | jq 'length')" -eq 0 ]; then
+    echo "  no updated-dependencies trailer — is this actually a Dependabot PR?"
+    echo "  VERDICT: unknown → label 'dependabot-needs-human', stop"
+    continue
+  fi
+
+  printf '%s' "$json" | jq -c '.[]' | sed 's/^/    /'
+
+  agg=$(printf '%s' "$json" | jq -r '
+    [.[].updateType | select(. != null)]
+    | if length == 0 then "<empty>"
+      else (map(if test("major") then 3 elif test("minor") then 2 else 1 end) | max) as $m
+           | if $m == 3 then "version-update:semver-major"
+             elif $m == 2 then "version-update:semver-minor"
+             else "version-update:semver-patch" end
+      end')
+  echo "  naive aggregate update-type would be: $agg"
+
+  case "$(classify "$json")" in
+    merge)      echo "  VERDICT: merge   → approve, then auto-merge once the required check is green" ;;
+    major)      echo "  VERDICT: major   → label 'major-review-needed', stop" ;;
+    unknown)    echo "  VERDICT: unknown → label 'dependabot-needs-human', stop" ;;
+    disallowed) echo "  VERDICT: disallowed by this repo's inputs → label 'dependabot-needs-human', stop" ;;
+  esac
+done

@@ -63,9 +63,11 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   has_manifest=no
   # GitHub Actions are dependencies too — a repo with workflows and no app manifest still has
   # something Dependabot can keep current, so it counts here.
-  grep -qE '(^|/)(package\.json|requirements\.txt|pyproject\.toml|go\.mod|Gemfile|Cargo\.toml)$|^\.github/workflows/.*\.ya?ml$' <<< "$paths" && has_manifest=yes
+  if grep -qE '(^|/)(package\.json|requirements\.txt|pyproject\.toml|go\.mod|Gemfile|Cargo\.toml)$|^\.github/workflows/.*\.ya?ml$' <<< "$paths"; then
+    has_manifest=yes
+  fi
   has_dependabot=no
-  grep -qE '^\.github/dependabot\.ya?ml$' <<< "$paths" && has_dependabot=yes
+  if grep -qE '^\.github/dependabot\.ya?ml$' <<< "$paths"; then has_dependabot=yes; fi
 
   # A repo is "stubbed" when ANY of its workflows calls the shared rules. The standards repo
   # itself holds the DEFINITION at the obvious path, so its own stub has a different name —

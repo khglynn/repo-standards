@@ -161,9 +161,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Written as plain `if`s rather than `[ … ] && x=y`: under `set -e` an AND-list whose
+          # left side is false is only survivable because of a POSIX exemption, and the day
+          # someone moves one of these lines to the end of the script it exits 1 for no reason.
           allowed='[]'
-          [ "$IN_MERGE_PATCH" = "true" ] && allowed=$(jq -cn --argjson a "$allowed" '$a + ["version-update:semver-patch"]')
-          [ "$IN_MERGE_MINOR" = "true" ] && allowed=$(jq -cn --argjson a "$allowed" '$a + ["version-update:semver-minor"]')
+          if [ "$IN_MERGE_PATCH" = "true" ]; then
+            allowed=$(jq -cn --argjson a "$allowed" '$a + ["version-update:semver-patch"]')
+          fi
+          if [ "$IN_MERGE_MINOR" = "true" ]; then
+            allowed=$(jq -cn --argjson a "$allowed" '$a + ["version-update:semver-minor"]')
+          fi
           echo "allowed update levels: $allowed"
 
           # An empty or unparseable payload is itself a reason to stop.
@@ -312,9 +319,13 @@ jobs:
           if [ "$behind" -eq 0 ]; then echo "up to date — nothing to refresh"; exit 0; fi
 
           # Only count failures among the checks the branch actually requires.
-          # shellcheck disable=SC2016  # the $r inside the jq program is a jq variable, not shell
-          failed=$(gh pr view "$PR_URL" --json statusCheckRollup --jq \
-            --arg req "$REQUIRED_CHECKS" '
+          #
+          # Piped into a REAL jq rather than gh's `--jq`: gh's flag takes the expression and
+          # nothing else, so `--jq --arg req …` would silently treat "--arg" as the program.
+          # Any jq option (--arg, --argjson, --slurp) has to go to jq itself.
+          # shellcheck disable=SC2016  # the $r and $req below are jq variables, not shell
+          failed=$(gh pr view "$PR_URL" --json statusCheckRollup 2>/dev/null \
+            | jq -r --arg req "$REQUIRED_CHECKS" '
               ($req | split(",") | map(select(. != ""))) as $r
               | [ .statusCheckRollup[]?
                   | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index($n)))

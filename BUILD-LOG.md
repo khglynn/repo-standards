@@ -265,3 +265,63 @@ The four drifting are exactly the four the brief scoped: `eachie` (PR #203 open,
 takes it to enrolled), and `kevinhg-com` / `list-maker` / `festival-navigator` (dry-run
 only, deliberately not enrolled in Phase 1). Full table:
 `scratchpad/build/audit-after.md`.
+
+---
+
+## 2026-09-11 — triple-check pass
+
+Four things found by re-reading the code and running it against live data. Two were real
+bugs that would have fired in production.
+
+**BUG 1 (real, would have broken the stale-PR path): `gh`'s `--jq` does not take jq's own
+options.** The failing-check counter was written as:
+
+```
+gh pr view "$PR_URL" --json statusCheckRollup --jq --arg req "$REQUIRED_CHECKS" '…'
+```
+
+`gh --jq` takes the expression and nothing else, so `--arg` would have been swallowed as
+the program. Fixed by piping into a real `jq`. Verified live afterwards against eachie
+#203 (`0` failures, correct) and #162 (`0`, correct).
+
+**BUG 2 (latent): `set -e` and `[ … ] && var=value`.** Three places used that idiom,
+including one that was the **last command in a `for` loop body** in `bin/enroll` — where a
+false test makes the whole loop return non-zero and kills the script. It survives today
+only because of a POSIX exemption that is easy to lose on the next edit. All rewritten as
+explicit `if`s, with a comment saying why.
+
+**Live verification of every API shape the workflow depends on** (read-only):
+
+| call | against | result |
+|---|---|---|
+| `rules/branches/main` | eachie | `unit` — ruleset lookup works on a **private** repo |
+| `rules/branches/main` | ynai (ruleset, no checks) | empty → correctly routes to the no-CI-gate path |
+| `rules/branches/main` + `branches/main/protection` | festival-navigator (neither) | `[]` then 404 → empty → no-CI-gate path |
+| `compare/main...<head>` `.behind_by` | eachie #162 | `15` — the stale detector sees real numbers |
+| `pr view --json comments` | eachie #203 | `1` — the "already commented?" guard can read |
+
+**`bin/classify-pr` added** — the E3 harness, promoted from a scratch file to a permanent
+read-only tool, because "what would the workflow do with this PR?" is a question worth
+answering without waiting for a run. Output for every open Dependabot PR on eachie today:
+
+| PR | title | verdict |
+|---|---|---|
+| #162 | vite 7.3.6 → 8.2.1 | major → `major-review-needed` |
+| #161 | stripe 20.0.0 → 22.4.0 | major → `major-review-needed` |
+| #160 | ai 4.3.19 → 7.0.60 | major → `major-review-needed` |
+| #143 | pnpm/action-setup 4 → 5 | major → `major-review-needed` |
+| #118 | dependabot/fetch-metadata 2 → 3 | major → `major-review-needed` |
+| #116 | ai 4.3.19 → 5.0.52 | **unknown** → `dependabot-needs-human` |
+| #203 (mine, not Dependabot's) | — | no trailer → correctly refuses to guess |
+
+**The null-updateType case is not hypothetical.** eachie **#116**'s current head commit
+carries `"updateType": null` — the exact input shape that the aggregate output mishandles.
+
+What is NOT true, and was nearly written here before checking: that the old workflow would
+have merged it. #116 already carries `major-review-needed`, applied by `github-actions[bot]`
+35 seconds after the PR opened, with no approving review — so the old gate correctly stopped
+it **on the commit that existed then**. Dependabot has since force-pushed that branch 11
+times, and the trailer visible today is from a later rebase. Without running fetch-metadata
+v2 against today's head there is no way to know what the old gate would say now, so no claim
+is made. `bin/classify-pr` carries a caveat about this: it answers "what would happen if it
+ran right now", never "what happened before".

@@ -143,6 +143,15 @@ with one row per repo and one **status** word at the end:
 
 That status column is the drift check. Run it monthly, or when something feels stale.
 
+To ask about one specific pull request instead of the whole account:
+
+```bash
+bin/classify-pr khglynn/eachie 162
+```
+
+It prints the packages in that PR and what the workflow would decide — merge, or which
+label — without running anything or merging anything.
+
 ---
 
 ## Decisions, and what is still unverified
@@ -203,6 +212,7 @@ definitely works.
 | `templates/dependabot/` | Per-ecosystem fragments (npm, pip, uv, github-actions) that `enroll` splices into a `dependabot.yml` |
 | `bin/enroll` | Enroll one repo. Idempotent. Opens a PR, never pushes to `main` |
 | `bin/audit` | Read-only status of every repo |
+| `bin/classify-pr` | Read-only. "What would the workflow do with this PR?" — answers it without waiting for a run |
 | `bin/lib/` | The ecosystem detector and the template self-check, both used by CI |
 | `BUILD-LOG.md` | What was built and what was found, as it happened |
 

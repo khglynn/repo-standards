@@ -124,8 +124,10 @@ mkdir -p "$CLONE/.github/workflows"
 # --- dependabot.yml: write only if absent; otherwise report the difference and move on.
 #     An existing file is a decision someone made. We never overwrite it.
 existing_db=""
+# Explicit `if`, not `[ -f x ] && y=z`: this is the LAST command in the loop body, and under
+# `set -e` a false test there makes the whole loop exit non-zero and kills the script.
 for cand in "$CLONE/.github/dependabot.yml" "$CLONE/.github/dependabot.yaml"; do
-  [ -f "$cand" ] && existing_db="$cand"
+  if [ -f "$cand" ]; then existing_db="$cand"; fi
 done
 if [ ! -s "$want_dependabot" ]; then
   say "   dependabot.yml: skipped — nothing to keep updated in this repo"
