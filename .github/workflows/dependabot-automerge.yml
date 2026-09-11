@@ -437,8 +437,12 @@ jobs:
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
         run: |
           set -euo pipefail
+          # Everything in this step is advisory — auto-merge is already enabled above — so
+          # it must never be the reason a run goes red. A non-numeric answer (an API blip,
+          # a `null`) would make the `-eq` below fail under `set -e`, and the failure
+          # handler would then label a PR that is, at that moment, queued to merge.
           behind=$(gh api "repos/$REPO/compare/$BASE_BRANCH...$HEAD_SHA" --jq '.behind_by' 2>/dev/null || echo 0)
-          [ -n "$behind" ] || behind=0
+          case "$behind" in ''|*[!0-9]*) behind=0 ;; esac
           echo "branch is $behind commit(s) behind $BASE_BRANCH"
           if [ "$behind" -eq 0 ]; then echo "up to date — nothing to do"; exit 0; fi
 
@@ -456,7 +460,7 @@ jobs:
                   | ((.conclusion // .state // "") | ascii_downcase)
                   | select(. == "failure" or . == "timed_out" or . == "action_required" or . == "error") ]
               | length' 2>/dev/null || echo 0)
-          [ -n "$failed" ] || failed=0
+          case "$failed" in ''|*[!0-9]*) failed=0 ;; esac
           echo "$failed required check(s) currently failing"
           if [ "$failed" -eq 0 ]; then echo "nothing red — auto-merge stays queued as normal"; exit 0; fi
 
