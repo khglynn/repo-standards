@@ -195,6 +195,15 @@ the new workflow and stop. Not wrong, just worth knowing before enrolling it.
   is what proves it.
 - **`gh pr merge --auto` 422 handling** — the retry-once-after-15s path is written against
   the reported March-2026 behaviour (community 190610) and has not been observed firing.
+- **`bin/enroll`'s entire WRITE path has never been executed** (added 2026-09-11 after a
+  review pointed out this was missing from the list). No `standards/*` branch exists on
+  repo-standards, festival-navigator, kevinhg-com or list-maker; eachie's was made by
+  hand, and repo-standards' self-enrollment was committed straight to `main`. So
+  clone → branch → commit → push → `gh pr create` → `PATCH allow_auto_merge` →
+  `POST rulesets` has run **zero times**, and two of those calls are the shape the
+  workspace CLAUDE.md warns 401s inside the Claude Code sandbox. The dry-run path is the
+  only part that has been exercised. Run it against the **public** festival-navigator
+  first — cheapest possible failure — before any private repo.
 - **Rulesets on private repos.** `standards-ci` was created for real only on
   `repo-standards`, which is **public**. The brief states Pro-account rulesets do enforce on
   private repos; the first private one (`kevinhg-com`) will confirm it.
@@ -218,7 +227,10 @@ deliberate look at where the remaining minutes go before month end.
 
 Everything below was observed, not assumed.
 
-**`repo-standards` CI: green on both pushes to main.** `checks` = actionlint (+shellcheck
+**`repo-standards` CI: green on every push to main since CI existed.** *(Corrected
+2026-09-11 — an earlier version of this line said "green on both pushes" beside a "5
+ commits on main" claim elsewhere. There are 5 commits and 4 CI runs: `ci.yml` did not
+exist for the first one.)* `checks` = actionlint (+shellcheck
 on every `run:` block), template parse, script shellcheck, and the ecosystem-detector
 fixture.
 
@@ -311,7 +323,7 @@ answering without waiting for a run. Output for every open Dependabot PR on each
 | #160 | ai 4.3.19 → 7.0.60 | major → `major-review-needed` |
 | #143 | pnpm/action-setup 4 → 5 | major → `major-review-needed` |
 | #118 | dependabot/fetch-metadata 2 → 3 | major → `major-review-needed` |
-| #116 | ai 4.3.19 → 5.0.52 | **unknown** → `dependabot-needs-human` |
+| #116 | ai 4.3.19 → 5.0.52 | ~~**unknown** → `dependabot-needs-human`~~ **WRONG — see the review-fixes section below. It is `major-review-needed`.** |
 | #203 (mine, not Dependabot's) | — | no trailer → correctly refuses to guess |
 
 **The null-updateType case is not hypothetical.** eachie **#116**'s current head commit
@@ -325,3 +337,117 @@ times, and the trailer visible today is from a later rebase. Without running fet
 v2 against today's head there is no way to know what the old gate would say now, so no claim
 is made. `bin/classify-pr` carries a caveat about this: it answers "what would happen if it
 ran right now", never "what happened before".
+
+
+---
+
+## 2026-09-11 — review fixes
+
+An adversarial review of the Phase 1 build raised 16 findings, 5 marked must-fix. All 5
+are fixed, along with 10 of the 11 smaller ones. What follows is what changed, what was
+verified first, and the one thing declined.
+
+### Verified before fixing (none of these were taken on trust)
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| fetch-metadata v3 COMPUTES a missing update-type | read `src/dependabot/update_metadata.ts` at the pinned SHA `25dd0e34…` | **true** — line 103: `dependency['update-type'] \|\| calculateUpdateType(lastVersion, nextVersion)` |
+| eachie #116 therefore classifies as major, not unknown | its commit body carries `Bumps [ai](…) from 4.3.19 to 5.0.52.` and no `update-type` | **true** — 4 → 5 computes major |
+| eachie's ruleset dismisses stale reviews on push | `gh api repos/khglynn/eachie/rulesets/13155439` | **true** — `dismiss_stale_reviews_on_push: true`, and `strict_required_status_checks_policy: false` |
+| remembrall has had one PR, ever | `gh pr list --state all` | **true** — only the builder's own #1 |
+| remembrall's runs are push-dominated | `gh run list --limit 100` | **true** — 99 push / 1 pull_request; 65 pushes on `gate3*` branches |
+
+### The five must-fixes
+
+**1. The stale-PR refresh was a dead end.** `gh pr update-branch` pushes as
+`github-actions[bot]`, and GitHub does not start a workflow run for events its own token
+triggers. So the push fired **no** run: the required check would have sat at "expected,
+waiting" forever, eachie's ruleset would have dismissed the bot's approval on that same
+push, and auto-merge was never enabled because the run stopped one step earlier. It was
+also unnecessary — `strict_required_status_checks_policy: false` everywhere means being
+behind base never blocked the merge. **Fixed:** approve and enable auto-merge FIRST,
+unconditionally once the gate is clear (a red check simply leaves the PR queued, which
+strands nothing); `update-branch` deleted; `stale-strategy` is now `none` (default) or
+`comment`, and `comment` posts `@dependabot recreate` once per head commit — Dependabot's
+own push does re-run CI. Still unverified whether Dependabot obeys a bot's comment.
+
+**2. `enroll` silently reverted every carved exception.** The stub was `cp`'d from the
+template unconditionally, so the documented rollout path — re-run enroll everywhere —
+undid every per-repo `with:` block, and the generated PR body said only "a ten-line
+workflow", so the revert was invisible to anyone reading the body rather than the diff.
+**Fixed:** a stub already pointing at repo-standards is left completely alone and the run
+prints the exception it preserved. The trade (a changed stub *template* no longer
+propagates) is documented in the file, the README and `enroll` itself.
+
+**3. The standards repo could auto-merge a bump of its own privileged action.** It
+watched github-actions, was enrolled with no `with:` block, and required only `checks` —
+actionlint plus a template parse, which cannot read an action's new code. A
+fetch-metadata v3.1.0 → v3.1.1 PR would have merged with no human, and that code then
+runs with write permission inside every enrolled repo. **Fixed:** `merge-patch: false,
+merge-minor: false` in this repo's own stub, with the reason on the line. Also pinned
+`actions/checkout` and `rhysd/actionlint` to SHAs — the README's pinning argument was
+only a third true.
+
+**4. `bin/classify-pr` did not reproduce the action.** It read the raw trailer and never
+set `prevVersion`, so a null `update-type` came back `unknown`. Two failures: #116 was
+predicted `dependabot-needs-human` when the workflow says `major-review-needed`, and —
+worse — a null-trailer `1.2.3 → 1.2.4` bump read `unknown` (reassuring) while the workflow
+computes `semver-patch` and merges. **Fixed:** `bin/lib/trailer-to-json.py` ports
+`calculateUpdateType` verbatim and resolves versions through the same fallback chain. The
+classification rule exists in two copies that cannot be merged (the workflow never checks
+out code), so `bin/lib/check-classifier.sh` now diffs them and runs fixtures through the
+workflow's own extracted program. It caught a one-space drift on its first run.
+
+**5. The remembrall PR's rationale was contradicted by the repo's history.** The "165 runs
+were duplicates, you lose nothing" story was false — one PR ever, 65 branch-push runs.
+**Fixed** by changing the change, not just the words: filter by **path**, not by branch.
+Every CI step runs from `app/`; 48% of the 364 commits since 2026-09-01 touched no `app/`
+path. Same order of saving, no coverage lost, `gate3*` branches keep their gate. The PR
+body now leads with the correction.
+
+### The smaller ones
+
+| # | Finding | What was done |
+|---|---|---|
+| 6 | Classic branch protection 403 ≠ 404 — the log line claimed "none" when the token simply is not an admin | 403 gets its own path: `label-unparsed` + a warning naming the cause, not `no-ci-gate` + advice to add CI the repo already has |
+| 7 | `enroll`'s write path never executed, and not on the Unverified list | added, with the "public repo first" ordering |
+| 8 | The nightly DB gate had no failure notification | a `nightly_alarm` job opens an issue (or comments on today's) with a link to the run |
+| 9 | `require-ci` was fail-OPEN on any value but `true` | validates `true\|false`, errors otherwise, and the positive test is now `= "false"` |
+| 10 | `bin/audit --markdown\|--plain` documented, never implemented | removed from the usage line |
+| 11 | `audit` calls go.mod a manifest, `enroll` says "nothing to keep updated" | the detector reports unsupported manifests on stderr; enroll prints them; audit's list aligned |
+| 12 | A failed or truncated tree call read as "no dependencies" | `enroll` dies on both; `audit` marks the row `unknown` |
+| 13 | `disallowed` filed under the "could not classify" label | new `label-opted-out` input, default `dependabot-opted-out`, created by workflow and enroll, in the README table |
+| 14 | `--force` push; `--ci-check` never validated | own-commit check + lease; `bin/lib/pr-job-ids.py` refuses a name that is not a real PR job id, **before any write** |
+| 15 | eachie PR body promised a merge that cannot happen | rewritten: all six open PRs are majors, expect six labels and zero merges |
+| 16 | 4 accuracy items | CI-run count corrected above; both other ci.yml actions pinned; a missing fragment now fails loudly; the v2→v3 fetch-metadata major called out in the eachie PR body |
+
+### Declined — one, and why
+
+**Finding 7's second half: "run `bin/enroll khglynn/festival-navigator --ci-check checks`
+for real before next-step 5."** The reasoning is right and the ordering advice is now in
+the next-steps list — but the brief is explicit that those three repos are dry-run only in
+Phase 1 ("Do not enroll them for real in Phase 1"), and an enroll opens a PR and creates a
+ruleset on a repo Kevin has not agreed to change yet. Doing it would swap an unverified
+code path for an unrequested write. The *risk* the finding names is real, so it is now on
+the Unverified list in the words the finding used, and the next-steps list says to run
+festival-navigator first. Kevin makes that call, not this session.
+
+### Not changed, and worth saying
+
+The review's verdict called the merge gate itself sound — "the per-dependency
+classification … fails closed at every branch I walked". Nothing about the classification
+rule changed. What changed was everything around it: what happens after a verdict, what
+gets written where, and whether the tools tell the truth about it.
+
+### Verification after the fixes
+
+- `actionlint` clean on all four workflows (repo-standards ×3, eachie's `test.yml`,
+  remembrall's `ci.yml`).
+- `shellcheck` clean on `bin/enroll`, `bin/audit`, `bin/classify-pr`,
+  `bin/lib/check-classifier.sh`.
+- `bin/lib/check-classifier.sh` passes 7 assertions.
+- `check-templates.py` and the ecosystem-detector fixture pass.
+- `repo-standards` CI **green on `51243a8`** (the push carrying all five commits).
+- `bin/classify-pr khglynn/eachie 116 192 162 143` run live: #116 now reads
+  `major → major-review-needed`, matching what the workflow will do. The other three
+  unchanged.
