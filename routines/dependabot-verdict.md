@@ -1,6 +1,6 @@
 # Routine: Dependabot verdict → #dependabot
 
-**Where it runs:** claude.ai/code/routines, on Kevin's personal login (kevn.hg@gmail.com). Created 2026-09-11.
+**Where it runs:** claude.ai/code/routines, on Kevin's personal login (kevn.hg@gmail.com). Created 2026-09-11 as routine `trig_019EgJ3ZffYbVgTGLYkzDcj3` (https://claude.ai/code/routines/trig_019EgJ3ZffYbVgTGLYkzDcj3), model Opus 5, Slack as the only connector, first repo eachie. It was created through the playwright-2 browser profile (`~/.playwright-2`), which is signed into that login; use the same profile to edit it without touching any Claude Code profile's login.
 **Trigger:** GitHub → Pull request → `labeled`. Filters: Author equals `dependabot[bot]`; Labels is one of `major-review-needed`, `dependabot-needs-human`, `no-ci-gate`.
 **Why the label, not "opened":** the shared workflow classifies every Dependabot PR within seconds of it opening. Patch and minor bumps merge themselves once CI is green and never need a human. Firing on the label means the routine only ever runs on the exceptions, so it never spends a run (Max: 15 a day) on something that was about to merge itself, and never posts a verdict on a PR that then auto-merges.
 **Connectors:** Slack only. Everything else removed from the routine.
