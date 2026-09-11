@@ -1,0 +1,23 @@
+  # ---------------------------------------------------------------------------------
+  # Python via pyproject.toml + uv.lock. Dependabot's ecosystem name for this is "uv";
+  # it is NOT the same as "pip" and pointing "pip" at a pyproject-only project silently
+  # finds nothing. If the project has BOTH a requirements.txt and a pyproject.toml,
+  # whichever one actually drives installs is the one to declare.
+  # ---------------------------------------------------------------------------------
+  - package-ecosystem: "uv"
+    directory: "{{DIRECTORY}}"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # See npm.yml for the reasoning behind the cooldown numbers — same soak, same why.
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 7
+      semver-major-days: 30
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels:
+      - "dependencies"

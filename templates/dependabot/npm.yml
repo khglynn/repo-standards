@@ -1,0 +1,30 @@
+  # ---------------------------------------------------------------------------------
+  # JavaScript / TypeScript. "npm" is the ecosystem name for the whole JS registry —
+  # it covers package-lock.json, yarn.lock and pnpm-lock.yaml alike.
+  # ---------------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "{{DIRECTORY}}"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # Cooldown: Dependabot will not propose a version published more recently than this.
+    # It is the supply-chain soak — most malicious-package incidents are caught and yanked
+    # within days of publication, so simply waiting removes most of the exposure for free.
+    # If the repo also enforces a floor at install time (pnpm's `minimumReleaseAge`, for
+    # example) keep the two numbers EQUAL, or a 3-day PR will fail a 7-day install gate.
+    # Majors wait 30 days on top of needing human review — an x.0.0 release is the least
+    # battle-tested build a library ever ships.
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 7
+      semver-major-days: 30
+    groups:
+      # One pull request for all the low-risk in-major bumps, so the week's routine
+      # updates are one review and one CI run instead of eight. Majors stay separate on
+      # purpose: each one deserves its own look.
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels:
+      - "dependencies"

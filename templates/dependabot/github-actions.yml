@@ -1,0 +1,23 @@
+  # ---------------------------------------------------------------------------------
+  # The workflows themselves. Actions are code that runs with this repo's token, so they
+  # are a dependency like any other — and one that mostly nobody updates by hand.
+  #
+  # `directory: "/"` is correct even when the workflows are in .github/workflows: for this
+  # ecosystem the directory means "the repo root", not the folder holding the YAML files.
+  # ---------------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 7
+      semver-major-days: 30
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels:
+      - "dependencies"
