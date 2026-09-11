@@ -5,9 +5,11 @@
 #   bin/classify-pr <owner/repo> <pr-number> [<pr-number> …]
 #   bin/classify-pr khglynn/eachie 162 192
 #
-# Read-only. It reads each PR's commit trailer, reshapes it exactly the way
-# `dependabot/fetch-metadata` emits `updated-dependencies-json`, and then runs the SAME jq
-# program the shared workflow runs. If this says "major", the workflow will label it major.
+# Read-only. It reads each PR's commit message, reshapes it exactly the way
+# `dependabot/fetch-metadata` v3.1.0 emits `updated-dependencies-json` — INCLUDING that
+# action's computed fallback for a missing update-type (see bin/lib/trailer-to-json.py) —
+# and then runs the SAME jq program the shared workflow runs. If this says "major", the
+# workflow will label it major.
 #
 # It also prints what the naive gate — fetch-metadata's single aggregate `update-type`
 # output — would have seen, because the gap between those two answers is the entire reason
@@ -16,6 +18,7 @@
 # ⚠ TWO CAVEATS, both real:
 #  1. If you change the classification jq in .github/workflows/dependabot-automerge.yml,
 #     change it here too. These are two copies of one rule; keeping them in step is manual.
+#     (CI runs a fixture through both and fails if they disagree — see .github/workflows/ci.yml.)
 #  2. This reads the trailer of the PR's CURRENT head commit. Dependabot force-pushes its
 #     branches (eachie #116 was force-pushed 11 times between July and August), and the
 #     trailer can differ between rebases — so this tells you what the workflow would decide
@@ -45,34 +48,29 @@ classify() {
   known='["version-update:semver-patch","version-update:semver-major","version-update:semver-minor"]'
   printf '%s' "$deps_json" | jq -r --argjson allowed "$allowed" --argjson known "$known" '
     [.[] | .updateType] as $t
-    | if   ($t | any(. == "version-update:semver-major"))           then "major"
+    | if   ($t | any(. == "version-update:semver-major"))          then "major"
       elif ($t | any(. == null or . == "" or (IN($known[]) | not))) then "unknown"
       elif ($t | all(IN($allowed[])))                              then "merge"
       else "disallowed" end'
 }
 
-# Dependabot writes the machine-readable truth as a YAML trailer in the commit body. That is
-# the same source fetch-metadata reads, which is why this can be reproduced offline.
-trailer_to_json() {
-  python3 -c '
-import sys, yaml, json, re
-msg = sys.stdin.read()
-m = re.search(r"^updated-dependencies:\n(.*?)(?:\n\n|\Z)", msg, re.S | re.M)
-if not m:
-    print("[]"); raise SystemExit
-items = yaml.safe_load("updated-dependencies:\n" + m.group(1))["updated-dependencies"]
-print(json.dumps([{
-  "dependencyName": i.get("dependency-name"),
-  "dependencyType": i.get("dependency-type"),
-  "updateType":     i.get("update-type"),
-  "newVersion":     str(i.get("dependency-version") or i.get("new-version") or ""),
-} for i in items]))'
-}
+# Dependabot writes the machine-readable truth as a YAML trailer in the commit body, and
+# fetch-metadata reads exactly that — which is why this can be reproduced offline. The
+# reshaping (including the computed update-type fallback that the trailer alone does not
+# give you) lives in bin/lib/trailer-to-json.py, next to the note explaining why.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 for pr in "$@"; do
   echo "──────── $REPO PR #$pr"
-  echo "title: $(gh pr view "$pr" --repo "$REPO" --json title --jq .title)"
-  json=$(gh pr view "$pr" --repo "$REPO" --json commits --jq '.commits[-1].messageBody' | trailer_to_json)
+  view=$(gh pr view "$pr" --repo "$REPO" --json title,headRefName,commits)
+  title=$(printf '%s' "$view" | jq -r '.title')
+  branch=$(printf '%s' "$view" | jq -r '.headRefName')
+  echo "title: $title"
+  # The headline matters: `Bumps X from A to B.` can live on the first line, and
+  # fetch-metadata matches its regexes against the whole message including that line.
+  json=$(printf '%s' "$view" \
+    | jq -r '(.commits[-1].messageHeadline) + "\n\n" + (.commits[-1].messageBody)' \
+    | python3 "$HERE/bin/lib/trailer-to-json.py" --branch "$branch" --title "$title")
 
   if [ "$(printf '%s' "$json" | jq 'length')" -eq 0 ]; then
     echo "  no updated-dependencies trailer — is this actually a Dependabot PR?"
@@ -82,6 +80,10 @@ for pr in "$@"; do
 
   printf '%s' "$json" | jq -c '.[]' | sed 's/^/    /'
 
+  # What the NAIVE gate would see: fetch-metadata's single aggregate `update-type` output,
+  # which is the max level across the PR AND skips nulls. Printed for contrast — the gap
+  # between this line and the verdict below is the entire reason the shared workflow reads
+  # the per-dependency array instead.
   agg=$(printf '%s' "$json" | jq -r '
     [.[].updateType | select(. != null)]
     | if length == 0 then "<empty>"

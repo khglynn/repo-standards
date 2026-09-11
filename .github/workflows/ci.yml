@@ -23,12 +23,18 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      # Both actions are pinned to a commit SHA, for the same reason the shared workflow
+      # pins fetch-metadata: a tag can be moved to new code by whoever controls the repo,
+      # and this job is the ONLY gate in front of a workflow that runs with write
+      # permission inside every enrolled repo. Pinning two of three would have made the
+      # README's own argument half true. SHAs resolved 2026-09-11 from their tags
+      # (both lightweight, so the ref points straight at a commit).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # actionlint parses every workflow AND runs shellcheck over each `run:` block, which
       # is where the real bugs live — an unquoted variable, a typo'd jq filter.
       - name: Lint the workflows
-        uses: rhysd/actionlint@v1.7.12
+        uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
 
       # The stub and the dependabot fragments are templates, so nothing above reads them.
       - name: Check the templates still compose
@@ -39,8 +45,18 @@ jobs:
       - name: Check the scripts
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck bin/enroll bin/audit
-          python3 -m py_compile bin/lib/detect-ecosystems.py bin/lib/check-templates.py
+          shellcheck bin/enroll bin/audit bin/classify-pr bin/lib/check-classifier.sh
+          python3 -m py_compile bin/lib/*.py
+
+      # The one rule that exists in two places and cannot be deduplicated: the shared
+      # workflow never checks out code, so its classification jq has to be inline, and
+      # bin/classify-pr carries a second copy. This proves the copies still agree, and
+      # that the trailer parser reproduces fetch-metadata v3's COMPUTED update-type —
+      # the gap a 2026-09-11 review found, where the tool said "cannot classify" about a
+      # PR the workflow would have labelled major (and, worse, about patch bumps it
+      # would have merged).
+      - name: The classifier says the same thing in both places
+        run: bin/lib/check-classifier.sh
 
       # A fixture run of the ecosystem detector: proves it still says what we think it says,
       # independently of any live repo. If this ever disagrees, enroll is about to write the
