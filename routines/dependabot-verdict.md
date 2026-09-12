@@ -26,7 +26,7 @@ Do this, in order:
    What changed: two to four short lines, only what matters to this app
    Tests: passed / failed because … / no CI in this repo
    Recommendation: Merge, Merge after a fix, Hold, or Drop — one-line reason
-   Do it: the single next action, for example "Reply in this thread with @Claude fix what breaks and open a PR", or "Tap Merge on GitHub", or "Reply @Claude close this PR, we don't use it"
+   Do it: the single next action, always as a reply IN THIS THREAD that names the PR, for example "Reply here: @Claude merge eachie #162", or "Reply here: @Claude fix what breaks in eachie #162 and open a PR", or "Reply here: @Claude close eachie #162, we don't use it". Naming the repo and number matters: a reply without them makes the Slack app guess from older messages.
    The PR's URL, plain, on its own last line. Write URLs as plain text only; never wrap anything in angle brackets, because Slack turns <…> into link markup.
 
 7. Do not merge, close, comment on, or push to the PR. Do not post anything else to Slack. If you cannot read the PR or the changelog, post the message anyway with "could not read (the thing)" in the relevant line rather than guessing.
