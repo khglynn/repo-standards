@@ -1,37 +1,75 @@
 #!/usr/bin/env bash
 # audit — one read-only picture of where every repo stands.
 #
-#   bin/audit [--owner khglynn]
+#   bin/audit [--owner khglynn] [--json | --digest] [--cap 300] [--skip-actions]
 #
-# Output is always markdown. (`--markdown|--plain` used to be documented on this line
-# and was never implemented — both hit the unknown-option arm and exited 1, so the
-# help text was actively teaching a command that errors. Removed 2026-09-11.)
+#   (no flag)       the markdown table: one row per repo, one status word at the end
+#   --digest        the weekly Slack block, in plain English, for a person
+#   --json          every field as structured data, for anything downstream
+#   --cap N         how many runs per repo to measure for the minutes estimate (default 300)
+#   --skip-actions  no Actions calls at all: no approve column, no minutes, no warnings.
+#                   Much faster when all you want is the enrolment picture.
 #
 # Reads nothing but the GitHub API and writes nothing anywhere. Safe to run any time,
-# from any machine, as often as you like. Written 2026-09-11.
+# from any machine. Written 2026-09-11; Actions columns and the digest added 2026-09-14
+# (spec: khglynn/repo-standards#1).
+#
+# ONE COST TO KNOW ABOUT: a full run costs roughly 1,600 API calls, a third of GitHub's
+# hourly 5,000, almost all of it measuring Actions minutes. Weekly is free; iterating on
+# it three times in an hour is not, and the fourth run will find the budget gone. Use
+# `--skip-actions` while you are working on anything else, or `--cap 50` to sample. When
+# the budget IS short the run falls back to a cheaper, lower-reading measurement and says
+# so in its output rather than silently producing a smaller number.
 #
 # The status column is the thing to read:
-#   enrolled       — dependabot.yml + the pointer stub + auto-merge on + a required check.
-#                    Routine updates land by themselves here.
+#   enrolled       — dependabot.yml + the pointer stub + auto-merge on + a required check
+#                    + the approve switch. Routine updates land by themselves here.
 #   security-only  — no version-update config. Still covered by account-wide Dependabot
 #                    security alerts and fixes; just not kept current for its own sake.
 #                    A perfectly fine state for a repo nobody deploys.
 #   drift: …       — half-enrolled, and the reason says which half. This is the column
 #                    that makes drift impossible to not notice.
+#
+# The two WARNING sections under the table are not drift and nothing about them is
+# broken — a job with no time limit and a workflow that runs twice per commit both just
+# cost minutes, and the second one is sometimes deliberate.
 
 set -euo pipefail
 
 OWNER="khglynn"
+MODE="table"
+CAP=300
+SKIP_ACTIONS=no
 STD_PATH="khglynn/repo-standards/.github/workflows/dependabot-automerge.yml"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --owner) OWNER="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --json) MODE="json"; shift ;;
+    --digest) MODE="digest"; shift ;;
+    --cap) CAP="${2:-300}"; shift 2 ;;
+    --skip-actions) SKIP_ACTIONS=yes; shift ;;
+    -h|--help) sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
 for t in gh jq python3; do command -v "$t" >/dev/null || { echo "missing tool: $t" >&2; exit 1; }; done
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SINCE="$(date +%Y-%m-01)"
+
+# Is the tree response readable and complete? Prints "false" (not truncated — good),
+# "true" (truncated), or "err" (no answer at all).
+#
+# THIS LINE USED TO BE `.truncated // "err"` AND IT WAS WRONG IN THE WORST WAY. jq's `//`
+# treats **false** as empty, exactly like null — so a perfectly good tree whose
+# `"truncated": false` is the answer we want came back "err", and EVERY repo read
+# `unknown: could not read this repo's file list`. The status column, which is the whole
+# point of this tool, said nothing true from 2026-09-11 (commit cd917d9, a review fix for
+# the opposite failure) until 2026-09-14. It printed a full, confident table the entire
+# time. bin/lib/check-audit.sh now pins all three cases; the program lives on one line so
+# that test can extract and run the real thing rather than a retyped copy of it.
+TREE_STATE_JQ='if type=="object" and has("truncated") then (.truncated|tostring) else "err" end'
 
 echo "Reading $OWNER's repos…" >&2
 
@@ -47,14 +85,31 @@ dependabot_prs=$(gh api -X GET search/issues \
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 printf '%s\n' "$dependabot_prs" > "$TMP/prs.tsv"
 
-rows=""
-total=0; enrolled=0; security_only=0; drifting=0; forks=0; unreadable_count=0
+# --- the Actions pass: approve switch, minutes this billing month, workflow hygiene.
+# It runs ONCE for every repo, concurrently, before the loop below — one `/timing` call
+# per run and the account does ~1,300 runs a month, which inside a serial bash loop is
+# twenty minutes. See bin/lib/actions-scan.py for why the minutes are wall-clock and why
+# the billing endpoints are not called.
+echo '{"repos":{}}' > "$TMP/scan.json"
+if [ "$SKIP_ACTIONS" = "no" ]; then
+  echo "Measuring Actions usage since $SINCE (this is the slow part)…" >&2
+  printf '%s\n' "$repos" | awk -F'\t' 'NF{print $1"\t"$4"\t"$2}' \
+    | python3 "$HERE/bin/lib/actions-scan.py" --owner "$OWNER" --since "$SINCE" \
+        --cap "$CAP" --progress > "$TMP/scan.json" || {
+      echo "actions scan failed; continuing without those columns" >&2
+      echo '{"repos":{}}' > "$TMP/scan.json"
+    }
+fi
+
+: > "$TMP/rows.jsonl"
 
 while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   [ -n "$name" ] || continue
-  total=$((total + 1))
   R="$OWNER/$name"
   printf '  %-55s\r' "$R" >&2
+
+  scan=$(jq -c --arg n "$name" '.repos[$n] // {}' "$TMP/scan.json")
+  approve=$(jq -r '.approve // "?" | tostring' <<< "$scan")
 
   # --- the repo's own settings
   auto_merge=$(gh api "repos/$R" --jq '.allow_auto_merge' 2>/dev/null || echo "?")
@@ -66,7 +121,7 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   tree=$(gh api "repos/$R/git/trees/$default_branch?recursive=1" 2>/dev/null || true)
   paths=$(printf '%s' "$tree" | jq -r '.tree[]? | select(.type=="blob") | .path' 2>/dev/null || true)
   unreadable=no
-  if [ -z "$tree" ] || [ "$(printf '%s' "$tree" | jq -r '.truncated // "err"' 2>/dev/null)" != "false" ]; then
+  if [ -z "$tree" ] || [ "$(printf '%s' "$tree" | jq -r "$TREE_STATE_JQ" 2>/dev/null)" != "false" ]; then
     unreadable=yes
   fi
   # Here-strings, not pipes: `grep -q` exits on its first match, and a pipe feeding it then
@@ -109,14 +164,14 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
 
   # --- open Dependabot pull requests, and how long the oldest has been sitting there
   pr_count=$(awk -F'\t' -v r="$name" '$1==r' "$TMP/prs.tsv" | wc -l | tr -d ' ')
-  pr_cell="0"
+  pr_cell="0"; pr_age="null"
   if [ "$pr_count" -gt 0 ]; then
     oldest=$(awk -F'\t' -v r="$name" '$1==r {print $2}' "$TMP/prs.tsv" | sort | head -1)
-    age=$(python3 -c "
+    pr_age=$(python3 -c "
 import datetime,sys
 d=datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
 print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
-    pr_cell="$pr_count (oldest ${age}d)"
+    pr_cell="$pr_count (oldest ${pr_age}d)"
   fi
 
   # --- the verdict
@@ -126,6 +181,11 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     status="unknown: could not read this repo's file list (API error or truncated tree)"
   elif [ "$is_fork" = "true" ]; then
     status="fork — upstream's config, leave it alone"
+  elif { [ "$has_stub" = "yes" ] || [ "$has_stub" = "source" ]; } && [ "$approve" = "false" ]; then
+    # The switch whose absence stranded three list-maker PRs on 2026-09-14: the shared
+    # workflow's `gh pr review --approve` is refused outright, so in any repo with a
+    # one-approval rule the PR queues behind a review that can never arrive.
+    status="drift: Actions may not approve pull requests here, so the workflow's approvals will be refused"
   elif [ "$has_stub" = "source" ] && [ "$has_dependabot" = "yes" ]; then
     status="enrolled (this repo IS the standard)"
   elif [ "$has_stub" = "inline" ]; then
@@ -148,34 +208,31 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     status="enrolled"
   fi
 
-  case "$status" in
-    enrolled*)      enrolled=$((enrolled + 1)) ;;
-    security-only*) security_only=$((security_only + 1)) ;;
-    fork*)          forks=$((forks + 1)) ;;
-    unknown*)       unreadable_count=$((unreadable_count + 1)) ;;
-    *)              drifting=$((drifting + 1)) ;;
-  esac
-
   pushed_day=${pushed_at%%T*}
-  rows="$rows| \`$name\` | $visibility | $pushed_day | $has_manifest | $has_dependabot | $has_stub | $auto_merge | $checks | $pr_cell | $status |
-"
+  jq -nc --arg name "$name" --arg visibility "$visibility" --arg pushed "$pushed_day" \
+        --arg manifest "$has_manifest" --arg dependabot "$has_dependabot" \
+        --arg stub "$has_stub" --arg auto_merge "$auto_merge" --arg checks "$checks" \
+        --arg prs "$pr_cell" --argjson pr_count "$pr_count" --argjson pr_oldest_days "$pr_age" \
+        --arg approve_cell "$approve" --arg status "$status" --arg is_fork "$is_fork" \
+        --argjson scan "$scan" \
+    '{name:$name, visibility:$visibility, pushed:$pushed, manifest:$manifest,
+      dependabot:$dependabot, stub:$stub, auto_merge:$auto_merge, checks:$checks,
+      prs:$prs, pr_count:$pr_count, pr_oldest_days:$pr_oldest_days,
+      approve:($scan.approve // null), approve_cell:$approve_cell,
+      minutes:($scan.minutes // null), runs:($scan.runs // null),
+      timed:($scan.timed // null), capped:($scan.capped // false),
+      runners:($scan.runners // []),
+      missing_timeout:($scan.missing_timeout // []),
+      double_trigger:($scan.double_trigger // []),
+      unparsed:($scan.unparsed // []), parser:($scan.parser // null),
+      errors:($scan.errors // []),
+      is_fork:($is_fork=="true"), status:$status}' >> "$TMP/rows.jsonl"
 done <<< "$repos"
 
 printf '                                             \r' >&2
 
-echo "# Repo standards audit — $(date +%Y-%m-%d)"
-echo
-summary="$total active repos under \`$OWNER\`: **$enrolled enrolled**, $security_only security-only, $forks forks, **$drifting drifting**"
-if [ "$unreadable_count" -gt 0 ]; then summary="$summary, **$unreadable_count unreadable**"; fi
-echo "$summary."
-echo
-echo "| repo | vis | last push | manifest | dependabot.yml | stub | auto-merge | required checks | open bot PRs | status |"
-echo "|---|---|---|---|---|---|---|---|---|---|"
-printf '%s' "$rows"
-echo
-echo "_\`manifest\` counts GitHub Actions workflows as well as app dependency files — an action_"
-echo "_is a dependency that runs with the repo's token, and nobody updates those by hand._"
-echo
-echo "_Security alerts and security update PRs are on account-wide and need no file, so_"
-echo "_\`security-only\` means \"protected against known vulnerabilities, not kept current\"._"
-echo "_To move a repo from security-only to enrolled: \`bin/enroll $OWNER/<name> --ci-check <check>\`._"
+method=$(jq -r '.method // "none"' "$TMP/scan.json")
+note=$(jq -r '.note // ""' "$TMP/scan.json")
+
+python3 "$HERE/bin/lib/render-audit.py" --mode "$MODE" --owner "$OWNER" \
+        --since "$SINCE" --cap "$CAP" --method "$method" --note "$note" < "$TMP/rows.jsonl"
