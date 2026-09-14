@@ -664,3 +664,161 @@ Two fixes, because one was not enough:
 - **03:09** The overnight builder (Opus, Workflow `wf_93c9ffd8-17e`) died on the account's session limit (reset 06:50 CDT) with nothing lost: every deliverable committed and pushed, 9f1b27e through 4ff140d — the approve/minutes/timeout/double-trigger columns, `--digest`, the concurrent Actions scan, the API-budget preflight, the CI fixtures, the README section and `routines/weekly-digest.md`. What it never finished: one complete full `--digest` run pasted here (the hourly API budget was gone twice), the by-hand minutes check, and its return summary.
 - **06:55** Lead's spot-check, `bin/audit --digest --skip-actions`, ran clean in 83 s: 5 of 40 repos enrolled, 12 update pull requests waiting, oldest 26 days (eachie #160/#161), ynai 4, recordOS 3, ai-orchestrator / okta-mcp-server / spotify-bulk-actions-mcp 1 each. One defect: it printed "about 0 minutes of the free 3,000" for a measurement it skipped. A skipped measurement must read as not measured, never as zero — handed to the resumed workflow as the first thing to fix.
 - **07:05** Resumed as Workflow `audit-phase2-resume` (Opus finisher → Opus adversarial reviewer → Opus fixer → Sonnet verifier), with one rule added to every stage: a full audit costs ~1,600 of GitHub's 5,000 hourly calls and the budget is shared, so at most one full run per stage and `--cap 30` otherwise.
+
+## 2026-09-14 07:05–08:0x CDT — the resumed stage: the confident zero, and a method error the hand-check caught
+
+Picked up from the 03:09 death. Everything the overnight builder committed was intact; this
+stage fixed what it had left, then found one thing nobody had looked for.
+
+### 1. The confident zero (the lead's 06:55 finding) — fixed first
+
+`bin/audit --digest --skip-actions` printed **"about 0 minutes of the free 3,000 (an
+estimate). At this rate the month ends near 0, inside the free pool"** for a measurement it
+had never taken. Third instance of this repo's signature bug: a confident sentence standing
+in for an absent fact, in the output a person reads without checking — and this one reads
+as *good news*.
+
+Zero and absent are now different values end to end. `bin/audit` passes `method=skipped`
+for `--skip-actions` (distinct from `none`, meaning the scan failed); `minutes_picture`
+returns `measured=False` with `private`, `public`, `daily` and `projected` all `None`
+rather than zeroes that format beautifully; the digest says *"Build time was not checked
+this week, so there is no figure and no run-out date — not a zero"*; the table says **NOT
+MEASURED**; `--json` carries `minutes_measured`.
+
+**The part that was easy to miss.** A skipped Actions pass also disables the approve-switch
+drift rule, because both read the same scan. So a skipped run reports **fewer** problems
+than a real one — on the fixture, 2 of 4 enrolled where the full run says 1 of 4. The
+digest now says so out loud: *"a repo could be half set up in a way this message cannot
+see."* An unchecked week and a clean week are indistinguishable unless the message says
+which one it was.
+
+Same rule applied one level down, where `check-workflow-hygiene.sh` already claimed
+`bin/audit` printed which YAML parser ran (it did not): the regex fallback answers the
+time-limit question and **declines** the double-trigger one, so an empty list on that path
+means *not checked*, not *none found*. Both outputs now name the parser and say what its
+silence means.
+
+### 2. The by-hand minutes check found a method error, not a rounding one
+
+The brief asked for one repo's minutes checked by hand against `gh run list`. Chose `ynai`
+— private, 20 runs, small enough to read every one.
+
+Per-job by hand: 11 of the 20 runs were `Claude Code` runs that concluded **skipped** (no
+charge), and the other 9 were `Dependabot Updates`, each one job of 51–114 seconds,
+billing 1–2 whole minutes. **Hand total 15 minutes; the audit's column said 15.** The
+arithmetic was exactly right.
+
+And exactly wrong, because **GitHub does not bill those runs at all.** "Running Dependabot
+on standard GitHub-hosted and self-hosted runners does not count towards your included
+GitHub Actions minutes" — [GitHub Docs, *Dependabot on GitHub Actions
+runners*](https://docs.github.com/en/code-security/concepts/supply-chain-security/about-dependabot-on-github-actions-runners),
+read 2026-09-14. ynai's real September cost is **nil**. A hand-check that only re-does the
+tool's own arithmetic would have blessed this; the check that caught it was asking what the
+runs *were*.
+
+Excluded at run-list time by `path` starting `dynamic/dependabot/` — the only field that
+separates Dependabot's own run from **a repo's CI running on a Dependabot pull request**,
+which *is* billed and whose exclusion would push the error the other way (verified against
+ynai run 34538498192). `free_runs` counts what was left out so the run count stays honest.
+
+**Known exception, unhandled and named in the code:** on *larger* runners GitHub bills
+Dependabot normally. Telling them apart needs the per-run jobs call this exclusion exists to
+skip, and every repo here is `ubuntu-latest`. The table's "non-Linux runners seen" note is
+the tell if that changes.
+
+### 3. Two defects in the overnight code, both found by real data rather than fixtures
+
+- "could not be measured" fired on four repos whose *only* run this month was a free
+  Dependabot one. `runs and not timed` cannot tell **excluded** from **unread**. Now asks
+  whether any *billable* run went untimed.
+- A partial reading **suppressed the run-out date**, which is backwards: an incomplete count
+  is a floor, so the date moves *earlier*. The date is now always printed, followed by
+  "that date could be sooner".
+
+### 4. The one full run, and the correction
+
+Budget checked first (4,659 of 5,000 left), then **one** full audit at 07:06–07:10 CDT,
+3 min 38 s, run as `--json` so the digest and the table could both be rendered from a single
+spend. 40 repos: **5 enrolled, 29 security-only, 6 forks, 0 drifting, 0 unreadable.**
+
+Its `--digest`, exactly as printed (this is the pre-correction number — Dependabot's own
+runs are still counted here):
+
+```
+*Dependency check — 14 Sep 2026*
+
+5 of 40 repos keep themselves up to date. 12 update pull requests waiting, the oldest 26 days old.
+Build time on the private repos this month: about 2550 minutes of the free 3,000 (an estimate). At this rate the free minutes run out around 16 Sep.
+
+- ynai — 4 update pull requests waiting, oldest 4 days.
+- recordOS — 3 update pull requests waiting, oldest 2 days.
+- eachie — 2 update pull requests waiting, oldest 26 days.
+- ai-orchestrator — 1 update pull request waiting, oldest 2 days.
+- okta-mcp-server — 1 update pull request waiting, oldest 2 days.
+- spotify-bulk-actions-mcp — 1 update pull request waiting, oldest 2 days.
+
+Also: 27 build jobs across 11 repos have no time limit, so one stuck job could burn six hours of the free pool.
+Also: 4 repos run their tests twice for every change (once for the branch, once for the pull request), which may be on purpose.
+Note: eachie had more runs this month than were measured, so the minutes above are low.
+
+To act: the oldest waiting update is in eachie, 26 days old — open it and merge or close it.
+```
+
+Then the private half — 22 repos, 67 s, not a second full audit — re-measured with the
+exclusion in place. Private total **2,550 → 2,515**. Small in aggregate because eachie
+(1,292, capped at 300 of 453 runs) and remembrall (1,193) dominate, but `ynai` 15 → 0,
+`kevinhg-com` 49 → 30, and `AIOpsSurvey` / `wkt` / `sync-bot` / `holting-safely` all → 0.
+The corrected digest, same renderer, same run's rows with the private repos re-measured:
+
+```
+*Dependency check — 14 Sep 2026*
+
+5 of 40 repos keep themselves up to date. 12 update pull requests waiting, the oldest 26 days old.
+Build time on the private repos this month: about 2515 minutes of the free 3,000 (an estimate). At this rate the free minutes run out around 17 Sep.
+
+- ynai — 4 update pull requests waiting, oldest 4 days.
+- recordOS — 3 update pull requests waiting, oldest 2 days.
+- eachie — 2 update pull requests waiting, oldest 26 days.
+- ai-orchestrator — 1 update pull request waiting, oldest 2 days.
+- okta-mcp-server — 1 update pull request waiting, oldest 2 days.
+- spotify-bulk-actions-mcp — 1 update pull request waiting, oldest 2 days.
+
+Also: 27 build jobs across 11 repos have no time limit, so one stuck job could burn six hours of the free pool.
+Also: 4 repos run their tests twice for every change (once for the branch, once for the pull request), which may be on purpose.
+Note: eachie had more runs this month than were measured, so the minutes above are low.
+
+To act: the oldest waiting update is in eachie, 26 days old — open it and merge or close it.
+```
+
+**The 3,000-minute warning survived the correction**, which is the thing worth knowing: it
+is a real warning, not an artefact of counting free runs. Two private repos are spending it
+— and eachie's figure is a floor, since only 300 of its 453 runs were measured.
+
+### What stays unverified
+
+- **The account-wide total after the exclusion has not been measured in one pass.** 2,515 is
+  the full run's public rows plus a private-only re-measure taken four minutes later. The
+  public repos' minutes in that table still count their Dependabot runs; they are free and
+  excluded from the 3,000 either way, so no printed total is affected — but the next full
+  run is the first clean one.
+- **No figure here has been checked against a GitHub invoice.** The billing endpoints need a
+  classic token with the `user` scope and are deliberately not called. The one real data
+  point remains the billing page's 2,058 private minutes read on 2026-09-11, which brackets
+  correctly and is corroboration, not proof.
+- **eachie is capped**, so its 1,292 is low by whatever the 153 unmeasured runs cost.
+- **The weekly routine has still never been created.** `routines/weekly-digest.md` carries
+  the form values, and the schedule card in that form remains the one part of the recipe
+  nobody has filled in on screen.
+- **The digest has never been posted to Slack by the routine** — every digest so far has
+  been read in a terminal.
+- The larger-runner Dependabot exception above.
+
+### Closing note
+
+Finished this stage: the not-measured fix and its fixtures, the parser reporting, the
+Dependabot-run exclusion with the re-measure behind it, the two defects above, the README
+and routine-prompt updates, the one full run pasted here, and the by-hand check. Local CI
+is green end to end — `actionlint`, `shellcheck` over all six scripts, `check-audit.sh`
+(now 5 sections), `check-workflow-hygiene.sh`, `check-classifier.sh`, `check-templates.py`,
+the ecosystem detector. GitHub API budget left at the end of the stage: about 2,400 of
+5,000.
