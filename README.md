@@ -141,7 +141,10 @@ bin/audit
 Read-only, writes nothing. About two and a half minutes across 40 repos (measured
 2026-09-14) — most of that is measuring Actions minutes, which costs roughly 1,600 API
 calls, a third of GitHub's hourly allowance. `bin/audit --skip-actions` does the
-enrolment half in about 40 seconds and spends almost nothing. If the hourly budget is
+enrolment half in about 40 seconds and spends almost nothing — and every output then
+says the build-time and permission checks were **not measured**, rather than reporting
+them as zero and clean. (It printed "about 0 minutes of the free 3,000 … inside the free
+pool" for exactly one morning, 2026-09-14.) If the hourly budget is
 already gone the audit says so and refuses to start, rather than printing a full table
 in which every repo reads "could not be read". It prints a markdown table
 with one row per repo and one **status** word at the end:
@@ -181,6 +184,13 @@ all, which is the point.
 current rate, the date they run out — so the answer arrives a week early rather than as
 builds failing on the 27th. The number is an estimate and says so; see the audit's own
 footnote for how close it is and why.
+
+**And when it doesn't know, it says so.** A week where the build-time measurement was
+skipped or could not finish reads "Build time was not checked this week, so there is no
+figure and no run-out date — not a zero", and adds that a repo could be half set up in a
+way the message cannot see. That sentence is the whole point of the digest: a number you
+can act on, or an admission — never a confident zero standing in for a measurement nobody
+took.
 
 It closes with one line beginning "To act:" — the single most useful thing to do that week.
 

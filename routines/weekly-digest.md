@@ -66,6 +66,16 @@ Do this, in order:
    written in the shape described below; use its numbers exactly as printed and do not
    recompute them.
 
+   Two things it may tell you instead of a number, and both must survive into the message
+   word for word rather than being tidied away: that build time was not checked this week
+   (it will say so in place of the minutes, and there is then no figure and no run-out
+   date — do not write a zero, and do not work one out yourself), and that some
+   repositories could not be read. An unchecked week and a clean week look identical
+   unless the message says which one this was.
+
+   If it refuses to start because GitHub's hourly limit is used up, it says when to come
+   back. Do not wait for that: go to step 2 and say the automatic check could not run.
+
 2. If `gh auth status` fails, or `bin/audit --digest` exits non-zero or prints nothing,
    fall back to the GitHub connector. List the open pull requests opened by Dependabot in
    each of these repositories: eachie, festival-navigator, kevinhg-com, list-maker. Count
@@ -94,7 +104,9 @@ Do this, in order:
 
    If you fell back to step 2, replace the minutes half of the opening line with a plain
    sentence saying that the automatic check could not run this week, so only the waiting
-   pull requests are reported.
+   pull requests are reported. If the audit ran but reported that build time was not
+   checked, carry that sentence through as it is printed — never replace it with a number,
+   and never with "0".
 
 4. Writing rules for the message. Plain English only. No acronyms — write "the automatic
    tests", not "CI". No file paths, job names, branch names or version numbers. One
