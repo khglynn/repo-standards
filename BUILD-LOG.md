@@ -1241,3 +1241,93 @@ Enrolling khglynn/ynai
  YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
 ```
 
+### The audit: a stub with no dependabot.yml is a shape, not a fault
+
+`bin/audit` called that combination `drift: merge rules but no dependabot.yml, so no update
+PRs` — which would have nagged about every repo this new shape is for. It now reads
+**`enrolled (security fixes only)`** when the rest of the machinery is really there: the
+same three settings the full `enrolled` verdict demands (auto-merge on, a required check,
+the approve switch), in the same order and the same words. A stub with no required check is
+still drift, and it gets the *missing-gate* message the full path already uses. The old
+no-dependabot.yml wording is retired: that file is the intended half now, and naming it
+would send Kevin to fix the thing that is not broken.
+
+**Counting.** It counts as ENROLLED, with the parenthetical said out loud in both the table
+summary and the digest headline — `2 of 3 repos keep themselves up to date (1 for security
+fixes only)`. Filing it under `security-only` would put a repo whose security fixes merge
+themselves in the same bucket as one where nothing merges at all, which is the more
+misleading of the two errors. Counting it silently would let "keeps itself up to date" mean
+two different things in the one sentence Kevin reads every Monday. The headline is never
+trimmed by the 150-word cap — only the repo list gives way — so those five words cannot
+vanish on a busy week. Measured: the three-row fixture digest is 80 words.
+
+**The rule moved, and that is the bigger change.** The status chain lived inline in
+`bin/audit`'s repo loop, where the only way to exercise it was forty GitHub calls — so the
+column `bin/audit` itself calls "the whole point of this tool" had no test at all, while the
+two jq predicates above it had four each. Every bug this repo has caught in itself has been
+a confident answer nobody could test. Adding a ninth branch to an untested chain would have
+been that bet a fourth time. It is `bin/lib/verdict.sh` now: a pure function of eight
+strings, sourced by `bin/audit` and by the self-check.
+
+### Fixture results
+
+`bin/lib/check-audit.sh` gained two sections and now runs 82 assertions, all green:
+
+- **Section 9 — the status word itself.** Every pre-existing branch pinned by name (that is
+  what proves the extraction was verbatim), then the new shape from eight angles: enrolled
+  with an external check, with a multi-context check, with no app manifest, with the approve
+  switch unread (`--skip-actions` leaves it `?`, and that must not demote a good repo —
+  the same absent-versus-false trap `APPROVE_JQ` pins one level down); and drift when the
+  gate, the auto-merge switch, or the approve switch is missing.
+- **…and an exhaustive sweep.** All 1,440 combinations of the eight inputs, asserting the
+  rule's entire output alphabet: 14 status words and no others. That is what makes the
+  retired wording *unreachable* rather than merely unused, and it catches a future typo that
+  the renderer would otherwise swallow — it switches on `startswith`, so an unrecognised
+  verdict is not an error, it is silently counted as drift.
+- **Section 10 — all three renderings.** Table summary and row, `--json` (`summary.enrolled`
+  2, `summary.enrolled_security_only` 1, `summary.security_only` 0, `summary.drifting` 1),
+  digest headline, the drifting repo's own line, the word cap — and a control proving the
+  parenthetical is absent when no repo earns it.
+
+**Mutation-tested**, because an assertion that cannot fail is not one. Renaming the status
+in `verdict.sh` to `enrolled (security only)` turned four named cases red and produced a
+one-line alphabet diff; restoring it went green again.
+
+**Ran for real** (`bin/audit --skip-actions`, ~200 calls, 85 seconds): 41 active repos —
+5 enrolled, 30 security-only, 6 forks, **0 drifting**. Every status word on all 41 real
+repos is inside the pinned 14-word alphabet. `ynai` reads `security-only` today with four
+open Dependabot pull requests, the oldest four days old; after the real enrol it becomes
+`enrolled (security fixes only)` and those four start merging behind the Vercel build.
+(Thirty security-only repos, against the brief's estimate of 29.)
+
+CI's shellcheck gains `-x` so it follows the `source` directive instead of filing the one
+file that decides every status word under "not specified as input".
+
+### The shared workflow's gate: a context is a context (read, not edited)
+
+The brief asked for this to be confirmed before anything relied on it. **It passes, and no
+edit is needed** — neither to `.github/workflows/dependabot-automerge.yml` nor to
+`templates/caller-stub.yml`.
+
+The `gate` step reads the base branch's required checks two ways and never asks where they
+come from:
+
+- rulesets — `[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context]`
+  takes `.context` and ignores anything beside it, `integration_id` included;
+- classic protection — `(.required_status_checks.checks | map(.context)) + (.contexts)`;
+- then `if [ -n "$checks" ] || [ "$IN_REQUIRE_CI" = "false" ]; then ok=true`.
+
+Nothing resolves a context to a workflow, a job, or an app. Every later step keys off
+`steps.gate.outputs.ok`, and the only other consumer, `required-checks`, is used twice: once
+in a log line, and once in the advisory stale-and-red step — whose jq already reads
+`(.name // .context // "")` and `(.conclusion // .state // "")`, i.e. it was written to
+handle commit statuses alongside check-runs. So an external status context is handled
+correctly there too, not merely ignored.
+
+Confidence: **high** for this repo's own code, which was read end to end. The remaining link
+is GitHub's, not ours — that a ruleset requiring the context `Vercel` is satisfied by a
+commit status whose context is `Vercel`. That is the same mechanism a job id relies on (a
+required check is one free-text namespace fed by both the statuses and the check-runs APIs),
+and it is what `bin/audit` has always assumed when it reads contexts out of a ruleset. It
+cannot be proved from here without creating the ruleset, which is the real enrol — so the
+first live security PR on `ynai` is the confirmation, and worth a look.
