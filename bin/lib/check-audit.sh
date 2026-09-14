@@ -117,6 +117,32 @@ for meth in skipped none; do
   say "json ($meth) projection is null"        "$(jq -r '.minutes.projected' <<< "$J")" "null"
 done
 
+echo "--- 4. the parser is named, and the regex fallback's silence is not read as 'none'"
+# The brief asked which YAML reader answered the two workflow warnings. It matters because
+# the regex path DECLINES the double-trigger question rather than guessing, so on that path
+# an empty list means not checked. Same zero-versus-absent rule, one level down.
+REGEX_ROWS=$(python3 -c 'import json,sys
+for line in open("bin/lib/fixtures/audit/rows.jsonl"):
+    line = line.strip()
+    if not line:
+        continue
+    row = json.loads(line)
+    row["parser"] = "regex"
+    row["double_trigger"] = []
+    print(json.dumps(row))')
+RT=$(python3 bin/lib/render-audit.py --mode table --owner khglynn --since 2026-09-01 <<< "$REGEX_ROWS")
+if grep -qF -- "regex fallback" <<< "$RT"; then echo "ok: table names the regex fallback"
+else echo "FAIL: table does not say the regex fallback ran"; fail=1; fi
+if grep -qF -- "means not checked, not none" <<< "$RT"; then echo "ok: table says its silence is not 'none'"
+else echo "FAIL: table lets the regex fallback's empty list read as clean"; fail=1; fi
+RD=$(python3 bin/lib/render-audit.py --mode digest --owner khglynn --since 2026-09-01 <<< "$REGEX_ROWS")
+if grep -qF -- "could not run this week" <<< "$RD"; then echo "ok: digest says the repeated-run check did not run"
+else echo "FAIL: digest is silent about the unchecked double trigger"; fail=1; fi
+# And the normal path names PyYAML rather than saying nothing at all.
+if grep -qF -- "parsed with PyYAML" <<< "$(python3 bin/lib/render-audit.py --mode table \
+     --owner khglynn --since 2026-09-01 < "$FIX")"; then echo "ok: table names PyYAML on the normal path"
+else echo "FAIL: table does not name the parser on the normal path"; fail=1; fi
+
 # And the measured path must keep saying a real number, or the fix above has gone too far.
 say "a measured run still reports minutes" \
     "$(python3 bin/lib/render-audit.py --mode json --owner khglynn --since 2026-09-01 \

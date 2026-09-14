@@ -132,6 +132,24 @@ def warn_lines(rows):
     return missing, double, unparsed
 
 
+def parsers_used(rows):
+    """Which YAML reader answered the two workflow warnings, and how many repos each read.
+
+    The brief asked for this to be said out loud, and it is not cosmetic: the regex
+    fallback (the path taken on a host without PyYAML, which a cloud routine may well be)
+    can answer the `timeout-minutes` half honestly and DECLINES the double-trigger
+    question rather than guessing. So on that path an empty double-trigger list means
+    "not checked", not "none found" — the same zero-versus-absent distinction the minutes
+    figure carries, one level down.
+    """
+    seen = {}
+    for r in rows:
+        p = r.get("parser")
+        if p:
+            seen[p] = seen.get(p, 0) + 1
+    return seen
+
+
 # ------------------------------------------------------------------ the table
 def render_table(rows, owner, since, cap, out, method="jobs", note=""):
     c = counts(rows)
@@ -222,6 +240,19 @@ def render_table(rows, owner, since, cap, out, method="jobs", note=""):
         for name, wfs in unparsed:
             print("- `%s`: could not read %s, so it was not checked (unknown, not clean)."
                   % (name, ", ".join("`%s`" % w for w in wfs)), file=out)
+        print(file=out)
+
+    used = parsers_used(rows)
+    if used.get("regex"):
+        print("⚠ %d %s workflows were read with the regex fallback (PyYAML was not "
+              "importable): it answers the time-limit question but DECLINES the "
+              "double-trigger one, so an empty double-trigger list above means not "
+              "checked, not none." % (used["regex"],
+                                      "repo's" if used["regex"] == 1 else "repos'"), file=out)
+        print(file=out)
+    elif used.get("pyyaml"):
+        print("_Workflow files parsed with PyYAML (%d %s)._"
+              % (used["pyyaml"], "repo" if used["pyyaml"] == 1 else "repos"), file=out)
         print(file=out)
 
     errs = [(r["name"], r["errors"]) for r in rows if r.get("errors")]
@@ -346,6 +377,9 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     if m["measured"] and (method == "timing" or note):
         tail.append("Note: the build-time figure was measured the quick way this week and "
                     "reads low.")
+    if parsers_used(rows).get("regex"):
+        tail.append("Note: the check for repeated test runs could not run this week, so "
+                    "nothing here says whether any repo has them.")
     if not m["measured"]:
         # The other half of a skipped Actions pass, and the part that is easy to miss: the
         # approval-permission drift rule reads the same scan, so a repo that is genuinely
