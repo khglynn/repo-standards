@@ -246,6 +246,7 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
       approve:(if ($scan|has("approve")) then $scan.approve else null end),
       approve_cell:$approve_cell,
       minutes:($scan.minutes // null), runs:($scan.runs // null),
+      free_runs:($scan.free_runs // null),
       timed:($scan.timed // null), capped:($scan.capped // false),
       runners:($scan.runners // []),
       missing_timeout:($scan.missing_timeout // []),

@@ -98,7 +98,8 @@ def minutes_picture(rows, since, method="jobs"):
             "unmeasured": unmeasured}
     if not measured:
         base.update({"private": None, "public": None, "daily": None, "projected": None,
-                     "runout": None, "capped": [], "nonlinux": [], "partial": []})
+                     "runout": None, "capped": [], "nonlinux": [], "partial": [],
+                     "free_runs": 0})
         return base
 
     private = sum(r.get("minutes") or 0 for r in measured_rows
@@ -114,11 +115,20 @@ def minutes_picture(rows, since, method="jobs"):
     capped = [r["name"] for r in measured_rows if r.get("capped")]
     nonlinux = sorted({x for r in measured_rows
                        for x in (r.get("runners") or []) if x != "UBUNTU"})
-    # A repo that ran builds this month but had none of them timed carries a 0 that is an
-    # absence, not a measurement — same trap one level down. So does one whose scan logged
-    # an error. Both make the total a floor rather than a figure.
+    # A repo that ran BILLABLE builds this month but had none of them timed carries a 0
+    # that is an absence, not a measurement — same trap one level down. So does one whose
+    # scan logged an error. Both make the total a floor rather than a figure.
+    #
+    # "Billable" is load-bearing here. The first version asked `runs and not timed`, and
+    # four repos whose only run this month was one of Dependabot's own free runs — timed
+    # 0, correctly — were reported as unmeasurable. A run that is deliberately excluded is
+    # not a run that went unread.
     partial = sorted({r["name"] for r in measured_rows
-                      if r.get("errors") or (r.get("runs") and not r.get("timed"))})
+                      if r.get("errors")
+                      or ((r.get("runs") or 0) - (r.get("free_runs") or 0) > 0
+                          and not r.get("timed"))})
+    free_runs = sum(r.get("free_runs") or 0 for r in measured_rows)
+    base.update({"free_runs": free_runs})
     base.update({"private": private, "public": public, "daily": daily,
                  "projected": int(round(projected)), "runout": runout,
                  "capped": capped, "nonlinux": nonlinux, "partial": partial})
@@ -221,6 +231,12 @@ def render_table(rows, owner, since, cap, out, method="jobs", note=""):
             print("Note: non-Linux runners seen (%s); their 2x (Windows) / 10x (macOS) "
                   "multipliers are applied. Larger runners bill per-minute rates this cannot "
                   "see." % ", ".join(m["nonlinux"]), file=out)
+        if m.get("free_runs"):
+            print("Dependabot's own update runs are excluded — %d of them this month. GitHub "
+                  "does not bill those on standard runners (GitHub Docs, *Dependabot on "
+                  "GitHub Actions runners*, read 2026-09-14); counting them had `ynai` "
+                  "reading 15 minutes when its real cost was nil."
+                  % m["free_runs"], file=out)
         print("_Rebuilt from each job's start and finish, rounded up to the minute the way "
               "GitHub bills, times the runner multiplier. The billing endpoints would settle "
               "it but need token scopes this token does not have and should not be given for "
@@ -318,15 +334,20 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     else:
         budget = ("Build time on the private repos this month: about %d minutes of the free "
                   "3,000 (an estimate)." % m["private"])
-        if m["unmeasured"] or m["partial"]:
-            budget += (" %d of the %d repos could not be measured, so the real figure is "
-                       "higher." % (len(m["unmeasured"]) + len(m["partial"]), len(rows)))
-        elif m["runout"]:
+        # The date comes first and is never suppressed. An incomplete measurement makes the
+        # figure a FLOOR, which moves the run-out date earlier, not later — so dropping the
+        # date because the reading was partial withholds the more urgent version of the
+        # news. Say the date, then say the figure is a floor.
+        if m["runout"]:
             budget += (" At this rate the free minutes run out around %s."
                        % m["runout"].strftime("%-d %b"))
         else:
             budget += (" At this rate the month ends near %d, inside the free pool."
                        % m["projected"])
+        short = len(m["unmeasured"]) + len(m["partial"])
+        if short:
+            budget += (" %d of the %d repos could not be measured, so the real figure is "
+                       "higher and that date could be sooner." % (short, len(rows)))
     head.append(budget)
 
     # ---- one line per repo that needs something

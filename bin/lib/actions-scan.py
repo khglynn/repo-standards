@@ -7,7 +7,7 @@ Reads a TSV of `name<TAB>default_branch<TAB>visibility` on stdin and prints one 
 object keyed by repo name:
 
     {"eachie": {"approve": true,
-                "runs": 416, "timed": 300, "capped": true,
+                "runs": 416, "free_runs": 32, "timed": 300, "capped": true,
                 "minutes": 812, "runners": ["UBUNTU"],
                 "missing_timeout": ["ci.yml:unit"],
                 "double_trigger": [],
@@ -35,6 +35,12 @@ HOW THE MINUTES ARE COUNTED, AND THE MEASUREMENT THAT CHANGED THE METHOD
 `minutes` is GitHub's own billing rule rebuilt from `/actions/runs/{id}/jobs`: **each job,
 rounded up to the whole minute**, skipped jobs excluded, times the runner multiplier
 (Linux 1x, Windows 2x, macOS 10x, read from each job's `labels`).
+
+**Dependabot's own update runs are excluded, because GitHub does not bill them** on
+standard runners (GitHub Docs, *Dependabot on GitHub Actions runners*, read 2026-09-14).
+See `_is_free_dependabot_run` — they are the runs that OPEN the update pull requests, not
+a repo's CI running on one, and the whole of ynai's 15-minute figure was nine of them.
+`free_runs` counts what was excluded so the number of runs stays honest.
 
 Two dead ends are worth writing down so nobody spends the hour again.
 
@@ -189,7 +195,7 @@ def month_start(today):
 
 def scan_repo_phase1(client, name, default_branch, owner, since, cap):
     """Everything for one repo except the per-run timing calls."""
-    out = {"approve": None, "runs": 0, "capped": False, "run_ids": [],
+    out = {"approve": None, "runs": 0, "free_runs": 0, "capped": False, "run_ids": [],
            "missing_timeout": [], "double_trigger": [], "unparsed": [],
            "parser": "pyyaml" if hygiene.HAVE_YAML else "regex", "errors": []}
     repo = "%s/%s" % (owner, name)
@@ -224,6 +230,9 @@ def scan_repo_phase1(client, name, default_branch, owner, since, cap):
             # estimate jitter downward on re-runs. Skipped, and counted in `runs` so the
             # number of runs stays honest.
             out["runs"] += 1
+            if _is_free_dependabot_run(run):
+                out["free_runs"] += 1
+                continue
             if run.get("status") == "completed" and len(out["run_ids"]) < cap:
                 out["run_ids"].append(run["id"])
         if len(runs) < 100:
@@ -263,6 +272,31 @@ def scan_repo_phase1(client, name, default_branch, owner, since, cap):
         out["parser"] = found["parser"]
     # A repo with no .github/workflows 404s here. That is an answer, not an error.
     return out
+
+
+def _is_free_dependabot_run(run):
+    """Dependabot's OWN update runs, which GitHub does not bill on standard runners.
+
+    "Running Dependabot on standard GitHub-hosted and self-hosted runners does not count
+    towards your included GitHub Actions minutes" — GitHub Docs, *Dependabot on GitHub
+    Actions runners*, read 2026-09-14. Counting them made this audit's headline overstate
+    the month: ynai's entire 15-minute figure was nine of these and nothing else, and the
+    first full run told Kevin his free minutes would run out on 16 September.
+
+    These are the runs GitHub synthesises to OPEN the update pull requests. They are not
+    the repo's own CI running ON a Dependabot pull request — that is an ordinary
+    `pull_request` run of a file in `.github/workflows/`, it is billed, and excluding it
+    would swing the error the other way. The two are told apart by `path`: a Dependabot
+    update run has no workflow file and reports `dynamic/dependabot/dependabot-updates`
+    (verified against khglynn/ynai run 34538498192, 2026-09-14).
+
+    THE EXCEPTION THIS DOES NOT HANDLE: on *larger* runners GitHub bills Dependabot at the
+    normal rate. Telling that apart needs the jobs call this exclusion exists to skip, and
+    every repo here runs `ubuntu-latest`. If that changes, the table's "non-Linux runners
+    seen" note is the tell, and this is the first thing to revisit.
+    """
+    return (run.get("event") == "dynamic"
+            and str(run.get("path") or "").startswith("dynamic/dependabot/"))
 
 
 def _why(err):

@@ -143,6 +143,33 @@ if grep -qF -- "parsed with PyYAML" <<< "$(python3 bin/lib/render-audit.py --mod
      --owner khglynn --since 2026-09-01 < "$FIX")"; then echo "ok: table names PyYAML on the normal path"
 else echo "FAIL: table does not name the parser on the normal path"; fail=1; fi
 
+echo "--- 5. excluded-and-free is not the same as unread, and a floor still gets a date"
+# Dependabot's own update runs are excluded from the minutes (GitHub does not bill them).
+# The first cut of the "could not be measured" test asked `runs and not timed`, which
+# reported four repos whose ONLY run this month was one of those free ones as unmeasurable.
+# A run deliberately excluded is not a run that went unread.
+FREEONLY='{"name":"wkt","visibility":"PRIVATE","status":"security-only","prs":"0","pr_count":0,
+ "pr_oldest_days":null,"minutes":0,"runs":1,"free_runs":1,"timed":0,"capped":false,
+ "runners":[],"missing_timeout":[],"double_trigger":[],"unparsed":[],"parser":"pyyaml",
+ "errors":[],"approve_cell":"true","auto_merge":"true","checks":"ci","dependabot":"no",
+ "stub":"no","manifest":"yes","pushed":"2026-09-02","is_fork":false}'
+say "a repo whose only run was free is not 'partial'" \
+    "$(jq -c '.' <<< "$FREEONLY" | python3 bin/lib/render-audit.py --mode json --owner khglynn \
+        --since 2026-09-01 | jq -c '.minutes.partial')" "[]"
+# …but a repo with billable runs and nothing timed still is.
+say "billable runs with nothing timed IS 'partial'" \
+    "$(jq -c '.runs = 5 | .free_runs = 1' <<< "$FREEONLY" \
+        | python3 bin/lib/render-audit.py --mode json --owner khglynn --since 2026-09-01 \
+        | jq -c '.minutes.partial')" '["wkt"]'
+# A partial read makes the total a FLOOR, so the run-out date moves earlier, not away.
+# Suppressing it because the reading was incomplete withholds the more urgent news.
+BIG=$(jq -c '.runs = 5 | .free_runs = 0 | .timed = 0 | .minutes = 2600' <<< "$FREEONLY")
+BD=$(python3 bin/lib/render-audit.py --mode digest --owner khglynn --since 2026-09-01 <<< "$BIG")
+if grep -qF -- "run out around" <<< "$BD"; then echo "ok: a partial read still names the run-out date"
+else echo "FAIL: the run-out date vanished on a partial read"; echo "$BD"; fail=1; fi
+if grep -qF -- "that date could be sooner" <<< "$BD"; then echo "ok: and says the date could be sooner"
+else echo "FAIL: partial read does not say the date could be sooner"; fail=1; fi
+
 # And the measured path must keep saying a real number, or the fix above has gone too far.
 say "a measured run still reports minutes" \
     "$(python3 bin/lib/render-audit.py --mode json --owner khglynn --since 2026-09-01 \
