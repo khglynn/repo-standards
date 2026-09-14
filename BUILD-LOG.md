@@ -1729,3 +1729,9 @@ Enrolling khglynn/ynai
 
  YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
 ```
+
+## 2026-09-14 17:19 CDT — ynai enrolled; the first live run of the new approve step failed on a gh flag
+
+- Kevin ran `bin/enroll khglynn/ynai --security-only --external-check Vercel` (the new mode, built and reviewed this afternoon) and merged the pointer PR (#17). Four `@dependabot recreate` nudges followed. The two majors (#18 nodemailer 9 → 10, #19 deepmerge-ts 7 → 8) were labelled `major-review-needed` correctly; a new "Dependabot verdict · ynai" routine (`trig_01S8V7kddMxPZbyLrDWgEBk3`, same prompt and filters as the other four) now exists to speak for them.
+- The two minors (#13, #14) reached the approve step and **failed**: `gh api --paginate --slurp … --jq` is rejected by gh ("the --slurp option is not supported with --jq or --template"). That was Codex's fix #3 from this morning, applied as suggested and never exercised live until now — every earlier merge predated it. The step failed loudly and labelled both PRs `dependabot-needs-human`, which is the designed failure. Fix: pipe to a separate `jq`, with an unreadable review list counting as zero (the only cost is a possible duplicate approval). Reproduced and proved locally against ynai #14 before pushing. The paginated ruleset read added at 80c2dbc already used the piped form and is fine.
+- Lesson for the log: a reviewer's exact command is a claim like any other; a flag combination has to be run once before it ships in a workflow that every repo calls.

@@ -421,8 +421,12 @@ jobs:
           fi
           # Count only this bot's APPROVED reviews on this exact head, across every page
           # (--paginate --slurp merges pages into one array-of-arrays; .[][] flattens it).
-          approved_here=$(gh api --paginate --slurp "repos/$REPO/pulls/$PR_NUMBER/reviews" --jq \
-            "[.[][] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and .user.login == \"github-actions[bot]\" and .user.type == \"Bot\")] | length")
+          # jq runs as a separate process on purpose: gh rejects --slurp together with
+          # --jq ("not supported"), which took the first live run of this step down on
+          # ynai #14 (2026-09-14). An unreadable review list counts as zero, which only
+          # risks a duplicate approval, never a missing one.
+          approved_here=$(gh api --paginate --slurp "repos/$REPO/pulls/$PR_NUMBER/reviews" | jq -r \
+            "[.[][] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and .user.login == \"github-actions[bot]\" and .user.type == \"Bot\")] | length" || echo 0)
           if [ "${approved_here:-0}" -gt 0 ]; then
             echo "approval: already approved by github-actions[bot] on $HEAD_SHA"
           else
