@@ -73,8 +73,12 @@ Do this, in order:
    repositories could not be read. An unchecked week and a clean week look identical
    unless the message says which one this was.
 
-   If it refuses to start because GitHub's hourly limit is used up, it says when to come
-   back. Do not wait for that: go to step 2 and say the automatic check could not run.
+   If it refuses to start because GitHub's hourly limit is too low, it says when to come
+   back and prints two cheaper commands. Do not wait for the reset: run
+   `bin/audit --digest --skip-actions`, which costs almost nothing and still reports
+   which repositories have fallen out of the standard. That output says for itself that
+   build time went unchecked; carry it through. If that refuses too, go to step 2 and say
+   the automatic check could not run.
 
 2. If `gh auth status` fails, or `bin/audit --digest` exits non-zero or prints nothing,
    fall back to the GitHub connector. List the open pull requests opened by Dependabot in
@@ -82,8 +86,17 @@ Do this, in order:
    them and find the oldest. You will not be able to check for drift or for build-time
    usage this way, and you must say so in plain words rather than leaving it out.
 
-3. Post ONE message to the Slack channel #dependabot (channel id C0C1114321Z), in this
-   shape and nothing more:
+3. Post ONE message to the Slack channel #dependabot (channel id C0C1114321Z).
+
+   **If `bin/audit --digest` ran, post what it printed, as it printed it.** It is already
+   written for Kevin, already inside the length it needs to be, and already says the
+   careful things — that the minutes are an estimate, that a figure is a floor, that
+   something went unmeasured. Do not rewrite it, do not summarise it, do not drop lines to
+   make it shorter, and do not add a line of your own. If some part of it reads oddly,
+   post it anyway and say so in your run notes; the wording belongs in the tool, where it
+   can be reviewed, not in a rewrite nobody sees.
+
+   **Only if you fell back to step 2**, write the message yourself in this shape:
 
    A single opening line: how many repositories keep themselves up to date out of how many
    in total, how many update pull requests are waiting and how old the oldest one is, and
@@ -95,23 +108,29 @@ Do this, in order:
    naming the repository and what is waiting or what is missing. Nothing for the repos
    that are fine.
 
-   Then, if the audit reported them, at most two more lines: build jobs with no time
-   limit, and repositories that run their tests twice for every change.
+   Say nothing about build jobs with no time limit or repeated test runs. The connector
+   cannot see either, and a message that omits them without saying so reads as a week in
+   which there were none.
 
    Then a last line beginning "To act:" giving the single most useful thing Kevin could do
    this week, written as something he can act on immediately — which repository, and what
    to do there.
 
-   If you fell back to step 2, replace the minutes half of the opening line with a plain
-   sentence saying that the automatic check could not run this week, so only the waiting
-   pull requests are reported. If the audit ran but reported that build time was not
-   checked, carry that sentence through as it is printed — never replace it with a number,
-   and never with "0".
+   In the opening line, replace the minutes half with a plain sentence saying that the
+   automatic check could not run this week, so only the waiting pull requests are
+   reported. Never put a number there, and never a zero: you did not measure it.
 
-4. Writing rules for the message. Plain English only. No acronyms — write "the automatic
-   tests", not "CI". No file paths, job names, branch names or version numbers. One
-   sentence per line, no line longer than that. Under 150 words in total. Never wrap
-   anything in angle brackets: Slack turns them into link markup and the message breaks.
+4. Writing rules, for a message you had to write yourself. Plain English only. No acronyms
+   — write "the automatic tests", not "CI". No file paths, job names, branch names or
+   version numbers. One sentence per line. Keep it short enough to read at a glance, which
+   is about 150 words. Never wrap anything in angle brackets: Slack turns them into link
+   markup and the message breaks.
+
+   These rules do not apply to the audit's own output, which already follows them and
+   which you post unchanged. The two instructions used to contradict each other — "use its
+   numbers exactly as printed" alongside a word limit the real output exceeded — which
+   left the routine quietly choosing which repositories to drop. The length is the tool's
+   problem now, and it enforces it.
 
 5. Do not merge, close, approve, comment on or push to anything. Do not open issues. Do
    not post anything else to Slack. This routine only ever reads and reports.
