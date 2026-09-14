@@ -54,7 +54,8 @@ jobs:
           # rule; without -x the one function that decides every status word would be
           # linted only as a standalone file and never in the context that uses it.
           shellcheck -x bin/enroll bin/audit bin/classify-pr bin/lib/verdict.sh \
-                     bin/lib/verdict-matrix.sh bin/lib/check-classifier.sh \
+                     bin/lib/verdict-matrix.sh bin/lib/check-evidence.sh \
+                     bin/lib/evidence-matrix.sh bin/lib/check-classifier.sh \
                      bin/lib/check-workflow-hygiene.sh bin/lib/check-audit.sh
           python3 -m py_compile bin/lib/*.py
 

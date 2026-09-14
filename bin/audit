@@ -220,9 +220,14 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   done
 
   # --- required status checks on the default branch: rulesets first, classic as fallback
-  checks=$(gh api "repos/$R/rules/branches/${default_branch//\//%2F}" 2>/dev/null \
-            | jq -r '[.[] | select(.type=="required_status_checks")
-                          | .parameters.required_status_checks[]?.context] | unique | join(", ")' 2>/dev/null || true)
+  # --paginate: this endpoint defaults to 30 rules, and a required check on page two would
+  # read as NO required check — which is a drift verdict about a repo that is fine, and the
+  # same truncation sin as the tree listing above. (Found in bin/enroll's copy by a Codex
+  # review, 2026-09-14; fixed in both.) One context per line across pages, joined here.
+  checks=$(gh api --paginate "repos/$R/rules/branches/${default_branch//\//%2F}?per_page=100" \
+             --jq '.[] | select(.type=="required_status_checks")
+                       | .parameters.required_status_checks[]?.context' 2>/dev/null \
+            | sort -u | jq -Rrs 'split("\n") | map(select(length > 0)) | join(", ")' 2>/dev/null || true)
   if [ -z "$checks" ]; then
     checks=$(gh api "repos/$R/branches/${default_branch//\//%2F}/protection" 2>/dev/null \
               | jq -r '(((.required_status_checks.checks // []) | map(.context))

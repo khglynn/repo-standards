@@ -453,6 +453,44 @@ else
   echo "ok: the retired no-dependabot.yml verdict is unreachable, not merely unused"
 fi
 
+echo "--- 9b. the --external-check evidence rule, pinned the same way"
+# This one was an inline if/elif chain in bin/enroll for about an hour, and in that hour a
+# branch added at the top shadowed every recency case below it: a check that had stopped
+# firing on Dependabot's newest branch still enrolled cleanly on month-old evidence. Caught
+# by a simulated run, not by reading — which is the argument for pinning it here.
+# shellcheck source=bin/lib/check-evidence.sh
+. bin/lib/check-evidence.sh
+e() { local label="$1" want="$2"; shift 2; say "$label" "$(evidence_verdict "$@")" "$want"; }
+#   e <label> <expected>   bot_proof bot_read bot_newest_ok bot_missing bot_seen allow
+e "newest bot PR carries it, none missing"      accept-bot            "PR #1" 2 yes 0 2 ""
+e "newest carries it, an older one does not"    accept-bot-older-gap  "PR #1" 2 yes 1 2 ""
+e "newest does NOT carry it — refused"          refuse-newest         "PR #9" 2 no  1 2 ""
+e "…even when no bot PR ever carried it"        refuse-newest         ""      1 no  1 1 ""
+e "…unless the operator overrides deliberately" accept-override       "PR #9" 2 no  1 2 "1"
+e "bot PRs exist but none could be read"        accept-unread-bot     ""      0 ""  0 2 ""
+e "no bot PR in the sample at all"              accept-no-bot         ""      0 ""  0 0 ""
+e "an override does not rescue an unread answer" accept-unread-bot    ""      0 ""  0 2 "1"
+e "an override does not invent bot evidence"    accept-no-bot         ""      0 ""  0 0 "1"
+
+EMATRIX=bin/lib/fixtures/audit/evidence-matrix.txt
+if diff -u "$EMATRIX" <(bin/lib/evidence-matrix.sh) > "$TMPDIFF"; then
+  echo "ok: all $(grep -cv '^#' "$EMATRIX") evidence combinations map to their pinned verdict"
+else
+  echo "FAIL: the evidence rule's input -> output mapping changed"
+  head -30 "$TMPDIFF" | sed 's/^/     /'
+  echo "     (if intended: bin/lib/evidence-matrix.sh > $EMATRIX, read the diff, commit it)"
+  fail=1
+fi
+# The one invariant worth stating in words: a readable Dependabot pull request that does not
+# carry the check can only ever end in refusal or a deliberate override. Never a quiet yes.
+bad=$(grep -v '^#' "$EMATRIX" | awk '$2 > 0 && $3 == "no"' | grep -vE '\-> (refuse-newest|accept-override)$' || true)
+if [ -z "$bad" ]; then
+  echo "ok: a readable bot PR missing the check never yields a quiet acceptance"
+else
+  echo "FAIL: some combination accepts despite the newest bot PR missing the check"
+  printf '%s\n' "$bad" | sed 's/^/     /'; fail=1
+fi
+
 echo "--- 10. the security-only enrolment through all three renderings"
 # It must read as ENROLLED (the repo is handled — its security fixes merge themselves) and
 # the parenthetical must survive, because "keeps itself up to date" alone overstates a repo

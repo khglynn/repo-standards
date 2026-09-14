@@ -44,6 +44,10 @@ set -euo pipefail
 
 STD_REPO="khglynn/repo-standards"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The --external-check evidence decision, in its own file so its case order is pinned by a
+# fixture. See bin/lib/check-evidence.sh.
+# shellcheck source=bin/lib/check-evidence.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bin/lib/check-evidence.sh"
 TEMPLATES="$HERE/templates"
 BRANCH_NAME="standards/enroll"
 # One string, used twice: to write the commit and to recognise our own past commit before
@@ -239,6 +243,14 @@ if [ -n "$EXTERNAL_CHECK" ]; then
   proof=""
   bot_proof=""
   bot_seen=0
+  # Counted apart from bot_seen on purpose: refusing because "none of the N Dependabot pull
+  # requests reported it" is a claim about what was READ. A Dependabot PR whose head could
+  # not be reached says nothing either way, and treating it as ungated would be the same
+  # confident-wrong-empty this loop's other comments are about (Codex re-review, 2026-09-14).
+  bot_read=0
+  bot_missing=0
+  bot_newest=""        # the newest READABLE Dependabot PR, and whether it carried the check
+  bot_newest_ok=""
   heads_total=0
   heads_read=0
   heads_unread=""
@@ -277,12 +289,14 @@ if [ -n "$EXTERNAL_CHECK" ]; then
     if runs=$(gh api --paginate "repos/$TARGET/commits/$head_sha/check-runs?per_page=100" \
                 --jq '.check_runs[].name' </dev/null 2>/dev/null); then
       heads_read=$((heads_read + 1))
+      st_read=yes
+      if [ "$is_bot" = "yes" ]; then bot_read=$((bot_read + 1)); fi
       if statuses=$(gh api --paginate "repos/$TARGET/commits/$head_sha/status?per_page=100" \
                       --jq '.statuses[].context' </dev/null 2>/dev/null); then :; else
         statuses=""; heads_partial="$heads_partial #$pr_num"
       fi
     else
-      runs=""; statuses=""
+      runs=""; statuses=""; st_read=no
       heads_unread="$heads_unread #$pr_num"
     fi
 
@@ -304,6 +318,18 @@ if [ -n "$EXTERNAL_CHECK" ]; then
     if [ -n "$hit" ]; then
       [ -n "$proof" ] || proof="$hit"
       if [ "$is_bot" = "yes" ] && [ -z "$bot_proof" ]; then bot_proof="$hit"; fi
+    fi
+    # The pull requests arrive newest-first, so the FIRST readable Dependabot one is the
+    # most recent — and that is the one that speaks to today. An older match used to stand
+    # on its own: a Vercel project that stopped building bot branches last week still
+    # enrolled cleanly on evidence from a month ago (Codex re-review, 2026-09-14).
+    if [ "$is_bot" = "yes" ] && [ "$st_read" = "yes" ]; then
+      if [ -n "$hit" ]; then
+        if [ -z "$bot_newest" ]; then bot_newest="#$pr_num"; bot_newest_ok=yes; fi
+      else
+        bot_missing=$((bot_missing + 1))
+        if [ -z "$bot_newest" ]; then bot_newest="#$pr_num"; bot_newest_ok=no; fi
+      fi
     fi
   done <<< "$prs"
 
@@ -340,31 +366,58 @@ if [ -n "$EXTERNAL_CHECK" ]; then
        as it is spelled. Nothing on $TARGET was changed."
   fi
 
-  if [ -n "$bot_proof" ]; then
-    say "   external check '$EXTERNAL_CHECK' reports on Dependabot's own pull requests ✓ — $bot_proof"
-  elif [ "$bot_seen" -gt 0 ] && [ "${ALLOW_UNPROVEN_CHECK:-}" = "1" ]; then
-    say "   '$EXTERNAL_CHECK' was reported on $proof, but NOT on any of the $bot_seen"
-    say "   Dependabot pull request(s) in the sample — ACCEPTED ANYWAY (ALLOW_UNPROVEN_CHECK=1)."
-    say "   ⚠ if the check really does not fire on dependabot/* branches, every update PR"
-    say "     here will queue behind a gate that never reports. Watch the first one."
-  elif [ "$bot_seen" -gt 0 ]; then
-    say "   '$EXTERNAL_CHECK' was reported on $proof,"
-    say "   but NOT on any of the $bot_seen Dependabot pull request(s) in the same sample."
-    # The escape hatch is named because this refusal CAN be wrong: a Dependabot pull request
-    # that predates the integration is ungated for a reason that no longer applies. That is
-    # the one case a person can see and the script cannot, so it gets an override rather
-    # than a wall — the same shape as ALLOW_FORK above.
-    die "that is the failure this flag exists to prevent, seen directly: the check runs on
-       people's branches and not on Dependabot's, so every update PR would queue behind a
-       gate that never reports. Fix the integration to build Dependabot's branches (in
+  # What the history actually proved, decided in bin/lib/check-evidence.sh so the ORDER of
+  # the cases is pinned by a fixture rather than by whoever edits this next. It was an inline
+  # chain for about an hour, and in that hour a branch added at the top shadowed every
+  # recency case below it.
+  case "$(evidence_verdict "$bot_proof" "$bot_read" "$bot_newest_ok" "$bot_missing" \
+                           "$bot_seen" "${ALLOW_UNPROVEN_CHECK:-}")" in
+    accept-bot)
+      say "   external check '$EXTERNAL_CHECK' reports on Dependabot's own pull requests ✓ — $bot_proof"
+      ;;
+    accept-bot-older-gap)
+      say "   external check '$EXTERNAL_CHECK' reports on Dependabot's own pull requests ✓ — $bot_proof"
+      say "   (note: $bot_missing older Dependabot pull request(s) did not carry it — most"
+      say "    likely from before the integration existed. The newest one does, which counts.)"
+      ;;
+    accept-override)
+      say "   the NEWEST readable Dependabot pull request ($bot_newest) does NOT carry"
+      say "   '$EXTERNAL_CHECK' — ACCEPTED ANYWAY (ALLOW_UNPROVEN_CHECK=1)."
+      say "   ⚠ if the check really does not fire on dependabot/* branches, every update PR"
+      say "     here will queue behind a gate that never reports. Watch the first one."
+      ;;
+    refuse-newest)
+      if [ -n "$bot_proof" ]; then
+        say "   '$EXTERNAL_CHECK' was reported on an OLDER Dependabot pull request ($bot_proof),"
+        say "   but the newest readable one ($bot_newest) does not carry it."
+      else
+        say "   '$EXTERNAL_CHECK' was reported on $proof,"
+        say "   but NOT on any of the $bot_read Dependabot pull request(s) that could be read."
+      fi
+      # The escape hatch is named because this refusal CAN be wrong: a Dependabot pull
+      # request that predates the integration, or one opened seconds ago whose build has not
+      # started, is ungated for a reason that will not last. That is the case a person can
+      # see and the script cannot, so it gets an override rather than a wall — the same
+      # shape as ALLOW_FORK above.
+      die "that is the failure this flag exists to prevent, seen directly: the check is not
+       reporting on Dependabot's branches today, so every update PR would queue behind a
+       gate that never goes green. Fix the integration to build Dependabot's branches (in
        Vercel: Git → ignored build step / branch settings), then re-run.
-       If those Dependabot PRs simply predate the integration, re-run with
-       ALLOW_UNPROVEN_CHECK=1. Nothing on $TARGET was changed."
-  else
-    say "   external check '$EXTERNAL_CHECK' has really been reported here ✓ — $proof"
-    say "   ⚠ but none of those $heads_total pull requests was Dependabot's, so nothing here"
-    say "     proves the check reports on a dependabot/* branch. Watch the first security PR."
-  fi
+       If that pull request simply predates the integration, or its build has not started
+       yet, re-run with ALLOW_UNPROVEN_CHECK=1. Nothing on $TARGET was changed."
+      ;;
+    accept-unread-bot)
+      say "   external check '$EXTERNAL_CHECK' has really been reported here ✓ — $proof"
+      say "   ⚠ but the $bot_seen Dependabot pull request(s) in the sample could not be read,"
+      say "     so nothing here says whether the check fires on a dependabot/* branch —"
+      say "     that is an unread answer, not a good one. Watch the first security PR."
+      ;;
+    *)
+      say "   external check '$EXTERNAL_CHECK' has really been reported here ✓ — $proof"
+      say "   ⚠ but none of those $heads_total pull requests was Dependabot's, so nothing here"
+      say "     proves the check reports on a dependabot/* branch. Watch the first security PR."
+      ;;
+  esac
   say "   ⚠ it is reported by a third-party app, not by a file in this repo. If that"
   say "     integration is ever removed or stops building this repo's branches, the gate"
   say "     goes silent and update PRs will queue forever rather than fail loudly."
@@ -380,20 +433,59 @@ fi
 # themselves. Read the branch and say what is true. Rulesets first (readable without admin),
 # classic as the fallback, exactly as bin/audit and the shared workflow do it.
 BRANCH_ESC=${DEFAULT_BRANCH//\//%2F}
-EXISTING_CHECKS=""
-CHECKS_KNOWN=no
-if rules_json=$(gh api "repos/$TARGET/rules/branches/$BRANCH_ESC" 2>/dev/null); then
-  CHECKS_KNOWN=yes
-  EXISTING_CHECKS=$(printf '%s' "$rules_json" | jq -r '[.[] | select(.type=="required_status_checks")
-      | .parameters.required_status_checks[]?.context] | unique | join(", ")' 2>/dev/null || true)
-fi
-if [ -z "$EXISTING_CHECKS" ]; then
-  if prot_json=$(gh api "repos/$TARGET/branches/$BRANCH_ESC/protection" 2>/dev/null); then
-    CHECKS_KNOWN=yes
-    EXISTING_CHECKS=$(printf '%s' "$prot_json" | jq -r '(((.required_status_checks.checks // []) | map(.context))
-        + (.required_status_checks.contexts // [])) | unique | join(", ")' 2>/dev/null || true)
+: > "$WORK/branch-checks.txt"
+# TWO SURFACES, TRACKED APART. `none` may only be concluded when BOTH said "absent" — the
+# first cut asked one question of two endpoints and let either one's silence stand for the
+# pair, so rulesets-empty-plus-classic-unreadable (and the mirror image) both produced a
+# confident "nothing will auto-merge here". A swallowed jq failure did the same while
+# claiming the read had succeeded. Each surface is now present / absent / unknown on its own
+# evidence. (Codex re-review, 2026-09-14.)
+#
+# `--paginate` on the rulesets call too: it defaults to 30 rules, and a required check on
+# page two would read as no check at all — the same truncation sin as the history endpoints.
+rules_state=unknown
+classic_state=unknown
+
+# gh exits non-zero if the request OR the jq program fails, so "unknown" covers both.
+if rules_ctx=$(gh api --paginate "repos/$TARGET/rules/branches/$BRANCH_ESC?per_page=100" \
+                 --jq '.[] | select(.type=="required_status_checks")
+                           | .parameters.required_status_checks[]?.context' 2>/dev/null); then
+  if [ -n "$rules_ctx" ]; then
+    rules_state=present
+    printf '%s\n' "$rules_ctx" >> "$WORK/branch-checks.txt"
+  else
+    rules_state=absent
   fi
 fi
+
+# ⚠ 403 IS NOT 404, and this exact bug has been fixed in this repo once already — in the
+# shared workflow, 2026-09-11, where swallowing both printed "no classic branch protection
+# on main" about a repo that had it. Reading `/branches/{b}/protection` needs ADMIN, so a
+# non-admin token gets 403 on a classically-protected repo; treating that as "absent" is how
+# a run ends up promising that nothing merges by itself. `-i` keeps the status line, which is
+# the only thing that tells the two apart.
+prot_raw=$(gh api -i "repos/$TARGET/branches/$BRANCH_ESC/protection" 2>/dev/null || true)
+prot_status=$(printf '%s' "$prot_raw" | head -1 | awk '{print $2}')
+case "$prot_status" in
+  200)
+    if classic_ctx=$(printf '%s' "$prot_raw" | sed -n '/^{/,$p' \
+        | jq -r '(((.required_status_checks.checks // []) | map(.context))
+                  + (.required_status_checks.contexts // []))[]' 2>/dev/null); then
+      if [ -n "$classic_ctx" ]; then
+        classic_state=present
+        printf '%s\n' "$classic_ctx" >> "$WORK/branch-checks.txt"
+      else
+        classic_state=absent
+      fi
+    fi
+    ;;
+  404) classic_state=absent ;;   # genuinely no classic protection
+  *)   classic_state=unknown ;;  # 403, 5xx, no answer: we cannot SEE, which is not "none"
+esac
+
+EXISTING_CHECKS=$(sort -u "$WORK/branch-checks.txt" \
+  | jq -Rrs 'split("\n") | map(select(length > 0)) | join(", ")')
+
 # GATE_STATE is what the PR body and the summary speak from, so they can never describe a
 # gate this run did not look at: `new` (we are about to require one), `preexisting` (none
 # given, the branch already has one), `none` (none given, the branch really has none),
@@ -403,12 +495,12 @@ if [ -n "$REQUIRED_CHECK" ]; then
 elif [ -n "$EXISTING_CHECKS" ]; then
   GATE_STATE=preexisting
   say "   no check flag given, but $DEFAULT_BRANCH already requires: $EXISTING_CHECKS"
-elif [ "$CHECKS_KNOWN" = "yes" ]; then
+elif [ "$rules_state" = "absent" ] && [ "$classic_state" = "absent" ]; then
   GATE_STATE=none
 else
   GATE_STATE=unknown
-  say "   could not read what $DEFAULT_BRANCH requires — neither rulesets nor classic"
-  say "   protection answered, so this run will not claim either way."
+  say "   could not read what $DEFAULT_BRANCH requires (rulesets: $rules_state, classic"
+  say "   protection: $classic_state), so this run will not claim either way."
 fi
 
 # ----------------------------------------------------------------------- 2. labels
@@ -626,7 +718,17 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
       echo "**To undo it:** delete \`.github/workflows/dependabot-automerge.yml\`."
     } > "$body_file"
 
-    existing_pr=$(gh pr list --repo "$TARGET" --head "$BRANCH_NAME" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+    # A FAILED LOOKUP IS NOT "THERE IS NO PULL REQUEST". The branch is already pushed by
+    # this point, so swallowing the failure sent the run down the "create" path; creation
+    # then fails because the PR does exist, and its OLD description survives a branch that
+    # has changed shape underneath it (Codex re-review, 2026-09-14).
+    if existing_pr=$(gh pr list --repo "$TARGET" --head "$BRANCH_NAME" --state open \
+                       --json url --jq '.[0].url' 2>/dev/null); then
+      pr_lookup=ok
+    else
+      pr_lookup=failed; existing_pr=""
+      say "   ⚠ could not check whether a pull request is already open for this branch."
+    fi
     if [ -n "$existing_pr" ]; then
       PR_URL="$existing_pr"
       if gh pr edit "$PR_URL" --body-file "$body_file" >/dev/null 2>&1; then
@@ -643,6 +745,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
       else
         say "   could not open the PR automatically ($PR_URL). The branch IS pushed; run:"
         say "      gh pr create --repo $TARGET --base $DEFAULT_BRANCH --head $BRANCH_NAME --fill"
+        if [ "$pr_lookup" = "failed" ]; then
+          say "   ⚠ and since the lookup above also failed, a pull request may ALREADY be open"
+          say "     on this branch carrying the PREVIOUS enrolment's description. Check it:"
+          say "      gh pr view --repo $TARGET --json url,body \$(gh pr list --repo $TARGET --head $BRANCH_NAME --json number --jq '.[0].number')"
+        fi
         PR_URL="(branch pushed, PR not opened)"
       fi
     fi

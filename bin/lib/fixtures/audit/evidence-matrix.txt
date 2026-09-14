@@ -1,0 +1,218 @@
+# bin/lib/check-evidence.sh, every input combination.
+# columns: bot_proof bot_read bot_newest_ok bot_missing bot_seen allow -> verdict
+(none) 0 yes 0 0 1 -> accept-no-bot
+(none) 0 yes 0 0 (unset) -> accept-no-bot
+(none) 0 yes 0 1 1 -> accept-unread-bot
+(none) 0 yes 0 1 (unset) -> accept-unread-bot
+(none) 0 yes 0 2 1 -> accept-unread-bot
+(none) 0 yes 0 2 (unset) -> accept-unread-bot
+(none) 0 yes 1 0 1 -> accept-no-bot
+(none) 0 yes 1 0 (unset) -> accept-no-bot
+(none) 0 yes 1 1 1 -> accept-unread-bot
+(none) 0 yes 1 1 (unset) -> accept-unread-bot
+(none) 0 yes 1 2 1 -> accept-unread-bot
+(none) 0 yes 1 2 (unset) -> accept-unread-bot
+(none) 0 no 0 0 1 -> accept-no-bot
+(none) 0 no 0 0 (unset) -> accept-no-bot
+(none) 0 no 0 1 1 -> accept-unread-bot
+(none) 0 no 0 1 (unset) -> accept-unread-bot
+(none) 0 no 0 2 1 -> accept-unread-bot
+(none) 0 no 0 2 (unset) -> accept-unread-bot
+(none) 0 no 1 0 1 -> accept-no-bot
+(none) 0 no 1 0 (unset) -> accept-no-bot
+(none) 0 no 1 1 1 -> accept-unread-bot
+(none) 0 no 1 1 (unset) -> accept-unread-bot
+(none) 0 no 1 2 1 -> accept-unread-bot
+(none) 0 no 1 2 (unset) -> accept-unread-bot
+(none) 0 (unset) 0 0 1 -> accept-no-bot
+(none) 0 (unset) 0 0 (unset) -> accept-no-bot
+(none) 0 (unset) 0 1 1 -> accept-unread-bot
+(none) 0 (unset) 0 1 (unset) -> accept-unread-bot
+(none) 0 (unset) 0 2 1 -> accept-unread-bot
+(none) 0 (unset) 0 2 (unset) -> accept-unread-bot
+(none) 0 (unset) 1 0 1 -> accept-no-bot
+(none) 0 (unset) 1 0 (unset) -> accept-no-bot
+(none) 0 (unset) 1 1 1 -> accept-unread-bot
+(none) 0 (unset) 1 1 (unset) -> accept-unread-bot
+(none) 0 (unset) 1 2 1 -> accept-unread-bot
+(none) 0 (unset) 1 2 (unset) -> accept-unread-bot
+(none) 1 yes 0 0 1 -> accept-bot
+(none) 1 yes 0 0 (unset) -> accept-bot
+(none) 1 yes 0 1 1 -> accept-bot
+(none) 1 yes 0 1 (unset) -> accept-bot
+(none) 1 yes 0 2 1 -> accept-bot
+(none) 1 yes 0 2 (unset) -> accept-bot
+(none) 1 yes 1 0 1 -> accept-bot-older-gap
+(none) 1 yes 1 0 (unset) -> accept-bot-older-gap
+(none) 1 yes 1 1 1 -> accept-bot-older-gap
+(none) 1 yes 1 1 (unset) -> accept-bot-older-gap
+(none) 1 yes 1 2 1 -> accept-bot-older-gap
+(none) 1 yes 1 2 (unset) -> accept-bot-older-gap
+(none) 1 no 0 0 1 -> accept-override
+(none) 1 no 0 0 (unset) -> refuse-newest
+(none) 1 no 0 1 1 -> accept-override
+(none) 1 no 0 1 (unset) -> refuse-newest
+(none) 1 no 0 2 1 -> accept-override
+(none) 1 no 0 2 (unset) -> refuse-newest
+(none) 1 no 1 0 1 -> accept-override
+(none) 1 no 1 0 (unset) -> refuse-newest
+(none) 1 no 1 1 1 -> accept-override
+(none) 1 no 1 1 (unset) -> refuse-newest
+(none) 1 no 1 2 1 -> accept-override
+(none) 1 no 1 2 (unset) -> refuse-newest
+(none) 1 (unset) 0 0 1 -> accept-override
+(none) 1 (unset) 0 0 (unset) -> refuse-newest
+(none) 1 (unset) 0 1 1 -> accept-override
+(none) 1 (unset) 0 1 (unset) -> refuse-newest
+(none) 1 (unset) 0 2 1 -> accept-override
+(none) 1 (unset) 0 2 (unset) -> refuse-newest
+(none) 1 (unset) 1 0 1 -> accept-override
+(none) 1 (unset) 1 0 (unset) -> refuse-newest
+(none) 1 (unset) 1 1 1 -> accept-override
+(none) 1 (unset) 1 1 (unset) -> refuse-newest
+(none) 1 (unset) 1 2 1 -> accept-override
+(none) 1 (unset) 1 2 (unset) -> refuse-newest
+(none) 2 yes 0 0 1 -> accept-bot
+(none) 2 yes 0 0 (unset) -> accept-bot
+(none) 2 yes 0 1 1 -> accept-bot
+(none) 2 yes 0 1 (unset) -> accept-bot
+(none) 2 yes 0 2 1 -> accept-bot
+(none) 2 yes 0 2 (unset) -> accept-bot
+(none) 2 yes 1 0 1 -> accept-bot-older-gap
+(none) 2 yes 1 0 (unset) -> accept-bot-older-gap
+(none) 2 yes 1 1 1 -> accept-bot-older-gap
+(none) 2 yes 1 1 (unset) -> accept-bot-older-gap
+(none) 2 yes 1 2 1 -> accept-bot-older-gap
+(none) 2 yes 1 2 (unset) -> accept-bot-older-gap
+(none) 2 no 0 0 1 -> accept-override
+(none) 2 no 0 0 (unset) -> refuse-newest
+(none) 2 no 0 1 1 -> accept-override
+(none) 2 no 0 1 (unset) -> refuse-newest
+(none) 2 no 0 2 1 -> accept-override
+(none) 2 no 0 2 (unset) -> refuse-newest
+(none) 2 no 1 0 1 -> accept-override
+(none) 2 no 1 0 (unset) -> refuse-newest
+(none) 2 no 1 1 1 -> accept-override
+(none) 2 no 1 1 (unset) -> refuse-newest
+(none) 2 no 1 2 1 -> accept-override
+(none) 2 no 1 2 (unset) -> refuse-newest
+(none) 2 (unset) 0 0 1 -> accept-override
+(none) 2 (unset) 0 0 (unset) -> refuse-newest
+(none) 2 (unset) 0 1 1 -> accept-override
+(none) 2 (unset) 0 1 (unset) -> refuse-newest
+(none) 2 (unset) 0 2 1 -> accept-override
+(none) 2 (unset) 0 2 (unset) -> refuse-newest
+(none) 2 (unset) 1 0 1 -> accept-override
+(none) 2 (unset) 1 0 (unset) -> refuse-newest
+(none) 2 (unset) 1 1 1 -> accept-override
+(none) 2 (unset) 1 1 (unset) -> refuse-newest
+(none) 2 (unset) 1 2 1 -> accept-override
+(none) 2 (unset) 1 2 (unset) -> refuse-newest
+PR #14 0 yes 0 0 1 -> accept-no-bot
+PR #14 0 yes 0 0 (unset) -> accept-no-bot
+PR #14 0 yes 0 1 1 -> accept-unread-bot
+PR #14 0 yes 0 1 (unset) -> accept-unread-bot
+PR #14 0 yes 0 2 1 -> accept-unread-bot
+PR #14 0 yes 0 2 (unset) -> accept-unread-bot
+PR #14 0 yes 1 0 1 -> accept-no-bot
+PR #14 0 yes 1 0 (unset) -> accept-no-bot
+PR #14 0 yes 1 1 1 -> accept-unread-bot
+PR #14 0 yes 1 1 (unset) -> accept-unread-bot
+PR #14 0 yes 1 2 1 -> accept-unread-bot
+PR #14 0 yes 1 2 (unset) -> accept-unread-bot
+PR #14 0 no 0 0 1 -> accept-no-bot
+PR #14 0 no 0 0 (unset) -> accept-no-bot
+PR #14 0 no 0 1 1 -> accept-unread-bot
+PR #14 0 no 0 1 (unset) -> accept-unread-bot
+PR #14 0 no 0 2 1 -> accept-unread-bot
+PR #14 0 no 0 2 (unset) -> accept-unread-bot
+PR #14 0 no 1 0 1 -> accept-no-bot
+PR #14 0 no 1 0 (unset) -> accept-no-bot
+PR #14 0 no 1 1 1 -> accept-unread-bot
+PR #14 0 no 1 1 (unset) -> accept-unread-bot
+PR #14 0 no 1 2 1 -> accept-unread-bot
+PR #14 0 no 1 2 (unset) -> accept-unread-bot
+PR #14 0 (unset) 0 0 1 -> accept-no-bot
+PR #14 0 (unset) 0 0 (unset) -> accept-no-bot
+PR #14 0 (unset) 0 1 1 -> accept-unread-bot
+PR #14 0 (unset) 0 1 (unset) -> accept-unread-bot
+PR #14 0 (unset) 0 2 1 -> accept-unread-bot
+PR #14 0 (unset) 0 2 (unset) -> accept-unread-bot
+PR #14 0 (unset) 1 0 1 -> accept-no-bot
+PR #14 0 (unset) 1 0 (unset) -> accept-no-bot
+PR #14 0 (unset) 1 1 1 -> accept-unread-bot
+PR #14 0 (unset) 1 1 (unset) -> accept-unread-bot
+PR #14 0 (unset) 1 2 1 -> accept-unread-bot
+PR #14 0 (unset) 1 2 (unset) -> accept-unread-bot
+PR #14 1 yes 0 0 1 -> accept-bot
+PR #14 1 yes 0 0 (unset) -> accept-bot
+PR #14 1 yes 0 1 1 -> accept-bot
+PR #14 1 yes 0 1 (unset) -> accept-bot
+PR #14 1 yes 0 2 1 -> accept-bot
+PR #14 1 yes 0 2 (unset) -> accept-bot
+PR #14 1 yes 1 0 1 -> accept-bot-older-gap
+PR #14 1 yes 1 0 (unset) -> accept-bot-older-gap
+PR #14 1 yes 1 1 1 -> accept-bot-older-gap
+PR #14 1 yes 1 1 (unset) -> accept-bot-older-gap
+PR #14 1 yes 1 2 1 -> accept-bot-older-gap
+PR #14 1 yes 1 2 (unset) -> accept-bot-older-gap
+PR #14 1 no 0 0 1 -> accept-override
+PR #14 1 no 0 0 (unset) -> refuse-newest
+PR #14 1 no 0 1 1 -> accept-override
+PR #14 1 no 0 1 (unset) -> refuse-newest
+PR #14 1 no 0 2 1 -> accept-override
+PR #14 1 no 0 2 (unset) -> refuse-newest
+PR #14 1 no 1 0 1 -> accept-override
+PR #14 1 no 1 0 (unset) -> refuse-newest
+PR #14 1 no 1 1 1 -> accept-override
+PR #14 1 no 1 1 (unset) -> refuse-newest
+PR #14 1 no 1 2 1 -> accept-override
+PR #14 1 no 1 2 (unset) -> refuse-newest
+PR #14 1 (unset) 0 0 1 -> accept-override
+PR #14 1 (unset) 0 0 (unset) -> refuse-newest
+PR #14 1 (unset) 0 1 1 -> accept-override
+PR #14 1 (unset) 0 1 (unset) -> refuse-newest
+PR #14 1 (unset) 0 2 1 -> accept-override
+PR #14 1 (unset) 0 2 (unset) -> refuse-newest
+PR #14 1 (unset) 1 0 1 -> accept-override
+PR #14 1 (unset) 1 0 (unset) -> refuse-newest
+PR #14 1 (unset) 1 1 1 -> accept-override
+PR #14 1 (unset) 1 1 (unset) -> refuse-newest
+PR #14 1 (unset) 1 2 1 -> accept-override
+PR #14 1 (unset) 1 2 (unset) -> refuse-newest
+PR #14 2 yes 0 0 1 -> accept-bot
+PR #14 2 yes 0 0 (unset) -> accept-bot
+PR #14 2 yes 0 1 1 -> accept-bot
+PR #14 2 yes 0 1 (unset) -> accept-bot
+PR #14 2 yes 0 2 1 -> accept-bot
+PR #14 2 yes 0 2 (unset) -> accept-bot
+PR #14 2 yes 1 0 1 -> accept-bot-older-gap
+PR #14 2 yes 1 0 (unset) -> accept-bot-older-gap
+PR #14 2 yes 1 1 1 -> accept-bot-older-gap
+PR #14 2 yes 1 1 (unset) -> accept-bot-older-gap
+PR #14 2 yes 1 2 1 -> accept-bot-older-gap
+PR #14 2 yes 1 2 (unset) -> accept-bot-older-gap
+PR #14 2 no 0 0 1 -> accept-override
+PR #14 2 no 0 0 (unset) -> refuse-newest
+PR #14 2 no 0 1 1 -> accept-override
+PR #14 2 no 0 1 (unset) -> refuse-newest
+PR #14 2 no 0 2 1 -> accept-override
+PR #14 2 no 0 2 (unset) -> refuse-newest
+PR #14 2 no 1 0 1 -> accept-override
+PR #14 2 no 1 0 (unset) -> refuse-newest
+PR #14 2 no 1 1 1 -> accept-override
+PR #14 2 no 1 1 (unset) -> refuse-newest
+PR #14 2 no 1 2 1 -> accept-override
+PR #14 2 no 1 2 (unset) -> refuse-newest
+PR #14 2 (unset) 0 0 1 -> accept-override
+PR #14 2 (unset) 0 0 (unset) -> refuse-newest
+PR #14 2 (unset) 0 1 1 -> accept-override
+PR #14 2 (unset) 0 1 (unset) -> refuse-newest
+PR #14 2 (unset) 0 2 1 -> accept-override
+PR #14 2 (unset) 0 2 (unset) -> refuse-newest
+PR #14 2 (unset) 1 0 1 -> accept-override
+PR #14 2 (unset) 1 0 (unset) -> refuse-newest
+PR #14 2 (unset) 1 1 1 -> accept-override
+PR #14 2 (unset) 1 1 (unset) -> refuse-newest
+PR #14 2 (unset) 1 2 1 -> accept-override
+PR #14 2 (unset) 1 2 (unset) -> refuse-newest
