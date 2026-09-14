@@ -1,5 +1,5 @@
 # NOW — dependabot-verdicts arc (arc mode)
-last-updated: 2026-09-14 18:22 CDT · mode: arc · read GROUNDING.md first
+last-updated: 2026-09-14 18:42 CDT · mode: arc · read GROUNDING.md first
 (Clock note: stamps elsewhere in this folder that say "00:2x CT" were written two hours early; those events happened at 02:2x CDT, per the machine clock and commit times.)
 
 ## State (overnight 2026-09-13 → 09-14, unattended)
@@ -23,10 +23,10 @@ last-updated: 2026-09-14 18:22 CDT · mode: arc · read GROUNDING.md first
 - Harness note: the auto-mode classifier blocked `bin/enroll` and admin merges into product repos (Kevin ran those as `!` pastes), and for a while mislabelled read-only Slack reads as "Merge Without Review".
 
 ## Exact next step
-Waiting on Kevin: the `AUDIT_READ_TOKEN` secret (then run the weekly-audit job once and read its output), and "go" on renaming #eachie-errors → #infra-ops (then the workspace-mcp watcher moves and #misc-build-errors is archived). Next Monday: confirm the weekly-audit job ran and the routine posted the file. Nice-to-have: a run that recovers after a failure leaves `dependabot-needs-human` on the merged PR (ynai #13/#14); the approve step could remove it on success.
+Nothing is waiting on anyone. Monday 2026-09-21: the weekly-audit job runs ~07:15 CT in khglynn/repo-standards-audit, and the routine posts `latest-digest.md` to #dependabot at 08:00; confirm both happened and that the message matches the file. If the job failed, its first step says why. Verdicts for ynai #18/#19 and eachie #160 are in #dependabot when Kevin wants them.
 
 ## For Kevin (self-contained)
-1. The token form is filled and waiting in the kevn Chrome tab (name `repo-standards weekly audit`, expires 2027-09-14, all repositories, read-only on Actions, Administration, Contents, Metadata, Pull requests): press **Generate token**, copy it, then in a terminal `gh secret set AUDIT_READ_TOKEN -R khglynn/repo-standards-audit` and paste when prompted. Then say so: I run the weekly-audit job once and read its output. (The token value must never pass through an agent; that is why the last click is yours.)
-2. DONE 18:03–18:05: the watcher's `SLACK_WEBHOOK_URL` secret now points at #infra-ops (Kevin pasted the address in chat; stored with `gh secret set`, never through a browser field); the old #misc-build-errors webhook is deleted and #misc-build-errors is archived (18:15). #18 merged 18:09 on Kevin's word; the watcher's first manual run posted to #infra-ops at 18:09:57 (proof end to end). Its last-notice write failed on the fleet PAT's permissions; fixed in #19 (workflow token), merged 18:14. The container-scan failure on both PRs is pre-existing base-image CVEs (failing on main since 2026-07-10), a separate chore. Both webhook addresses appeared on screen in this session's captures; rotate the new one on api.slack.com/apps → Errors Bot → Incoming Webhooks if you would rather no transcript held it.
-3. ynai #18 (nodemailer 9 → 10) and #19 (deepmerge-ts 7 → 8), eachie #160 (ai 4 → 7): verdicts will appear in #dependabot; reply there with the "To act" line if you want them merged.
-4. The free private build minutes run out around 16 Sep (about 2,453 of 3,000 used on the morning audit). The $48 budget keeps builds running; the 27 jobs with no time limit are the lever if you would rather not spend.
+1. Done today, nothing to do: token minted and stored; the weekly audit ran twice on GitHub's runners (the second after a one-line fix: the read-only token cannot see `allow_auto_merge` over REST, so the audit now asks GraphQL) and its digest is correct: 6 of 41 repos keep themselves up to date (1 for security fixes only), 9 updates waiting, about 2,346 of the free 3,000 private build minutes used, running out around 17 Sep.
+2. Optional hygiene: the token value and both Slack webhook addresses passed through this session's chat or screen. All three can only read or post; rotate any of them whenever you like (GitHub → Settings → Personal access tokens; api.slack.com/apps → Errors Bot → Incoming Webhooks) and drop the new value into the same secret.
+3. ynai #18 (nodemailer 9 → 10), #19 (deepmerge-ts 7 → 8) and eachie #160 (ai 4 → 7) are major bumps waiting on you; each has (or gets) a verdict in #dependabot with the exact reply to send.
+4. The free private build minutes run out around 17 Sep. The $48 budget keeps builds running; the 26 jobs with no time limit are the lever if you would rather not spend.
