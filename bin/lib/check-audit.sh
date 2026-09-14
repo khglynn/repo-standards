@@ -272,4 +272,38 @@ if grep -qF -- "inside the free pool" <<< "$(render --mode digest <<< "$IN")"; t
   echo "ok: a quiet month still reads as inside the pool"
 else echo "FAIL: a quiet month lost its projection"; fail=1; fi
 
+echo "--- 8. the one predicate that decides whether a build is billed at all"
+# `_is_free_dependabot_run` moved the account's headline figure (2,550 → 2,515) and had no
+# test: `grep -rn free_dependabot bin .github routines` found only the function. If
+# GitHub's `event`/`path` shape drifts it silently zeroes real billed minutes, or starts
+# charging Kevin for runs GitHub does not — and the only tell would be a number in Slack
+# that nobody can check. Loaded the way actions-scan.py loads workflow-hygiene, because
+# the filename has a hyphen in it and cannot be imported.
+#
+# The three run shapes below: Dependabot opening an update pull request (synthesised by
+# GitHub, no workflow file, not billed on standard runners); a repo running its OWN tests
+# on a Dependabot pull request (an ordinary workflow, and billed — excluding it would
+# swing the error the other way); and another synthesised run with nothing to do with
+# Dependabot. Then the runner multipliers, including self-hosted, whose minutes are free.
+got=$(python3 - <<'PYEOF'
+import importlib.util, json, os
+spec = importlib.util.spec_from_file_location(
+    "scan", os.path.join("bin", "lib", "actions-scan.py"))
+scan = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scan)
+runs = [
+    {"event": "dynamic", "path": "dynamic/dependabot/dependabot-updates"},
+    {"event": "pull_request", "path": ".github/workflows/ci.yml"},
+    {"event": "dynamic", "path": "dynamic/pages/pages-build-deployment"},
+]
+labels = [["ubuntu-latest"], ["windows-latest"], ["macos-14"],
+          ["self-hosted", "linux"], []]
+print(json.dumps({"free": [scan._is_free_dependabot_run(r) for r in runs],
+                  "runners": [list(scan._runner_of(l)) for l in labels]},
+                 separators=(",", ":"), sort_keys=True))
+PYEOF
+)
+say "free/billed verdicts, and the runner multipliers" "$got" \
+    '{"free":[true,false,false],"runners":[["UBUNTU",1],["WINDOWS",2],["MACOS",10],["SELF",0],["UBUNTU",1]]}'
+
 exit "$fail"

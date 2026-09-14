@@ -84,14 +84,30 @@ APPROVE_JQ='if has("approve") and .approve != null then (.approve|tostring) else
 # file list". That happened on 2026-09-14. One call spent here is worth fifteen hundred
 # spent producing a lie. (And it reads the budget from a real call's headers: the
 # /rate_limit endpoint said 5,000 remaining while every call was being refused.)
-if pf=$(python3 "$HERE/bin/lib/actions-scan.py" --owner "$OWNER" --preflight 2>/dev/null); then
+#
+# THE THRESHOLD HAS TO MATCH THE RUN THAT IS ABOUT TO HAPPEN. It used to refuse below 200
+# calls whatever the flags said, while telling you "this audit needs about 1,600" — so the
+# two cheap escape hatches the README recommends for a short budget, `--skip-actions` and
+# a small `--cap`, were blocked by a refusal whose stated reason was about a run nobody
+# had asked for. What each mode really costs, measured 2026-09-14: the enrolment half is
+# about four calls a repo (~170 for this account), and the Actions half is one call per
+# completed run, so the cap is the ceiling that matters.
+if [ "$SKIP_ACTIONS" = "yes" ]; then
+  NEED=200
+else
+  NEED=$(( 200 + CAP * 5 ))     # 5 is a generous busy-repo count; 300 → the familiar 1,600
+  if [ "$NEED" -gt 1600 ]; then NEED=1600; fi
+fi
+if pf=$(python3 "$HERE/bin/lib/actions-scan.py" --owner "$OWNER" --preflight --need "$NEED" 2>/dev/null); then
   :
 else
   case "$pf" in
     exhausted*)
       read -r _ left when <<< "$pf"
-      echo "GitHub's hourly API budget is used up (${left:-0} calls left). This audit needs" >&2
-      echo "about 1,600. Come back after ${when:-the reset} and run it again." >&2
+      echo "GitHub's hourly API budget is too low (${left:-0} calls left). This run needs" >&2
+      echo "about $NEED. Come back after ${when:-the reset}, or spend less now:" >&2
+      echo "  bin/audit --skip-actions   the enrolment half only, about 200 calls" >&2
+      echo "  bin/audit --cap 30         a sampled minutes estimate, about 350" >&2
       exit 2 ;;
   esac
 fi
@@ -164,13 +180,25 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   has_dependabot=no
   if grep -qE '^\.github/dependabot\.ya?ml$' <<< "$paths"; then has_dependabot=yes; fi
 
-  # A repo is "stubbed" when ANY of its workflows calls the shared rules. The standards repo
-  # itself holds the DEFINITION at the obvious path, so its own stub has a different name —
-  # check both, and recognise the definition rather than mistaking it for a stale inline copy.
+  # A repo is "stubbed" when its merge-rules workflow calls the shared rules. The standards
+  # repo itself holds the DEFINITION at the obvious path, so its own stub has a different
+  # name — check both, and recognise the definition rather than mistaking it for a stale
+  # inline copy.
+  #
+  # These two filenames ARE the standard, not a heuristic for it: `bin/enroll` writes the
+  # first and this repo carries the second. A caller under some other name would read as
+  # "gets update PRs but nothing merges them", which is a fair description of a file this
+  # tool cannot recognise. Reading every workflow in every repo to be sure would cost a
+  # call per file across the account for a case that has never occurred.
   has_stub=no
   for cand in .github/workflows/dependabot-automerge.yml .github/workflows/dependabot-automerge-self.yml; do
     grep -qF "$cand" <<< "$paths" || continue
     content=$(gh api "repos/$R/contents/$cand" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)
+    # Same absent-versus-false trap as TREE_STATE_JQ above, one call later: a 403, a 5xx or
+    # a rate-limited read all yield an empty `content`, both greps below then miss, and the
+    # row lands on `inline` — reporting "still has its own private copy of the merge rules"
+    # about a file it never read. The tree call succeeding is what makes this invisible.
+    if [ -z "$content" ]; then has_stub=unreadable; break; fi
     if grep -qF "$STD_PATH" <<< "$content"; then has_stub=yes; break; fi
     if grep -q 'workflow_call:' <<< "$content"; then has_stub=source; break; fi
     has_stub=inline   # an older, per-repo copy of the rules — the thing we are replacing
@@ -206,6 +234,8 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     status="unknown: could not read this repo's file list (API error or truncated tree)"
   elif [ "$is_fork" = "true" ]; then
     status="fork — upstream's config, leave it alone"
+  elif [ "$has_stub" = "unreadable" ]; then
+    status="unknown: could not read this repo's merge-rules workflow"
   elif { [ "$has_stub" = "yes" ] || [ "$has_stub" = "source" ]; } && [ "$approve" = "false" ]; then
     # The switch whose absence stranded three list-maker PRs on 2026-09-14: the shared
     # workflow's `gh pr review --approve` is refused outright, so in any repo with a
@@ -225,6 +255,12 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     status="drift: gets update PRs but nothing merges them"
   elif [ "$has_stub" = "yes" ] && [ "$has_dependabot" = "no" ]; then
     status="drift: merge rules but no dependabot.yml, so no update PRs"
+  elif [ "$auto_merge" = "?" ]; then
+    # The repo call failed, so the setting was never read. Reporting the switch as OFF
+    # here would be the same shape as the stub bug above, and it lands on the repos that
+    # got everything else right — only a repo with both the stub and dependabot.yml
+    # reaches this line at all.
+    status="unknown: could not read this repo's settings"
   elif [ "$auto_merge" != "true" ]; then
     status="drift: repo setting 'allow auto-merge' is off"
   elif [ "$checks" = "—" ]; then

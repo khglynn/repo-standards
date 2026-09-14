@@ -153,6 +153,12 @@ class Client:
             return None, None
 
     def get(self, path, tries=4):
+        # Once the hourly budget is gone it is gone for every worker, and a whole-account
+        # audit still has ~1,500 queued tasks at that point — each of which would issue a
+        # real request, get a real 403, and spend the first second of the next hour's
+        # budget for nothing. The flag is set once, by whichever call hit the wall.
+        if self.exhausted:
+            return None, None
         url = path if path.startswith("http") else API + "/" + path.lstrip("/")
         last = None
         for attempt in range(tries):
@@ -213,6 +219,7 @@ def scan_repo_phase1(client, name, default_branch, owner, since, cap):
     # --- (b) runs this billing month, newest first, paginated, capped
     page = 1
     total = None
+    seen = 0          # runs actually looked at, which is not `total` once the cap bites
     while len(out["run_ids"]) < cap:
         path = ("repos/%s/actions/runs?created=%%3E%%3D%s&per_page=100&page=%d"
                 % (repo, since, page))
@@ -230,6 +237,7 @@ def scan_repo_phase1(client, name, default_branch, owner, since, cap):
             # estimate jitter downward on re-runs. Skipped, and counted in `runs` so the
             # number of runs stays honest.
             out["runs"] += 1
+            seen += 1
             if _is_free_dependabot_run(run):
                 out["free_runs"] += 1
                 continue
@@ -246,7 +254,13 @@ def scan_repo_phase1(client, name, default_branch, owner, since, cap):
     # exactly one thing: there were more completed runs than we agreed to measure.
     if total is not None:
         out["runs"] = total
-    out["capped"] = len(out["run_ids"]) >= cap
+    # `capped` means one thing and has to keep meaning it: there were completed runs this
+    # month that we did not measure, so the repo's minutes read low. It used to be
+    # `len(run_ids) >= cap`, which also fires on a repo with EXACTLY `cap` completed runs
+    # and nothing left over — a full, correct reading labelled "⚠ capped" in the table and
+    # called out in the digest as a figure to distrust. What actually matters is whether
+    # any run went unlooked-at.
+    out["capped"] = len(out["run_ids"]) >= cap and (total is None or total > seen)
 
     # --- (c)+(d) the workflow files
     data, err = client.get("repos/%s/contents/.github/workflows" % repo)
@@ -307,8 +321,16 @@ def _why(err):
 
 
 def _runner_of(labels):
-    """Runner family and multiplier from a job's labels. Unknown labels bill as 1x."""
+    """Runner family and multiplier from a job's labels. Unknown labels bill as 1x.
+
+    `self-hosted` is billed at nothing — it is your own machine — so counting it at the
+    Linux rate inflates the one number this tool exists to warn about, on exactly the
+    repos that moved work off GitHub's runners to stop paying for it. Nobody here runs
+    self-hosted today; the renderer names it if that changes.
+    """
     text = " ".join(str(x).lower() for x in (labels or []))
+    if "self-hosted" in text:
+        return "SELF", 0
     if "macos" in text or "mac-" in text:
         return "MACOS", 10
     if "windows" in text or "win-" in text:
@@ -377,7 +399,11 @@ def main():
                          "low); auto = jobs unless the hourly API budget cannot cover it")
     ap.add_argument("--progress", action="store_true", help="dots on stderr")
     ap.add_argument("--preflight", action="store_true",
-                    help="print the real remaining API budget and exit; 3 means exhausted")
+                    help="print the real remaining API budget and exit; 3 means too low")
+    ap.add_argument("--need", type=int, default=200,
+                    help="calls the caller is about to spend. --preflight refuses below "
+                         "this, so a --skip-actions or small --cap run is not blocked by "
+                         "a threshold set for the full one")
     args = ap.parse_args()
 
     since = args.since or month_start(dt.date.today()).isoformat()
@@ -397,7 +423,7 @@ def main():
         if remaining is None:
             print("unknown")
             sys.exit(0)
-        if remaining < 200:
+        if remaining < args.need:
             when = dt.datetime.fromtimestamp(reset).strftime("%H:%M") if reset else "soon"
             print("exhausted %d %s" % (remaining, when))
             sys.exit(3)
