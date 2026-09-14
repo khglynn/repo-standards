@@ -7,7 +7,7 @@
 **Repos:** one routine per enrolled repo. A routine takes exactly one GitHub trigger and a trigger names exactly one repository (checked in the form 2026-09-13), so each enrolled repo gets its own copy of this routine with only that repo attached; that also keeps each run cloning one repo. Names: `Dependabot verdict · <repo>`.
 **Model:** Opus 5.
 
-**Prompt rewritten 2026-09-13 21:58 CT** after Kevin read the first automatic verdict (eachie #143) and said it was too long and too jargony. The new shape leads with verdict and risk, allows one plain sentence of why, bans acronyms and file/job names, and caps the whole message at 90 words.
+**Prompt rewritten 2026-09-13 21:58 CT** after Kevin read the first automatic verdict (eachie #143) and said it was too long and too jargony. The new shape leads with verdict and risk, allows one plain sentence of why, bans acronyms and file/job names, and caps the whole message at 100 words. Refined the same night: "Why" split into "What changed" and "Why that's safe", one sentence each, because the first cut answered only the second.
 
 **First automatic run (2026-09-13 21:38 CT):** relabelling eachie #143 fired the routine by itself within a minute of the GitHub App being linked to the personal login (see BUILD-LOG, 2026-09-13); the verdict on pnpm/action-setup 4 → 5 landed in #dependabot at 21:39:55 CT in the agreed shape.
 
@@ -27,12 +27,13 @@ Do this, in order:
 
    Line 1: "<repo> #<number>: <package> <old> → <new>"
    Line 2: "Verdict: <Merge | Merge after a fix | Hold | Drop>. Risk: <low | medium | high>."
-   Line 3: "Why: <ONE sentence, under 25 words, that a non-developer understands. Say what the package is for in the app and what changed, in everyday words.>"
-   Line 4: "Tests: <passed | failed: one plain phrase | none ran>."
-   Line 5: "To act: reply here with @Claude merge <repo> #<number>" (or, for Hold/Drop/fix, the one reply that does the right thing, in the same form).
-   Line 6: the PR URL, plain, on its own line.
+   Line 3: "What changed: <ONE sentence, under 20 words, in everyday words: what the new version does differently. Name the one change that matters; skip the rest.>"
+   Line 4: "Why that's safe: <ONE sentence, under 20 words: what this package does for the app and why the change can't hurt it (or why it can, for Hold/Drop).>"
+   Line 5: "Tests: <passed | failed: one plain phrase | none ran>."
+   Line 6: "To act: reply here with @Claude merge <repo> #<number>" (or, for Hold/Drop/fix, the one reply that does the right thing, in the same form).
+   Line 7: the PR URL, plain, on its own line.
 
-   Writing rules for the message: plain English only; no acronyms (write "the automatic tests", not "CI"; "the tool that installs packages", not "package manager"); no file paths, job names, branch names, version constraints or runner details; no hedging clauses; no line longer than one sentence. If a term has no everyday equivalent, leave it out rather than explain it. Keep the whole message under 90 words. Never wrap anything in angle brackets.
+   Writing rules for the message: plain English only; no acronyms (write "the automatic tests", not "CI"; "the tool that installs packages", not "package manager"); no file paths, job names, branch names, version constraints or runner details; no hedging clauses; no line longer than one sentence. If a term has no everyday equivalent, leave it out rather than explain it. Keep the whole message under 100 words. Never wrap anything in angle brackets.
 
 7. Do not merge, close, comment on, or push to the PR. Do not post anything else to Slack. If you cannot read the PR or the release notes, still post the message with "could not read" in the Why line rather than guessing.
 
@@ -40,7 +41,8 @@ Example of the target register (do not copy the facts, copy the tone):
 
    eachie #143: pnpm/action-setup 4 → 5
    Verdict: Merge. Risk: low.
-   Why: This only affects the tool that installs packages on GitHub's test machines; the app itself is untouched.
+   What changed: The tool now runs on a newer version of Node, the engine GitHub's test machines already have.
+   Why that's safe: It only installs packages on those test machines; nothing in the app itself uses it.
    Tests: passed.
    To act: reply here with @Claude merge eachie #143
    https://github.com/khglynn/eachie/pull/143
