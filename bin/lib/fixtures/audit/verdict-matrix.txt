@@ -1,0 +1,1442 @@
+# bin/lib/verdict.sh, every input combination. Regenerate: bin/lib/verdict-matrix.sh
+# columns: unreadable is_fork stub approve dependabot manifest auto_merge checks -> status
+yes true yes true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true yes ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true no ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true source ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true inline ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes true unreadable ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false yes ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false no ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false source ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false inline ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable true no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable false no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? yes no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no yes true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no yes true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no yes false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no yes false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no yes ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no yes ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no no true ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no no true — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no no false ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no no false — -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no no ? ci -> unknown: could not read this repo's file list (API error or truncated tree)
+yes false unreadable ? no no ? — -> unknown: could not read this repo's file list (API error or truncated tree)
+no true yes true yes yes true ci -> fork — upstream's config, leave it alone
+no true yes true yes yes true — -> fork — upstream's config, leave it alone
+no true yes true yes yes false ci -> fork — upstream's config, leave it alone
+no true yes true yes yes false — -> fork — upstream's config, leave it alone
+no true yes true yes yes ? ci -> fork — upstream's config, leave it alone
+no true yes true yes yes ? — -> fork — upstream's config, leave it alone
+no true yes true yes no true ci -> fork — upstream's config, leave it alone
+no true yes true yes no true — -> fork — upstream's config, leave it alone
+no true yes true yes no false ci -> fork — upstream's config, leave it alone
+no true yes true yes no false — -> fork — upstream's config, leave it alone
+no true yes true yes no ? ci -> fork — upstream's config, leave it alone
+no true yes true yes no ? — -> fork — upstream's config, leave it alone
+no true yes true no yes true ci -> fork — upstream's config, leave it alone
+no true yes true no yes true — -> fork — upstream's config, leave it alone
+no true yes true no yes false ci -> fork — upstream's config, leave it alone
+no true yes true no yes false — -> fork — upstream's config, leave it alone
+no true yes true no yes ? ci -> fork — upstream's config, leave it alone
+no true yes true no yes ? — -> fork — upstream's config, leave it alone
+no true yes true no no true ci -> fork — upstream's config, leave it alone
+no true yes true no no true — -> fork — upstream's config, leave it alone
+no true yes true no no false ci -> fork — upstream's config, leave it alone
+no true yes true no no false — -> fork — upstream's config, leave it alone
+no true yes true no no ? ci -> fork — upstream's config, leave it alone
+no true yes true no no ? — -> fork — upstream's config, leave it alone
+no true yes false yes yes true ci -> fork — upstream's config, leave it alone
+no true yes false yes yes true — -> fork — upstream's config, leave it alone
+no true yes false yes yes false ci -> fork — upstream's config, leave it alone
+no true yes false yes yes false — -> fork — upstream's config, leave it alone
+no true yes false yes yes ? ci -> fork — upstream's config, leave it alone
+no true yes false yes yes ? — -> fork — upstream's config, leave it alone
+no true yes false yes no true ci -> fork — upstream's config, leave it alone
+no true yes false yes no true — -> fork — upstream's config, leave it alone
+no true yes false yes no false ci -> fork — upstream's config, leave it alone
+no true yes false yes no false — -> fork — upstream's config, leave it alone
+no true yes false yes no ? ci -> fork — upstream's config, leave it alone
+no true yes false yes no ? — -> fork — upstream's config, leave it alone
+no true yes false no yes true ci -> fork — upstream's config, leave it alone
+no true yes false no yes true — -> fork — upstream's config, leave it alone
+no true yes false no yes false ci -> fork — upstream's config, leave it alone
+no true yes false no yes false — -> fork — upstream's config, leave it alone
+no true yes false no yes ? ci -> fork — upstream's config, leave it alone
+no true yes false no yes ? — -> fork — upstream's config, leave it alone
+no true yes false no no true ci -> fork — upstream's config, leave it alone
+no true yes false no no true — -> fork — upstream's config, leave it alone
+no true yes false no no false ci -> fork — upstream's config, leave it alone
+no true yes false no no false — -> fork — upstream's config, leave it alone
+no true yes false no no ? ci -> fork — upstream's config, leave it alone
+no true yes false no no ? — -> fork — upstream's config, leave it alone
+no true yes ? yes yes true ci -> fork — upstream's config, leave it alone
+no true yes ? yes yes true — -> fork — upstream's config, leave it alone
+no true yes ? yes yes false ci -> fork — upstream's config, leave it alone
+no true yes ? yes yes false — -> fork — upstream's config, leave it alone
+no true yes ? yes yes ? ci -> fork — upstream's config, leave it alone
+no true yes ? yes yes ? — -> fork — upstream's config, leave it alone
+no true yes ? yes no true ci -> fork — upstream's config, leave it alone
+no true yes ? yes no true — -> fork — upstream's config, leave it alone
+no true yes ? yes no false ci -> fork — upstream's config, leave it alone
+no true yes ? yes no false — -> fork — upstream's config, leave it alone
+no true yes ? yes no ? ci -> fork — upstream's config, leave it alone
+no true yes ? yes no ? — -> fork — upstream's config, leave it alone
+no true yes ? no yes true ci -> fork — upstream's config, leave it alone
+no true yes ? no yes true — -> fork — upstream's config, leave it alone
+no true yes ? no yes false ci -> fork — upstream's config, leave it alone
+no true yes ? no yes false — -> fork — upstream's config, leave it alone
+no true yes ? no yes ? ci -> fork — upstream's config, leave it alone
+no true yes ? no yes ? — -> fork — upstream's config, leave it alone
+no true yes ? no no true ci -> fork — upstream's config, leave it alone
+no true yes ? no no true — -> fork — upstream's config, leave it alone
+no true yes ? no no false ci -> fork — upstream's config, leave it alone
+no true yes ? no no false — -> fork — upstream's config, leave it alone
+no true yes ? no no ? ci -> fork — upstream's config, leave it alone
+no true yes ? no no ? — -> fork — upstream's config, leave it alone
+no true no true yes yes true ci -> fork — upstream's config, leave it alone
+no true no true yes yes true — -> fork — upstream's config, leave it alone
+no true no true yes yes false ci -> fork — upstream's config, leave it alone
+no true no true yes yes false — -> fork — upstream's config, leave it alone
+no true no true yes yes ? ci -> fork — upstream's config, leave it alone
+no true no true yes yes ? — -> fork — upstream's config, leave it alone
+no true no true yes no true ci -> fork — upstream's config, leave it alone
+no true no true yes no true — -> fork — upstream's config, leave it alone
+no true no true yes no false ci -> fork — upstream's config, leave it alone
+no true no true yes no false — -> fork — upstream's config, leave it alone
+no true no true yes no ? ci -> fork — upstream's config, leave it alone
+no true no true yes no ? — -> fork — upstream's config, leave it alone
+no true no true no yes true ci -> fork — upstream's config, leave it alone
+no true no true no yes true — -> fork — upstream's config, leave it alone
+no true no true no yes false ci -> fork — upstream's config, leave it alone
+no true no true no yes false — -> fork — upstream's config, leave it alone
+no true no true no yes ? ci -> fork — upstream's config, leave it alone
+no true no true no yes ? — -> fork — upstream's config, leave it alone
+no true no true no no true ci -> fork — upstream's config, leave it alone
+no true no true no no true — -> fork — upstream's config, leave it alone
+no true no true no no false ci -> fork — upstream's config, leave it alone
+no true no true no no false — -> fork — upstream's config, leave it alone
+no true no true no no ? ci -> fork — upstream's config, leave it alone
+no true no true no no ? — -> fork — upstream's config, leave it alone
+no true no false yes yes true ci -> fork — upstream's config, leave it alone
+no true no false yes yes true — -> fork — upstream's config, leave it alone
+no true no false yes yes false ci -> fork — upstream's config, leave it alone
+no true no false yes yes false — -> fork — upstream's config, leave it alone
+no true no false yes yes ? ci -> fork — upstream's config, leave it alone
+no true no false yes yes ? — -> fork — upstream's config, leave it alone
+no true no false yes no true ci -> fork — upstream's config, leave it alone
+no true no false yes no true — -> fork — upstream's config, leave it alone
+no true no false yes no false ci -> fork — upstream's config, leave it alone
+no true no false yes no false — -> fork — upstream's config, leave it alone
+no true no false yes no ? ci -> fork — upstream's config, leave it alone
+no true no false yes no ? — -> fork — upstream's config, leave it alone
+no true no false no yes true ci -> fork — upstream's config, leave it alone
+no true no false no yes true — -> fork — upstream's config, leave it alone
+no true no false no yes false ci -> fork — upstream's config, leave it alone
+no true no false no yes false — -> fork — upstream's config, leave it alone
+no true no false no yes ? ci -> fork — upstream's config, leave it alone
+no true no false no yes ? — -> fork — upstream's config, leave it alone
+no true no false no no true ci -> fork — upstream's config, leave it alone
+no true no false no no true — -> fork — upstream's config, leave it alone
+no true no false no no false ci -> fork — upstream's config, leave it alone
+no true no false no no false — -> fork — upstream's config, leave it alone
+no true no false no no ? ci -> fork — upstream's config, leave it alone
+no true no false no no ? — -> fork — upstream's config, leave it alone
+no true no ? yes yes true ci -> fork — upstream's config, leave it alone
+no true no ? yes yes true — -> fork — upstream's config, leave it alone
+no true no ? yes yes false ci -> fork — upstream's config, leave it alone
+no true no ? yes yes false — -> fork — upstream's config, leave it alone
+no true no ? yes yes ? ci -> fork — upstream's config, leave it alone
+no true no ? yes yes ? — -> fork — upstream's config, leave it alone
+no true no ? yes no true ci -> fork — upstream's config, leave it alone
+no true no ? yes no true — -> fork — upstream's config, leave it alone
+no true no ? yes no false ci -> fork — upstream's config, leave it alone
+no true no ? yes no false — -> fork — upstream's config, leave it alone
+no true no ? yes no ? ci -> fork — upstream's config, leave it alone
+no true no ? yes no ? — -> fork — upstream's config, leave it alone
+no true no ? no yes true ci -> fork — upstream's config, leave it alone
+no true no ? no yes true — -> fork — upstream's config, leave it alone
+no true no ? no yes false ci -> fork — upstream's config, leave it alone
+no true no ? no yes false — -> fork — upstream's config, leave it alone
+no true no ? no yes ? ci -> fork — upstream's config, leave it alone
+no true no ? no yes ? — -> fork — upstream's config, leave it alone
+no true no ? no no true ci -> fork — upstream's config, leave it alone
+no true no ? no no true — -> fork — upstream's config, leave it alone
+no true no ? no no false ci -> fork — upstream's config, leave it alone
+no true no ? no no false — -> fork — upstream's config, leave it alone
+no true no ? no no ? ci -> fork — upstream's config, leave it alone
+no true no ? no no ? — -> fork — upstream's config, leave it alone
+no true source true yes yes true ci -> fork — upstream's config, leave it alone
+no true source true yes yes true — -> fork — upstream's config, leave it alone
+no true source true yes yes false ci -> fork — upstream's config, leave it alone
+no true source true yes yes false — -> fork — upstream's config, leave it alone
+no true source true yes yes ? ci -> fork — upstream's config, leave it alone
+no true source true yes yes ? — -> fork — upstream's config, leave it alone
+no true source true yes no true ci -> fork — upstream's config, leave it alone
+no true source true yes no true — -> fork — upstream's config, leave it alone
+no true source true yes no false ci -> fork — upstream's config, leave it alone
+no true source true yes no false — -> fork — upstream's config, leave it alone
+no true source true yes no ? ci -> fork — upstream's config, leave it alone
+no true source true yes no ? — -> fork — upstream's config, leave it alone
+no true source true no yes true ci -> fork — upstream's config, leave it alone
+no true source true no yes true — -> fork — upstream's config, leave it alone
+no true source true no yes false ci -> fork — upstream's config, leave it alone
+no true source true no yes false — -> fork — upstream's config, leave it alone
+no true source true no yes ? ci -> fork — upstream's config, leave it alone
+no true source true no yes ? — -> fork — upstream's config, leave it alone
+no true source true no no true ci -> fork — upstream's config, leave it alone
+no true source true no no true — -> fork — upstream's config, leave it alone
+no true source true no no false ci -> fork — upstream's config, leave it alone
+no true source true no no false — -> fork — upstream's config, leave it alone
+no true source true no no ? ci -> fork — upstream's config, leave it alone
+no true source true no no ? — -> fork — upstream's config, leave it alone
+no true source false yes yes true ci -> fork — upstream's config, leave it alone
+no true source false yes yes true — -> fork — upstream's config, leave it alone
+no true source false yes yes false ci -> fork — upstream's config, leave it alone
+no true source false yes yes false — -> fork — upstream's config, leave it alone
+no true source false yes yes ? ci -> fork — upstream's config, leave it alone
+no true source false yes yes ? — -> fork — upstream's config, leave it alone
+no true source false yes no true ci -> fork — upstream's config, leave it alone
+no true source false yes no true — -> fork — upstream's config, leave it alone
+no true source false yes no false ci -> fork — upstream's config, leave it alone
+no true source false yes no false — -> fork — upstream's config, leave it alone
+no true source false yes no ? ci -> fork — upstream's config, leave it alone
+no true source false yes no ? — -> fork — upstream's config, leave it alone
+no true source false no yes true ci -> fork — upstream's config, leave it alone
+no true source false no yes true — -> fork — upstream's config, leave it alone
+no true source false no yes false ci -> fork — upstream's config, leave it alone
+no true source false no yes false — -> fork — upstream's config, leave it alone
+no true source false no yes ? ci -> fork — upstream's config, leave it alone
+no true source false no yes ? — -> fork — upstream's config, leave it alone
+no true source false no no true ci -> fork — upstream's config, leave it alone
+no true source false no no true — -> fork — upstream's config, leave it alone
+no true source false no no false ci -> fork — upstream's config, leave it alone
+no true source false no no false — -> fork — upstream's config, leave it alone
+no true source false no no ? ci -> fork — upstream's config, leave it alone
+no true source false no no ? — -> fork — upstream's config, leave it alone
+no true source ? yes yes true ci -> fork — upstream's config, leave it alone
+no true source ? yes yes true — -> fork — upstream's config, leave it alone
+no true source ? yes yes false ci -> fork — upstream's config, leave it alone
+no true source ? yes yes false — -> fork — upstream's config, leave it alone
+no true source ? yes yes ? ci -> fork — upstream's config, leave it alone
+no true source ? yes yes ? — -> fork — upstream's config, leave it alone
+no true source ? yes no true ci -> fork — upstream's config, leave it alone
+no true source ? yes no true — -> fork — upstream's config, leave it alone
+no true source ? yes no false ci -> fork — upstream's config, leave it alone
+no true source ? yes no false — -> fork — upstream's config, leave it alone
+no true source ? yes no ? ci -> fork — upstream's config, leave it alone
+no true source ? yes no ? — -> fork — upstream's config, leave it alone
+no true source ? no yes true ci -> fork — upstream's config, leave it alone
+no true source ? no yes true — -> fork — upstream's config, leave it alone
+no true source ? no yes false ci -> fork — upstream's config, leave it alone
+no true source ? no yes false — -> fork — upstream's config, leave it alone
+no true source ? no yes ? ci -> fork — upstream's config, leave it alone
+no true source ? no yes ? — -> fork — upstream's config, leave it alone
+no true source ? no no true ci -> fork — upstream's config, leave it alone
+no true source ? no no true — -> fork — upstream's config, leave it alone
+no true source ? no no false ci -> fork — upstream's config, leave it alone
+no true source ? no no false — -> fork — upstream's config, leave it alone
+no true source ? no no ? ci -> fork — upstream's config, leave it alone
+no true source ? no no ? — -> fork — upstream's config, leave it alone
+no true inline true yes yes true ci -> fork — upstream's config, leave it alone
+no true inline true yes yes true — -> fork — upstream's config, leave it alone
+no true inline true yes yes false ci -> fork — upstream's config, leave it alone
+no true inline true yes yes false — -> fork — upstream's config, leave it alone
+no true inline true yes yes ? ci -> fork — upstream's config, leave it alone
+no true inline true yes yes ? — -> fork — upstream's config, leave it alone
+no true inline true yes no true ci -> fork — upstream's config, leave it alone
+no true inline true yes no true — -> fork — upstream's config, leave it alone
+no true inline true yes no false ci -> fork — upstream's config, leave it alone
+no true inline true yes no false — -> fork — upstream's config, leave it alone
+no true inline true yes no ? ci -> fork — upstream's config, leave it alone
+no true inline true yes no ? — -> fork — upstream's config, leave it alone
+no true inline true no yes true ci -> fork — upstream's config, leave it alone
+no true inline true no yes true — -> fork — upstream's config, leave it alone
+no true inline true no yes false ci -> fork — upstream's config, leave it alone
+no true inline true no yes false — -> fork — upstream's config, leave it alone
+no true inline true no yes ? ci -> fork — upstream's config, leave it alone
+no true inline true no yes ? — -> fork — upstream's config, leave it alone
+no true inline true no no true ci -> fork — upstream's config, leave it alone
+no true inline true no no true — -> fork — upstream's config, leave it alone
+no true inline true no no false ci -> fork — upstream's config, leave it alone
+no true inline true no no false — -> fork — upstream's config, leave it alone
+no true inline true no no ? ci -> fork — upstream's config, leave it alone
+no true inline true no no ? — -> fork — upstream's config, leave it alone
+no true inline false yes yes true ci -> fork — upstream's config, leave it alone
+no true inline false yes yes true — -> fork — upstream's config, leave it alone
+no true inline false yes yes false ci -> fork — upstream's config, leave it alone
+no true inline false yes yes false — -> fork — upstream's config, leave it alone
+no true inline false yes yes ? ci -> fork — upstream's config, leave it alone
+no true inline false yes yes ? — -> fork — upstream's config, leave it alone
+no true inline false yes no true ci -> fork — upstream's config, leave it alone
+no true inline false yes no true — -> fork — upstream's config, leave it alone
+no true inline false yes no false ci -> fork — upstream's config, leave it alone
+no true inline false yes no false — -> fork — upstream's config, leave it alone
+no true inline false yes no ? ci -> fork — upstream's config, leave it alone
+no true inline false yes no ? — -> fork — upstream's config, leave it alone
+no true inline false no yes true ci -> fork — upstream's config, leave it alone
+no true inline false no yes true — -> fork — upstream's config, leave it alone
+no true inline false no yes false ci -> fork — upstream's config, leave it alone
+no true inline false no yes false — -> fork — upstream's config, leave it alone
+no true inline false no yes ? ci -> fork — upstream's config, leave it alone
+no true inline false no yes ? — -> fork — upstream's config, leave it alone
+no true inline false no no true ci -> fork — upstream's config, leave it alone
+no true inline false no no true — -> fork — upstream's config, leave it alone
+no true inline false no no false ci -> fork — upstream's config, leave it alone
+no true inline false no no false — -> fork — upstream's config, leave it alone
+no true inline false no no ? ci -> fork — upstream's config, leave it alone
+no true inline false no no ? — -> fork — upstream's config, leave it alone
+no true inline ? yes yes true ci -> fork — upstream's config, leave it alone
+no true inline ? yes yes true — -> fork — upstream's config, leave it alone
+no true inline ? yes yes false ci -> fork — upstream's config, leave it alone
+no true inline ? yes yes false — -> fork — upstream's config, leave it alone
+no true inline ? yes yes ? ci -> fork — upstream's config, leave it alone
+no true inline ? yes yes ? — -> fork — upstream's config, leave it alone
+no true inline ? yes no true ci -> fork — upstream's config, leave it alone
+no true inline ? yes no true — -> fork — upstream's config, leave it alone
+no true inline ? yes no false ci -> fork — upstream's config, leave it alone
+no true inline ? yes no false — -> fork — upstream's config, leave it alone
+no true inline ? yes no ? ci -> fork — upstream's config, leave it alone
+no true inline ? yes no ? — -> fork — upstream's config, leave it alone
+no true inline ? no yes true ci -> fork — upstream's config, leave it alone
+no true inline ? no yes true — -> fork — upstream's config, leave it alone
+no true inline ? no yes false ci -> fork — upstream's config, leave it alone
+no true inline ? no yes false — -> fork — upstream's config, leave it alone
+no true inline ? no yes ? ci -> fork — upstream's config, leave it alone
+no true inline ? no yes ? — -> fork — upstream's config, leave it alone
+no true inline ? no no true ci -> fork — upstream's config, leave it alone
+no true inline ? no no true — -> fork — upstream's config, leave it alone
+no true inline ? no no false ci -> fork — upstream's config, leave it alone
+no true inline ? no no false — -> fork — upstream's config, leave it alone
+no true inline ? no no ? ci -> fork — upstream's config, leave it alone
+no true inline ? no no ? — -> fork — upstream's config, leave it alone
+no true unreadable true yes yes true ci -> fork — upstream's config, leave it alone
+no true unreadable true yes yes true — -> fork — upstream's config, leave it alone
+no true unreadable true yes yes false ci -> fork — upstream's config, leave it alone
+no true unreadable true yes yes false — -> fork — upstream's config, leave it alone
+no true unreadable true yes yes ? ci -> fork — upstream's config, leave it alone
+no true unreadable true yes yes ? — -> fork — upstream's config, leave it alone
+no true unreadable true yes no true ci -> fork — upstream's config, leave it alone
+no true unreadable true yes no true — -> fork — upstream's config, leave it alone
+no true unreadable true yes no false ci -> fork — upstream's config, leave it alone
+no true unreadable true yes no false — -> fork — upstream's config, leave it alone
+no true unreadable true yes no ? ci -> fork — upstream's config, leave it alone
+no true unreadable true yes no ? — -> fork — upstream's config, leave it alone
+no true unreadable true no yes true ci -> fork — upstream's config, leave it alone
+no true unreadable true no yes true — -> fork — upstream's config, leave it alone
+no true unreadable true no yes false ci -> fork — upstream's config, leave it alone
+no true unreadable true no yes false — -> fork — upstream's config, leave it alone
+no true unreadable true no yes ? ci -> fork — upstream's config, leave it alone
+no true unreadable true no yes ? — -> fork — upstream's config, leave it alone
+no true unreadable true no no true ci -> fork — upstream's config, leave it alone
+no true unreadable true no no true — -> fork — upstream's config, leave it alone
+no true unreadable true no no false ci -> fork — upstream's config, leave it alone
+no true unreadable true no no false — -> fork — upstream's config, leave it alone
+no true unreadable true no no ? ci -> fork — upstream's config, leave it alone
+no true unreadable true no no ? — -> fork — upstream's config, leave it alone
+no true unreadable false yes yes true ci -> fork — upstream's config, leave it alone
+no true unreadable false yes yes true — -> fork — upstream's config, leave it alone
+no true unreadable false yes yes false ci -> fork — upstream's config, leave it alone
+no true unreadable false yes yes false — -> fork — upstream's config, leave it alone
+no true unreadable false yes yes ? ci -> fork — upstream's config, leave it alone
+no true unreadable false yes yes ? — -> fork — upstream's config, leave it alone
+no true unreadable false yes no true ci -> fork — upstream's config, leave it alone
+no true unreadable false yes no true — -> fork — upstream's config, leave it alone
+no true unreadable false yes no false ci -> fork — upstream's config, leave it alone
+no true unreadable false yes no false — -> fork — upstream's config, leave it alone
+no true unreadable false yes no ? ci -> fork — upstream's config, leave it alone
+no true unreadable false yes no ? — -> fork — upstream's config, leave it alone
+no true unreadable false no yes true ci -> fork — upstream's config, leave it alone
+no true unreadable false no yes true — -> fork — upstream's config, leave it alone
+no true unreadable false no yes false ci -> fork — upstream's config, leave it alone
+no true unreadable false no yes false — -> fork — upstream's config, leave it alone
+no true unreadable false no yes ? ci -> fork — upstream's config, leave it alone
+no true unreadable false no yes ? — -> fork — upstream's config, leave it alone
+no true unreadable false no no true ci -> fork — upstream's config, leave it alone
+no true unreadable false no no true — -> fork — upstream's config, leave it alone
+no true unreadable false no no false ci -> fork — upstream's config, leave it alone
+no true unreadable false no no false — -> fork — upstream's config, leave it alone
+no true unreadable false no no ? ci -> fork — upstream's config, leave it alone
+no true unreadable false no no ? — -> fork — upstream's config, leave it alone
+no true unreadable ? yes yes true ci -> fork — upstream's config, leave it alone
+no true unreadable ? yes yes true — -> fork — upstream's config, leave it alone
+no true unreadable ? yes yes false ci -> fork — upstream's config, leave it alone
+no true unreadable ? yes yes false — -> fork — upstream's config, leave it alone
+no true unreadable ? yes yes ? ci -> fork — upstream's config, leave it alone
+no true unreadable ? yes yes ? — -> fork — upstream's config, leave it alone
+no true unreadable ? yes no true ci -> fork — upstream's config, leave it alone
+no true unreadable ? yes no true — -> fork — upstream's config, leave it alone
+no true unreadable ? yes no false ci -> fork — upstream's config, leave it alone
+no true unreadable ? yes no false — -> fork — upstream's config, leave it alone
+no true unreadable ? yes no ? ci -> fork — upstream's config, leave it alone
+no true unreadable ? yes no ? — -> fork — upstream's config, leave it alone
+no true unreadable ? no yes true ci -> fork — upstream's config, leave it alone
+no true unreadable ? no yes true — -> fork — upstream's config, leave it alone
+no true unreadable ? no yes false ci -> fork — upstream's config, leave it alone
+no true unreadable ? no yes false — -> fork — upstream's config, leave it alone
+no true unreadable ? no yes ? ci -> fork — upstream's config, leave it alone
+no true unreadable ? no yes ? — -> fork — upstream's config, leave it alone
+no true unreadable ? no no true ci -> fork — upstream's config, leave it alone
+no true unreadable ? no no true — -> fork — upstream's config, leave it alone
+no true unreadable ? no no false ci -> fork — upstream's config, leave it alone
+no true unreadable ? no no false — -> fork — upstream's config, leave it alone
+no true unreadable ? no no ? ci -> fork — upstream's config, leave it alone
+no true unreadable ? no no ? — -> fork — upstream's config, leave it alone
+no false yes true yes yes true ci -> enrolled
+no false yes true yes yes true — -> drift: no required check, so nothing can safely auto-merge
+no false yes true yes yes false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes true yes yes false — -> drift: repo setting 'allow auto-merge' is off
+no false yes true yes yes ? ci -> unknown: could not read this repo's settings
+no false yes true yes yes ? — -> unknown: could not read this repo's settings
+no false yes true yes no true ci -> enrolled
+no false yes true yes no true — -> drift: no required check, so nothing can safely auto-merge
+no false yes true yes no false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes true yes no false — -> drift: repo setting 'allow auto-merge' is off
+no false yes true yes no ? ci -> unknown: could not read this repo's settings
+no false yes true yes no ? — -> unknown: could not read this repo's settings
+no false yes true no yes true ci -> enrolled (security fixes only)
+no false yes true no yes true — -> drift: no required check, so nothing can safely auto-merge
+no false yes true no yes false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes true no yes false — -> drift: repo setting 'allow auto-merge' is off
+no false yes true no yes ? ci -> unknown: could not read this repo's settings
+no false yes true no yes ? — -> unknown: could not read this repo's settings
+no false yes true no no true ci -> enrolled (security fixes only)
+no false yes true no no true — -> drift: no required check, so nothing can safely auto-merge
+no false yes true no no false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes true no no false — -> drift: repo setting 'allow auto-merge' is off
+no false yes true no no ? ci -> unknown: could not read this repo's settings
+no false yes true no no ? — -> unknown: could not read this repo's settings
+no false yes false yes yes true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes yes true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes yes false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes yes false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes yes ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes yes ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes no true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes no true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes no false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes no false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes no ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false yes no ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no yes true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no yes true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no yes false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no yes false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no yes ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no yes ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no no true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no no true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no no false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no no false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no no ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes false no no ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false yes ? yes yes true ci -> enrolled
+no false yes ? yes yes true — -> drift: no required check, so nothing can safely auto-merge
+no false yes ? yes yes false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes ? yes yes false — -> drift: repo setting 'allow auto-merge' is off
+no false yes ? yes yes ? ci -> unknown: could not read this repo's settings
+no false yes ? yes yes ? — -> unknown: could not read this repo's settings
+no false yes ? yes no true ci -> enrolled
+no false yes ? yes no true — -> drift: no required check, so nothing can safely auto-merge
+no false yes ? yes no false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes ? yes no false — -> drift: repo setting 'allow auto-merge' is off
+no false yes ? yes no ? ci -> unknown: could not read this repo's settings
+no false yes ? yes no ? — -> unknown: could not read this repo's settings
+no false yes ? no yes true ci -> enrolled (security fixes only)
+no false yes ? no yes true — -> drift: no required check, so nothing can safely auto-merge
+no false yes ? no yes false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes ? no yes false — -> drift: repo setting 'allow auto-merge' is off
+no false yes ? no yes ? ci -> unknown: could not read this repo's settings
+no false yes ? no yes ? — -> unknown: could not read this repo's settings
+no false yes ? no no true ci -> enrolled (security fixes only)
+no false yes ? no no true — -> drift: no required check, so nothing can safely auto-merge
+no false yes ? no no false ci -> drift: repo setting 'allow auto-merge' is off
+no false yes ? no no false — -> drift: repo setting 'allow auto-merge' is off
+no false yes ? no no ? ci -> unknown: could not read this repo's settings
+no false yes ? no no ? — -> unknown: could not read this repo's settings
+no false no true yes yes true ci -> drift: gets update PRs but nothing merges them
+no false no true yes yes true — -> drift: gets update PRs but nothing merges them
+no false no true yes yes false ci -> drift: gets update PRs but nothing merges them
+no false no true yes yes false — -> drift: gets update PRs but nothing merges them
+no false no true yes yes ? ci -> drift: gets update PRs but nothing merges them
+no false no true yes yes ? — -> drift: gets update PRs but nothing merges them
+no false no true yes no true ci -> drift: gets update PRs but nothing merges them
+no false no true yes no true — -> drift: gets update PRs but nothing merges them
+no false no true yes no false ci -> drift: gets update PRs but nothing merges them
+no false no true yes no false — -> drift: gets update PRs but nothing merges them
+no false no true yes no ? ci -> drift: gets update PRs but nothing merges them
+no false no true yes no ? — -> drift: gets update PRs but nothing merges them
+no false no true no yes true ci -> security-only
+no false no true no yes true — -> security-only
+no false no true no yes false ci -> security-only
+no false no true no yes false — -> security-only
+no false no true no yes ? ci -> security-only
+no false no true no yes ? — -> security-only
+no false no true no no true ci -> security-only (nothing to update)
+no false no true no no true — -> security-only (nothing to update)
+no false no true no no false ci -> security-only (nothing to update)
+no false no true no no false — -> security-only (nothing to update)
+no false no true no no ? ci -> security-only (nothing to update)
+no false no true no no ? — -> security-only (nothing to update)
+no false no false yes yes true ci -> drift: gets update PRs but nothing merges them
+no false no false yes yes true — -> drift: gets update PRs but nothing merges them
+no false no false yes yes false ci -> drift: gets update PRs but nothing merges them
+no false no false yes yes false — -> drift: gets update PRs but nothing merges them
+no false no false yes yes ? ci -> drift: gets update PRs but nothing merges them
+no false no false yes yes ? — -> drift: gets update PRs but nothing merges them
+no false no false yes no true ci -> drift: gets update PRs but nothing merges them
+no false no false yes no true — -> drift: gets update PRs but nothing merges them
+no false no false yes no false ci -> drift: gets update PRs but nothing merges them
+no false no false yes no false — -> drift: gets update PRs but nothing merges them
+no false no false yes no ? ci -> drift: gets update PRs but nothing merges them
+no false no false yes no ? — -> drift: gets update PRs but nothing merges them
+no false no false no yes true ci -> security-only
+no false no false no yes true — -> security-only
+no false no false no yes false ci -> security-only
+no false no false no yes false — -> security-only
+no false no false no yes ? ci -> security-only
+no false no false no yes ? — -> security-only
+no false no false no no true ci -> security-only (nothing to update)
+no false no false no no true — -> security-only (nothing to update)
+no false no false no no false ci -> security-only (nothing to update)
+no false no false no no false — -> security-only (nothing to update)
+no false no false no no ? ci -> security-only (nothing to update)
+no false no false no no ? — -> security-only (nothing to update)
+no false no ? yes yes true ci -> drift: gets update PRs but nothing merges them
+no false no ? yes yes true — -> drift: gets update PRs but nothing merges them
+no false no ? yes yes false ci -> drift: gets update PRs but nothing merges them
+no false no ? yes yes false — -> drift: gets update PRs but nothing merges them
+no false no ? yes yes ? ci -> drift: gets update PRs but nothing merges them
+no false no ? yes yes ? — -> drift: gets update PRs but nothing merges them
+no false no ? yes no true ci -> drift: gets update PRs but nothing merges them
+no false no ? yes no true — -> drift: gets update PRs but nothing merges them
+no false no ? yes no false ci -> drift: gets update PRs but nothing merges them
+no false no ? yes no false — -> drift: gets update PRs but nothing merges them
+no false no ? yes no ? ci -> drift: gets update PRs but nothing merges them
+no false no ? yes no ? — -> drift: gets update PRs but nothing merges them
+no false no ? no yes true ci -> security-only
+no false no ? no yes true — -> security-only
+no false no ? no yes false ci -> security-only
+no false no ? no yes false — -> security-only
+no false no ? no yes ? ci -> security-only
+no false no ? no yes ? — -> security-only
+no false no ? no no true ci -> security-only (nothing to update)
+no false no ? no no true — -> security-only (nothing to update)
+no false no ? no no false ci -> security-only (nothing to update)
+no false no ? no no false — -> security-only (nothing to update)
+no false no ? no no ? ci -> security-only (nothing to update)
+no false no ? no no ? — -> security-only (nothing to update)
+no false source true yes yes true ci -> enrolled (this repo IS the standard)
+no false source true yes yes true — -> enrolled (this repo IS the standard)
+no false source true yes yes false ci -> enrolled (this repo IS the standard)
+no false source true yes yes false — -> enrolled (this repo IS the standard)
+no false source true yes yes ? ci -> enrolled (this repo IS the standard)
+no false source true yes yes ? — -> enrolled (this repo IS the standard)
+no false source true yes no true ci -> enrolled (this repo IS the standard)
+no false source true yes no true — -> enrolled (this repo IS the standard)
+no false source true yes no false ci -> enrolled (this repo IS the standard)
+no false source true yes no false — -> enrolled (this repo IS the standard)
+no false source true yes no ? ci -> enrolled (this repo IS the standard)
+no false source true yes no ? — -> enrolled (this repo IS the standard)
+no false source true no yes true ci -> enrolled
+no false source true no yes true — -> drift: no required check, so nothing can safely auto-merge
+no false source true no yes false ci -> drift: repo setting 'allow auto-merge' is off
+no false source true no yes false — -> drift: repo setting 'allow auto-merge' is off
+no false source true no yes ? ci -> unknown: could not read this repo's settings
+no false source true no yes ? — -> unknown: could not read this repo's settings
+no false source true no no true ci -> enrolled
+no false source true no no true — -> drift: no required check, so nothing can safely auto-merge
+no false source true no no false ci -> drift: repo setting 'allow auto-merge' is off
+no false source true no no false — -> drift: repo setting 'allow auto-merge' is off
+no false source true no no ? ci -> unknown: could not read this repo's settings
+no false source true no no ? — -> unknown: could not read this repo's settings
+no false source false yes yes true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes yes true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes yes false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes yes false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes yes ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes yes ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes no true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes no true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes no false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes no false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes no ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false yes no ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no yes true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no yes true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no yes false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no yes false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no yes ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no yes ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no no true ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no no true — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no no false ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no no false — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no no ? ci -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source false no no ? — -> drift: Actions may not approve pull requests here, so the workflow's approvals will be refused
+no false source ? yes yes true ci -> enrolled (this repo IS the standard)
+no false source ? yes yes true — -> enrolled (this repo IS the standard)
+no false source ? yes yes false ci -> enrolled (this repo IS the standard)
+no false source ? yes yes false — -> enrolled (this repo IS the standard)
+no false source ? yes yes ? ci -> enrolled (this repo IS the standard)
+no false source ? yes yes ? — -> enrolled (this repo IS the standard)
+no false source ? yes no true ci -> enrolled (this repo IS the standard)
+no false source ? yes no true — -> enrolled (this repo IS the standard)
+no false source ? yes no false ci -> enrolled (this repo IS the standard)
+no false source ? yes no false — -> enrolled (this repo IS the standard)
+no false source ? yes no ? ci -> enrolled (this repo IS the standard)
+no false source ? yes no ? — -> enrolled (this repo IS the standard)
+no false source ? no yes true ci -> enrolled
+no false source ? no yes true — -> drift: no required check, so nothing can safely auto-merge
+no false source ? no yes false ci -> drift: repo setting 'allow auto-merge' is off
+no false source ? no yes false — -> drift: repo setting 'allow auto-merge' is off
+no false source ? no yes ? ci -> unknown: could not read this repo's settings
+no false source ? no yes ? — -> unknown: could not read this repo's settings
+no false source ? no no true ci -> enrolled
+no false source ? no no true — -> drift: no required check, so nothing can safely auto-merge
+no false source ? no no false ci -> drift: repo setting 'allow auto-merge' is off
+no false source ? no no false — -> drift: repo setting 'allow auto-merge' is off
+no false source ? no no ? ci -> unknown: could not read this repo's settings
+no false source ? no no ? — -> unknown: could not read this repo's settings
+no false inline true yes yes true ci -> drift: still has its own private copy of the merge rules
+no false inline true yes yes true — -> drift: still has its own private copy of the merge rules
+no false inline true yes yes false ci -> drift: still has its own private copy of the merge rules
+no false inline true yes yes false — -> drift: still has its own private copy of the merge rules
+no false inline true yes yes ? ci -> drift: still has its own private copy of the merge rules
+no false inline true yes yes ? — -> drift: still has its own private copy of the merge rules
+no false inline true yes no true ci -> drift: still has its own private copy of the merge rules
+no false inline true yes no true — -> drift: still has its own private copy of the merge rules
+no false inline true yes no false ci -> drift: still has its own private copy of the merge rules
+no false inline true yes no false — -> drift: still has its own private copy of the merge rules
+no false inline true yes no ? ci -> drift: still has its own private copy of the merge rules
+no false inline true yes no ? — -> drift: still has its own private copy of the merge rules
+no false inline true no yes true ci -> drift: still has its own private copy of the merge rules
+no false inline true no yes true — -> drift: still has its own private copy of the merge rules
+no false inline true no yes false ci -> drift: still has its own private copy of the merge rules
+no false inline true no yes false — -> drift: still has its own private copy of the merge rules
+no false inline true no yes ? ci -> drift: still has its own private copy of the merge rules
+no false inline true no yes ? — -> drift: still has its own private copy of the merge rules
+no false inline true no no true ci -> drift: still has its own private copy of the merge rules
+no false inline true no no true — -> drift: still has its own private copy of the merge rules
+no false inline true no no false ci -> drift: still has its own private copy of the merge rules
+no false inline true no no false — -> drift: still has its own private copy of the merge rules
+no false inline true no no ? ci -> drift: still has its own private copy of the merge rules
+no false inline true no no ? — -> drift: still has its own private copy of the merge rules
+no false inline false yes yes true ci -> drift: still has its own private copy of the merge rules
+no false inline false yes yes true — -> drift: still has its own private copy of the merge rules
+no false inline false yes yes false ci -> drift: still has its own private copy of the merge rules
+no false inline false yes yes false — -> drift: still has its own private copy of the merge rules
+no false inline false yes yes ? ci -> drift: still has its own private copy of the merge rules
+no false inline false yes yes ? — -> drift: still has its own private copy of the merge rules
+no false inline false yes no true ci -> drift: still has its own private copy of the merge rules
+no false inline false yes no true — -> drift: still has its own private copy of the merge rules
+no false inline false yes no false ci -> drift: still has its own private copy of the merge rules
+no false inline false yes no false — -> drift: still has its own private copy of the merge rules
+no false inline false yes no ? ci -> drift: still has its own private copy of the merge rules
+no false inline false yes no ? — -> drift: still has its own private copy of the merge rules
+no false inline false no yes true ci -> drift: still has its own private copy of the merge rules
+no false inline false no yes true — -> drift: still has its own private copy of the merge rules
+no false inline false no yes false ci -> drift: still has its own private copy of the merge rules
+no false inline false no yes false — -> drift: still has its own private copy of the merge rules
+no false inline false no yes ? ci -> drift: still has its own private copy of the merge rules
+no false inline false no yes ? — -> drift: still has its own private copy of the merge rules
+no false inline false no no true ci -> drift: still has its own private copy of the merge rules
+no false inline false no no true — -> drift: still has its own private copy of the merge rules
+no false inline false no no false ci -> drift: still has its own private copy of the merge rules
+no false inline false no no false — -> drift: still has its own private copy of the merge rules
+no false inline false no no ? ci -> drift: still has its own private copy of the merge rules
+no false inline false no no ? — -> drift: still has its own private copy of the merge rules
+no false inline ? yes yes true ci -> drift: still has its own private copy of the merge rules
+no false inline ? yes yes true — -> drift: still has its own private copy of the merge rules
+no false inline ? yes yes false ci -> drift: still has its own private copy of the merge rules
+no false inline ? yes yes false — -> drift: still has its own private copy of the merge rules
+no false inline ? yes yes ? ci -> drift: still has its own private copy of the merge rules
+no false inline ? yes yes ? — -> drift: still has its own private copy of the merge rules
+no false inline ? yes no true ci -> drift: still has its own private copy of the merge rules
+no false inline ? yes no true — -> drift: still has its own private copy of the merge rules
+no false inline ? yes no false ci -> drift: still has its own private copy of the merge rules
+no false inline ? yes no false — -> drift: still has its own private copy of the merge rules
+no false inline ? yes no ? ci -> drift: still has its own private copy of the merge rules
+no false inline ? yes no ? — -> drift: still has its own private copy of the merge rules
+no false inline ? no yes true ci -> drift: still has its own private copy of the merge rules
+no false inline ? no yes true — -> drift: still has its own private copy of the merge rules
+no false inline ? no yes false ci -> drift: still has its own private copy of the merge rules
+no false inline ? no yes false — -> drift: still has its own private copy of the merge rules
+no false inline ? no yes ? ci -> drift: still has its own private copy of the merge rules
+no false inline ? no yes ? — -> drift: still has its own private copy of the merge rules
+no false inline ? no no true ci -> drift: still has its own private copy of the merge rules
+no false inline ? no no true — -> drift: still has its own private copy of the merge rules
+no false inline ? no no false ci -> drift: still has its own private copy of the merge rules
+no false inline ? no no false — -> drift: still has its own private copy of the merge rules
+no false inline ? no no ? ci -> drift: still has its own private copy of the merge rules
+no false inline ? no no ? — -> drift: still has its own private copy of the merge rules
+no false unreadable true yes yes true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes yes true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes yes false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes yes false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes yes ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes yes ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes no true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes no true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes no false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes no false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes no ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true yes no ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no yes true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no yes true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no yes false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no yes false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no yes ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no yes ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no no true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no no true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no no false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no no false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no no ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable true no no ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes yes true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes yes true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes yes false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes yes false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes yes ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes yes ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes no true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes no true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes no false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes no false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes no ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false yes no ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no yes true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no yes true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no yes false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no yes false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no yes ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no yes ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no no true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no no true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no no false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no no false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no no ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable false no no ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes yes true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes yes true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes yes false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes yes false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes yes ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes yes ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes no true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes no true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes no false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes no false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes no ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? yes no ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no yes true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no yes true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no yes false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no yes false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no yes ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no yes ? — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no no true ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no no true — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no no false ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no no false — -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no no ? ci -> unknown: could not read this repo's merge-rules workflow
+no false unreadable ? no no ? — -> unknown: could not read this repo's merge-rules workflow

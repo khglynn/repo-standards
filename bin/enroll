@@ -93,6 +93,19 @@ if [ -n "$CI_CHECK" ] && [ -n "$EXTERNAL_CHECK" ]; then
        this repo's own workflows, the second a context some other service reports. Pick
        the one that will actually go green on a pull request here."
 fi
+# A multi-line context is refused rather than mangled: `grep -F` treats each line of its
+# pattern as a SEPARATE alternative, so "Vercel<newline>anything" would "match" a history
+# containing only `Vercel`, and the ruleset would then be handed the whole literal string —
+# a gate nothing reports, validated by a check that thought it had proof (Codex review,
+# 2026-09-14). No real status context contains a newline.
+for spelling in "$CI_CHECK" "$EXTERNAL_CHECK"; do
+  case "$spelling" in
+    # $'\n', not "$(printf '\n')" — command substitution strips trailing newlines, so the
+    # latter is the EMPTY string and the pattern `**` matches everything, including "".
+    # Caught by testing the guard rather than trusting it, 2026-09-14.
+    *$'\n'*) die "a check name cannot contain a newline. Got: $(printf '%q' "$spelling")" ;;
+  esac
+done
 if [ -n "$CI_CHECK" ]; then
   REQUIRED_CHECK="$CI_CHECK"; CHECK_KIND="job"
 elif [ -n "$EXTERNAL_CHECK" ]; then
@@ -125,7 +138,259 @@ say "   default branch: $DEFAULT_BRANCH   visibility: $VISIBILITY"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-# ------------------------------------------------------------------------- 1. labels
+# -------------------------------------------- 1. LOOK BEFORE WRITING ANYTHING AT ALL
+#
+# Every refusal below says "nothing on $TARGET was changed", and until 2026-09-14 that was
+# false: the labels step ran first, so a bad check name or an unenrollable repo was turned
+# away AFTER five `gh label create --force` calls had created or overwritten labels on it
+# (Codex review). Validation now genuinely comes first. The clone is local and writes
+# nothing to GitHub, so doing it here costs only a few seconds on the paths that refuse.
+step "Checks"
+CLONE="$WORK/repo"
+git clone --quiet --depth 1 --branch "$DEFAULT_BRANCH" "https://github.com/$TARGET.git" "$CLONE" \
+  || die "could not clone $TARGET"
+mkdir -p "$CLONE/.github/workflows"
+
+# Which dependabot.yml, if any, this repo already has. Read here rather than in the Files
+# step because --security-only's refusal depends on it and has to happen before any write.
+existing_db=""
+# Explicit `if`, not `[ -f x ] && y=z`: this is the LAST command in the loop body, and under
+# `set -e` a false test there makes the whole loop exit non-zero and kills the script.
+for cand in "$CLONE/.github/dependabot.yml" "$CLONE/.github/dependabot.yaml"; do
+  if [ -f "$cand" ]; then existing_db="$cand"; fi
+done
+
+# A pre-existing dependabot.yml makes --security-only's promise FALSE: routine version
+# bumps would keep arriving and, with a gate in place, merging themselves — while the run
+# that enabled that said in its summary that only security fixes would. Refuse rather than
+# print a sentence the repo contradicts.
+if $SECURITY_ONLY && [ -n "$existing_db" ]; then
+  die "--security-only, but $TARGET already has ${existing_db#"$CLONE"/} — so version-update
+       pull requests will keep arriving no matter what this run does, and the summary would
+       tell you otherwise. Drop --security-only, or delete that file first.
+       Nothing on $TARGET was changed."
+fi
+
+# ---- validate --ci-check ----------------------------------------------------------
+#
+# ⚠ A required status check is a free-text CONTEXT: GitHub happily accepts one that
+# nothing will ever report. A typo — `check` for `checks` — creates a gate that can never
+# go green: Kevin bypasses it as an admin and never notices, while every Dependabot PR
+# queues auto-merge and hangs forever. That is precisely the silent failure this whole
+# system exists to prevent, so the name is checked against the job ids the repo's own
+# workflows actually declare. (Added 2026-09-11.)
+if [ -n "$CI_CHECK" ]; then
+  jobs_found=$(python3 "$HERE/bin/lib/pr-job-ids.py" "$CLONE")
+  if [ -z "$jobs_found" ]; then
+    die "--ci-check '$CI_CHECK' cannot be verified: $TARGET has no workflow that runs on
+       pull_request, so no check will ever report on a PR. Add CI first, then enroll.
+       Nothing on $TARGET was changed."
+  fi
+  # `<<<` and `--`, both fixes from the 2026-09-14 review of the sibling check below.
+  # The old form was `printf … | cut -f1 | grep -qxF "$CI_CHECK"`, which had two faults:
+  # `grep -q` exits on its first match, so under `pipefail` the upstream can die of SIGPIPE
+  # and the pipeline reports 141 — a VALID name read as a miss, and only once the job list
+  # is big enough not to fit a pipe buffer; and without `--`, a name beginning with a dash
+  # is parsed as a grep option, so `-echecks` would "match" and then be written into the
+  # ruleset as the literal string `-echecks`, which nothing reports.
+  if ! grep -qxF -- "$CI_CHECK" <<< "$(cut -f1 <<< "$jobs_found")"; then
+    say "   jobs this repo actually runs on pull requests:"
+    printf '%s\n' "$jobs_found" | awk -F'\t' '{printf "      %-24s (%s, shown as \"%s\")\n", $1, $2, $3}'
+    die "--ci-check '$CI_CHECK' is not one of them. A required check that nothing reports
+       is a gate that can never go green — every Dependabot PR would queue and hang
+       forever. Pick a job id from the list above. Nothing on $TARGET was changed."
+  fi
+  say "   CI check '$CI_CHECK' is a real job that runs on pull requests here ✓"
+fi
+
+# ---- validate --external-check the only way an external check CAN be validated --------
+#
+# ⚠ Same trap as --ci-check, one step further out, and it needs different evidence. An
+# external context is reported by a third-party app — Vercel, Cloudflare Pages — so no file
+# in this repo declares it and `pr-job-ids.py` can never see it. A typo would create exactly
+# the gate that can never go green which the check above exists to prevent.
+#
+# The only honest proof is history: has anything ACTUALLY reported this context on a pull
+# request here? Five most recent pull requests, ANY state — a repo whose Dependabot PRs all
+# merged has no open ones to learn from — and both surfaces a check can arrive on. GitHub's
+# required-status-check rule matches a commit status context and a check-run name by the
+# same string, so either one counts as proof.
+#
+# ⚠ AND WHOSE PULL REQUESTS THEY WERE IS PART OF THE EVIDENCE (Codex review, 2026-09-14).
+# A check that reports on a human's pull request proves nothing about Dependabot's: a
+# workflow triggered only on `feature/**`, or a Vercel project that ignores bot branches,
+# would pass a naive name match and then never report on the branches that actually matter.
+# So the author of every sampled pull request is read too, and the three cases are kept
+# apart: proved on a Dependabot PR (the real thing), proved only on human PRs with no
+# Dependabot PR in the sample to judge by (accepted, loudly), and proved on human PRs while
+# Dependabot's own PRs went ungated (refused — that is positive evidence of the bad case).
+if [ -n "$EXTERNAL_CHECK" ]; then
+  say "   verifying '$EXTERNAL_CHECK' against this repo's five most recent pull requests…"
+  prs=$(gh api "repos/$TARGET/pulls?state=all&sort=created&direction=desc&per_page=5" \
+          --jq '.[] | [(.number|tostring), .head.sha, (.user.login // "?")] | @tsv' 2>/dev/null) \
+    || die "could not list $TARGET's pull requests, so '$EXTERNAL_CHECK' could not be
+       verified against anything. Nothing on $TARGET was changed."
+  if [ -z "$prs" ]; then
+    die "--external-check '$EXTERNAL_CHECK' cannot be verified: $TARGET has no pull
+       requests at all, so nothing has ever reported a check on one here. Open a pull
+       request, let the build run once, then enroll. Nothing on $TARGET was changed."
+  fi
+
+  proof=""
+  bot_proof=""
+  bot_seen=0
+  heads_total=0
+  heads_read=0
+  heads_unread=""
+  heads_partial=""
+  : > "$WORK/contexts-seen.txt"
+  while IFS=$'\t' read -r pr_num head_sha pr_author; do
+    [ -n "$head_sha" ] || continue
+    heads_total=$((heads_total + 1))
+    case "$pr_author" in dependabot*) is_bot=yes; bot_seen=$((bot_seen + 1)) ;; *) is_bot=no ;; esac
+
+    # A HEAD THAT COULD NOT BE READ IS NOT A HEAD WITH NO CHECKS. A merged PR's branch is
+    # often deleted, and swallowing an unreadable head makes it look exactly like a clean
+    # one — the refusal below would then print a short list of "what IS reported" that is
+    # short because nobody looked.
+    #
+    # ⚠ AND THE OBVIOUS PROBE DOES NOT WORK. The combined-status endpoint
+    # `commits/{sha}/status` answers **200** for a commit that does not exist in the repo at
+    # all, with `{"state":"pending","statuses":[],"total_count":0}` — measured against
+    # khglynn/ynai with an all-zeroes SHA, 2026-09-14. So its exit status can never tell "no
+    # statuses" from "no such commit", and a script that trusts it reports a confident empty
+    # answer about a commit it never found. `commits/{sha}/check-runs` DOES 404 on the same
+    # SHA and returns 200 with an empty array for a real commit that has none, so it is the
+    # honest reachability probe — and it is a call this loop already makes.
+    #
+    # `--paginate` on both: each defaults to 30 results, and declaring a context absent from
+    # a truncated read is the same sin one page down (Codex review).
+    #
+    # </dev/null on every call inside this loop: a command that reads stdin would eat the
+    # here-string feeding `read` and end the loop early, having checked one PR.
+    if runs=$(gh api --paginate "repos/$TARGET/commits/$head_sha/check-runs?per_page=100" \
+                --jq '.check_runs[].name' </dev/null 2>/dev/null); then
+      heads_read=$((heads_read + 1))
+      if statuses=$(gh api --paginate "repos/$TARGET/commits/$head_sha/status?per_page=100" \
+                      --jq '.statuses[].context' </dev/null 2>/dev/null); then :; else
+        statuses=""; heads_partial="$heads_partial #$pr_num"
+      fi
+    else
+      runs=""; statuses=""
+      heads_unread="$heads_unread #$pr_num"
+    fi
+
+    if [ -n "$statuses" ]; then awk -v k='commit status' '{print $0 "\t" k}' <<< "$statuses" >> "$WORK/contexts-seen.txt"; fi
+    if [ -n "$runs" ];     then awk -v k='check run'     '{print $0 "\t" k}' <<< "$runs"     >> "$WORK/contexts-seen.txt"; fi
+
+    # Here-strings, not pipes, and `--` before the pattern. `grep -q` exits on its first
+    # match and under `pipefail` the printf feeding it dies of SIGPIPE, so a pipeline
+    # reports 141 and a real match reads as a miss. And without `--`, a context beginning
+    # with a dash is read as a grep option: `--external-check -eVercel` "matched" a history
+    # containing only `Vercel`, and the ruleset would then have required the literal string
+    # `-eVercel`, which nothing reports (Codex review, reproduced 2026-09-14).
+    hit=""
+    if grep -qxF -- "$EXTERNAL_CHECK" <<< "$statuses"; then
+      hit="PR #$pr_num by $pr_author (as a commit status)"
+    elif grep -qxF -- "$EXTERNAL_CHECK" <<< "$runs"; then
+      hit="PR #$pr_num by $pr_author (as a check run)"
+    fi
+    if [ -n "$hit" ]; then
+      [ -n "$proof" ] || proof="$hit"
+      if [ "$is_bot" = "yes" ] && [ -z "$bot_proof" ]; then bot_proof="$hit"; fi
+    fi
+  done <<< "$prs"
+
+  if [ -n "$heads_unread" ]; then
+    say "   note: $heads_read of $heads_total pull-request heads could be read; no answer for$heads_unread"
+    say "   (a merged branch's head commit is often gone — unreadable, which is not the same"
+    say "   as carrying no checks, so nothing was inferred from those)"
+  fi
+  if [ -n "$heads_partial" ]; then
+    say "   note: the commit-status list could not be read for$heads_partial, so only their"
+    say "   check runs were considered."
+  fi
+
+  if [ -z "$proof" ]; then
+    if [ "$heads_read" -eq 0 ]; then
+      die "--external-check '$EXTERNAL_CHECK' could not be verified either way: none of
+       $TARGET's $heads_total most recent pull-request heads could be read, so this is an
+       absence of evidence and not evidence of absence. Nothing on $TARGET was changed."
+    fi
+    say "   checks that HAVE been reported on those pull requests:"
+    if [ -s "$WORK/contexts-seen.txt" ]; then
+      sort -u "$WORK/contexts-seen.txt" | awk -F'\t' '{printf "      %-44s (%s)\n", $1, $2}'
+    else
+      say "      (none at all — nothing has reported any check on a pull request here)"
+    fi
+    die "--external-check '$EXTERNAL_CHECK' is not one of them. A required check that
+       nothing reports is a gate that can never go green — every Dependabot PR would
+       queue for auto-merge and hang forever. Pick a name from the list above, exactly
+       as it is spelled. Nothing on $TARGET was changed."
+  fi
+
+  if [ -n "$bot_proof" ]; then
+    say "   external check '$EXTERNAL_CHECK' reports on Dependabot's own pull requests ✓ — $bot_proof"
+  elif [ "$bot_seen" -gt 0 ]; then
+    say "   '$EXTERNAL_CHECK' was reported on $proof,"
+    say "   but NOT on any of the $bot_seen Dependabot pull request(s) in the same sample."
+    die "that is the failure this flag exists to prevent, seen directly: the check runs on
+       people's branches and not on Dependabot's, so every update PR would queue behind a
+       gate that never reports. Fix the integration to build Dependabot's branches (in
+       Vercel: Git → ignored build step / branch settings), then re-run.
+       Nothing on $TARGET was changed."
+  else
+    say "   external check '$EXTERNAL_CHECK' has really been reported here ✓ — $proof"
+    say "   ⚠ but none of those $heads_total pull requests was Dependabot's, so nothing here"
+    say "     proves the check reports on a dependabot/* branch. Watch the first security PR."
+  fi
+  say "   ⚠ it is reported by a third-party app, not by a file in this repo. If that"
+  say "     integration is ever removed or stops building this repo's branches, the gate"
+  say "     goes silent and update PRs will queue forever rather than fail loudly."
+fi
+
+# ---- what does this branch ALREADY require? -----------------------------------------
+#
+# ⚠ An empty $REQUIRED_CHECK means "this invocation named no check", NOT "this branch has
+# none" (Codex review, 2026-09-14). A repo can already carry a ruleset or classic
+# protection, and the shared workflow reads the branch, not this script's arguments — so
+# `--security-only` with no check flag used to promise in its PR body and summary that
+# every security fix would wait for a human, on a repo where they would in fact merge
+# themselves. Read the branch and say what is true. Rulesets first (readable without admin),
+# classic as the fallback, exactly as bin/audit and the shared workflow do it.
+BRANCH_ESC=${DEFAULT_BRANCH//\//%2F}
+EXISTING_CHECKS=""
+CHECKS_KNOWN=no
+if rules_json=$(gh api "repos/$TARGET/rules/branches/$BRANCH_ESC" 2>/dev/null); then
+  CHECKS_KNOWN=yes
+  EXISTING_CHECKS=$(printf '%s' "$rules_json" | jq -r '[.[] | select(.type=="required_status_checks")
+      | .parameters.required_status_checks[]?.context] | unique | join(", ")' 2>/dev/null || true)
+fi
+if [ -z "$EXISTING_CHECKS" ]; then
+  if prot_json=$(gh api "repos/$TARGET/branches/$BRANCH_ESC/protection" 2>/dev/null); then
+    CHECKS_KNOWN=yes
+    EXISTING_CHECKS=$(printf '%s' "$prot_json" | jq -r '(((.required_status_checks.checks // []) | map(.context))
+        + (.required_status_checks.contexts // [])) | unique | join(", ")' 2>/dev/null || true)
+  fi
+fi
+# GATE_STATE is what the PR body and the summary speak from, so they can never describe a
+# gate this run did not look at: `new` (we are about to require one), `preexisting` (none
+# given, the branch already has one), `none` (none given, the branch really has none),
+# `unknown` (none given and neither endpoint answered).
+if [ -n "$REQUIRED_CHECK" ]; then
+  GATE_STATE=new
+elif [ -n "$EXISTING_CHECKS" ]; then
+  GATE_STATE=preexisting
+  say "   no check flag given, but $DEFAULT_BRANCH already requires: $EXISTING_CHECKS"
+elif [ "$CHECKS_KNOWN" = "yes" ]; then
+  GATE_STATE=none
+else
+  GATE_STATE=unknown
+  say "   could not read what $DEFAULT_BRANCH requires — neither rulesets nor classic"
+  say "   protection answered, so this run will not claim either way."
+fi
+
+# ----------------------------------------------------------------------- 2. labels
 step "Labels"
 label() {
   if $DRY_RUN; then
@@ -141,7 +406,7 @@ label "dependabot-needs-human" "b60205" "Auto-merge could not classify this upda
 label "no-ci-gate"             "fbca04" "No required status check on the base branch, so nothing was auto-merged"
 label "dependabot-opted-out"   "c5def5" "Classified fine, but this repo opted out of auto-merging that tier"
 
-# ------------------------------------------------------- 2. which ecosystems is this?
+# ------------------------------------------------------- 3. which ecosystems is this?
 step "Ecosystems"
 # --security-only writes no dependabot.yml, and this whole step exists only to compose
 # that file. Running it anyway would cost an API call to answer a question nothing reads —
@@ -202,127 +467,12 @@ if [ -s "$WORK/eco.tsv" ]; then
   done < "$WORK/eco.tsv"
 fi
 
-# ------------------------------------------------- 3+4. the file changes, via a branch
+# ----------------------------------------------- 4+5. the file changes, via a branch
 step "Files"
-CLONE="$WORK/repo"
-git clone --quiet --depth 1 --branch "$DEFAULT_BRANCH" "https://github.com/$TARGET.git" "$CLONE" \
-  || die "could not clone $TARGET"
-mkdir -p "$CLONE/.github/workflows"
-
-# ---- validate --ci-check BEFORE anything is written anywhere ----------------------
-#
-# ⚠ A required status check is a free-text CONTEXT: GitHub happily accepts one that
-# nothing will ever report. A typo — `check` for `checks` — creates a gate that can never
-# go green: Kevin bypasses it as an admin and never notices, while every Dependabot PR
-# queues auto-merge and hangs forever. That is precisely the silent failure this whole
-# system exists to prevent, so the name is checked against the job ids the repo's own
-# workflows actually declare — and checked HERE, before a single write, so a bad name
-# costs nothing. (Added 2026-09-11.)
-if [ -n "$CI_CHECK" ]; then
-  jobs_found=$(python3 "$HERE/bin/lib/pr-job-ids.py" "$CLONE")
-  if [ -z "$jobs_found" ]; then
-    die "--ci-check '$CI_CHECK' cannot be verified: $TARGET has no workflow that runs on
-       pull_request, so no check will ever report on a PR. Add CI first, then enroll.
-       Nothing on $TARGET was changed."
-  fi
-  if ! printf '%s\n' "$jobs_found" | cut -f1 | grep -qxF "$CI_CHECK"; then
-    say "   jobs this repo actually runs on pull requests:"
-    printf '%s\n' "$jobs_found" | awk -F'\t' '{printf "      %-24s (%s, shown as \"%s\")\n", $1, $2, $3}'
-    die "--ci-check '$CI_CHECK' is not one of them. A required check that nothing reports
-       is a gate that can never go green — every Dependabot PR would queue and hang
-       forever. Pick a job id from the list above. Nothing on $TARGET was changed."
-  fi
-  say "   CI check '$CI_CHECK' is a real job that runs on pull requests here ✓"
-fi
-
-# ---- validate --external-check the only way an external check CAN be validated --------
-#
-# ⚠ Same trap as --ci-check, one step further out, and it needs different evidence. An
-# external context is reported by a third-party app — Vercel, Cloudflare Pages — so no
-# file in this repo declares it and `pr-job-ids.py` can never see it. A typo would create
-# exactly the gate that can never go green which the check above exists to prevent.
-#
-# The only honest proof is history: has anything ACTUALLY reported this context on a pull
-# request here? Five most recent pull requests, ANY state — a repo whose Dependabot PRs
-# all merged has no open ones to learn from — and both surfaces a check can arrive on.
-# GitHub's required-status-check rule matches a commit status context and a check-run name
-# by the same string, so either one counts as proof.
-#
-# This needs no checkout, but it lives here beside the --ci-check check so the two read
-# together and neither can be moved after a write by accident.
-if [ -n "$EXTERNAL_CHECK" ]; then
-  say "   verifying '$EXTERNAL_CHECK' against this repo's five most recent pull requests…"
-  prs=$(gh api "repos/$TARGET/pulls?state=all&sort=created&direction=desc&per_page=5" \
-          --jq '.[] | [(.number|tostring), .head.sha] | @tsv' 2>/dev/null) \
-    || die "could not list $TARGET's pull requests, so '$EXTERNAL_CHECK' could not be
-       verified against anything. Nothing on $TARGET was changed."
-  if [ -z "$prs" ]; then
-    die "--external-check '$EXTERNAL_CHECK' cannot be verified: $TARGET has no pull
-       requests at all, so nothing has ever reported a check on one here. Open a pull
-       request, let the build run once, then enroll. Nothing on $TARGET was changed."
-  fi
-
-  proof=""
-  : > "$WORK/contexts-seen.txt"
-  while IFS=$'\t' read -r pr_num head_sha; do
-    [ -n "$head_sha" ] || continue
-    # </dev/null on every call inside this loop: a command that reads stdin would eat the
-    # here-string feeding `read` and end the loop early, having checked one PR.
-    statuses=$(gh api "repos/$TARGET/commits/$head_sha/status" \
-                 --jq '.statuses[].context' </dev/null 2>/dev/null || true)
-    runs=$(gh api "repos/$TARGET/commits/$head_sha/check-runs" \
-             --jq '.check_runs[].name' </dev/null 2>/dev/null || true)
-    if [ -n "$statuses" ]; then awk -v k='commit status' '{print $0 "\t" k}' <<< "$statuses" >> "$WORK/contexts-seen.txt"; fi
-    if [ -n "$runs" ];     then awk -v k='check run'     '{print $0 "\t" k}' <<< "$runs"     >> "$WORK/contexts-seen.txt"; fi
-    # Here-strings, not pipes. `grep -q` exits on its first match and under `pipefail` the
-    # printf feeding it dies of SIGPIPE, so the pipeline reports 141 and the match reads
-    # as a miss — the same bug bin/audit's comments already name.
-    if [ -z "$proof" ]; then
-      if grep -qxF "$EXTERNAL_CHECK" <<< "$statuses"; then
-        proof="PR #$pr_num (as a commit status)"
-      elif grep -qxF "$EXTERNAL_CHECK" <<< "$runs"; then
-        proof="PR #$pr_num (as a check run)"
-      fi
-    fi
-  done <<< "$prs"
-
-  if [ -z "$proof" ]; then
-    say "   checks that HAVE been reported on those pull requests:"
-    if [ -s "$WORK/contexts-seen.txt" ]; then
-      sort -u "$WORK/contexts-seen.txt" | awk -F'\t' '{printf "      %-44s (%s)\n", $1, $2}'
-    else
-      say "      (none at all — nothing has reported any check on a pull request here)"
-    fi
-    die "--external-check '$EXTERNAL_CHECK' is not one of them. A required check that
-       nothing reports is a gate that can never go green — every Dependabot PR would
-       queue for auto-merge and hang forever. Pick a name from the list above, exactly
-       as it is spelled. Nothing on $TARGET was changed."
-  fi
-  say "   external check '$EXTERNAL_CHECK' has really been reported here ✓ — $proof"
-  say "   ⚠ it is reported by a third-party app, not by a file in this repo. If that"
-  say "     integration is ever removed or stops building this repo's branches, the gate"
-  say "     goes silent and update PRs will queue forever rather than fail loudly."
-fi
 
 # --- dependabot.yml: write only if absent; otherwise report the difference and move on.
 #     An existing file is a decision someone made. We never overwrite it.
-existing_db=""
-# Explicit `if`, not `[ -f x ] && y=z`: this is the LAST command in the loop body, and under
-# `set -e` a false test there makes the whole loop exit non-zero and kills the script.
-for cand in "$CLONE/.github/dependabot.yml" "$CLONE/.github/dependabot.yaml"; do
-  if [ -f "$cand" ]; then existing_db="$cand"; fi
-done
 if $SECURITY_ONLY; then
-  # A pre-existing dependabot.yml makes --security-only's promise FALSE: routine version
-  # bumps would keep arriving and, with a gate in place, merging themselves — while the
-  # run that enabled that said in its summary that only security fixes would. Refuse
-  # rather than print a sentence the repo contradicts.
-  if [ -n "$existing_db" ]; then
-    die "--security-only, but $TARGET already has ${existing_db#"$CLONE"/} — so version-update
-       pull requests will keep arriving no matter what this run does, and the summary would
-       tell you otherwise. Drop --security-only, or delete that file first.
-       Nothing on $TARGET was changed."
-  fi
   say "   dependabot.yml: NOT written (--security-only) — no version-update PRs will be"
   say "   opened here. GitHub's account-wide security fixes still arrive; they need no file."
 elif [ ! -s "$want_dependabot" ]; then
@@ -423,36 +573,49 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
       git -C "$CLONE" push -q -u origin "$BRANCH_NAME"
     fi
 
+    # THE BODY IS GENERATED FOR BOTH PATHS, not only when the PR is created.
+    # Re-running enroll with different flags over an open enroll PR used to replace the
+    # BRANCH and leave the old description standing — so a repo re-run with --security-only
+    # would carry a pull request still promising weekly version updates, and the promise is
+    # the only place that decision is visible, since it is a file's ABSENCE (Codex review,
+    # 2026-09-14).
+    body_file="$WORK/pr-body.md"
+    {
+      echo "Enrolls this repo in the shared Dependabot standards at [khglynn/repo-standards](https://github.com/$STD_REPO)."
+      echo
+      if $SECURITY_ONLY; then
+        # The body has to say the quiet part, because the diff cannot: what is MISSING
+        # from this PR (a dependabot.yml) is the whole decision being made.
+        echo "**What changes:** one ten-line workflow that points at the shared merge rules. Deliberately **no \`dependabot.yml\`** — this repo is enrolled for security fixes only."
+        echo
+        echo "**What it means day to day:** no routine \"there is a newer version\" pull requests will be opened here. GitHub's account-wide Dependabot *security* fixes still arrive — those need no file in any repo. A major-version security fix gets a \`major-review-needed\` label and waits for you."
+        echo
+        case "$GATE_STATE" in
+          new)         echo "**The check they wait for:** \`$REQUIRED_CHECK\`, which this run makes a required check on \`$DEFAULT_BRANCH\`. Security fixes approve and merge themselves once it is green." ;;
+          preexisting) echo "**The check they wait for:** \`$EXISTING_CHECKS\` — already required on \`$DEFAULT_BRANCH\` before this run. Security fixes approve and merge themselves once it is green." ;;
+          none)        echo "**Nothing will merge by itself:** \`$DEFAULT_BRANCH\` has no required status check, so every security PR gets a \`no-ci-gate\` label and waits for you." ;;
+          *)           echo "**Whether anything merges by itself is unknown:** this run could not read what \`$DEFAULT_BRANCH\` requires. If it requires a check, security fixes will merge once that check is green; if it requires none, they will wait for you with a \`no-ci-gate\` label." ;;
+        esac
+      else
+        echo "**What changes:** a \`dependabot.yml\` (only if the repo had none) asking Dependabot for weekly updates, plus a ten-line workflow that points at the shared merge rules."
+        echo
+        echo "**What it means day to day:** patch and minor dependency updates approve and merge themselves once CI is green. Major bumps get a \`major-review-needed\` label and wait for you. If the branch has no required CI check, nothing merges automatically at all — the PR gets a \`no-ci-gate\` label explaining why."
+      fi
+      echo
+      echo "**To undo it:** delete \`.github/workflows/dependabot-automerge.yml\`."
+    } > "$body_file"
+
     existing_pr=$(gh pr list --repo "$TARGET" --head "$BRANCH_NAME" --state open --json url --jq '.[0].url' 2>/dev/null || true)
     if [ -n "$existing_pr" ]; then
       PR_URL="$existing_pr"
-      say "   pull request already open, updated it: $PR_URL"
+      if gh pr edit "$PR_URL" --body-file "$body_file" >/dev/null 2>&1; then
+        say "   pull request already open, updated it and its description: $PR_URL"
+      else
+        say "   pull request already open, branch updated: $PR_URL"
+        say "   ⚠ could not rewrite its description, so it may still describe the PREVIOUS"
+        say "     enrolment shape. Read it before merging."
+      fi
     else
-      body_file="$WORK/pr-body.md"
-      {
-        echo "Enrolls this repo in the shared Dependabot standards at [khglynn/repo-standards](https://github.com/$STD_REPO)."
-        echo
-        if $SECURITY_ONLY; then
-          # The body has to say the quiet part, because the diff cannot: what is MISSING
-          # from this PR (a dependabot.yml) is the whole decision being made.
-          echo "**What changes:** one ten-line workflow that points at the shared merge rules. Deliberately **no \`dependabot.yml\`** — this repo is enrolled for security fixes only."
-          echo
-          echo "**What it means day to day:** no routine \"there is a newer version\" pull requests will be opened here. GitHub's account-wide Dependabot *security* fixes still arrive — those need no file in any repo — and from now on they approve and merge themselves once the required check is green. A major-version security fix still gets a \`major-review-needed\` label and waits for you."
-          if [ -n "$REQUIRED_CHECK" ]; then
-            echo
-            echo "**The check they wait for:** \`$REQUIRED_CHECK\`."
-          else
-            echo
-            echo "**Nothing will merge by itself yet:** this repo has no required status check, so every security PR gets a \`no-ci-gate\` label and waits for you."
-          fi
-        else
-          echo "**What changes:** a \`dependabot.yml\` (only if the repo had none) asking Dependabot for weekly updates, plus a ten-line workflow that points at the shared merge rules."
-          echo
-          echo "**What it means day to day:** patch and minor dependency updates approve and merge themselves once CI is green. Major bumps get a \`major-review-needed\` label and wait for you. If the branch has no required CI check, nothing merges automatically at all — the PR gets a \`no-ci-gate\` label explaining why."
-        fi
-        echo
-        echo "**To undo it:** delete \`.github/workflows/dependabot-automerge.yml\`."
-      } > "$body_file"
       if PR_URL=$(gh pr create --repo "$TARGET" --base "$DEFAULT_BRANCH" --head "$BRANCH_NAME" \
             --title "standards: enroll in shared Dependabot auto-merge" --body-file "$body_file" 2>&1); then
         say "   pull request: $PR_URL"
@@ -562,14 +725,25 @@ else
 fi
 echo " Files proposed:${FILES_PROPOSED:- none}"
 echo " Pull request: ${PR_URL:-none}"
-if [ "$CHECK_KIND" = "external" ]; then
-  echo " CI gate: '$REQUIRED_CHECK' required on $DEFAULT_BRANCH — reported by another service,"
-  echo "          not by a workflow here (you can still push directly)"
-elif [ -n "$REQUIRED_CHECK" ]; then
-  echo " CI gate: '$REQUIRED_CHECK' required on $DEFAULT_BRANCH (you can still push directly)"
-else
-  echo " CI gate: NONE. Nothing will auto-merge here until this repo has one."
-fi
+case "$GATE_STATE" in
+  new)
+    if [ "$CHECK_KIND" = "external" ]; then
+      echo " CI gate: '$REQUIRED_CHECK' required on $DEFAULT_BRANCH — reported by another service,"
+      echo "          not by a workflow here (you can still push directly)"
+    else
+      echo " CI gate: '$REQUIRED_CHECK' required on $DEFAULT_BRANCH (you can still push directly)"
+    fi ;;
+  # No flag was given, but the branch already has a gate — so things WILL merge by
+  # themselves here, and a summary saying "NONE" would have been a flat lie.
+  preexisting)
+    echo " CI gate: none was given, but $DEFAULT_BRANCH already requires '$EXISTING_CHECKS',"
+    echo "          so updates will merge themselves once that is green." ;;
+  none)
+    echo " CI gate: NONE. Nothing will auto-merge here until this repo has one." ;;
+  *)
+    echo " CI gate: UNKNOWN — this run could not read what $DEFAULT_BRANCH requires, so it"
+    echo "          will not claim either way. Check the branch's rules before relying on it." ;;
+esac
 # The one sentence this run exists to make true, said in the summary as well as the PR
 # body: a security-only enrolment is a decision about what will NOT arrive, and a summary
 # that only lists what was written describes it by omission.
@@ -577,12 +751,15 @@ if $SECURITY_ONLY; then
   echo
   echo " SECURITY FIXES ONLY. No dependabot.yml was written, so Dependabot will open no"
   echo " routine version-update pull requests here. GitHub's account-wide security fixes"
-  if [ -n "$REQUIRED_CHECK" ]; then
-    echo " still arrive, and those are what will approve and merge themselves once"
-    echo " '$REQUIRED_CHECK' is green. Nothing else merges by itself."
-  else
-    echo " still arrive — and with no required check, every one of them waits for you."
-  fi
+  case "$GATE_STATE" in
+    new)         echo " still arrive, and those are what will approve and merge themselves once"
+                 echo " '$REQUIRED_CHECK' is green. Nothing else merges by itself." ;;
+    preexisting) echo " still arrive, and those will approve and merge themselves once this branch's"
+                 echo " existing check ('$EXISTING_CHECKS') is green. Nothing else merges by itself." ;;
+    none)        echo " still arrive — and with no required check, every one of them waits for you." ;;
+    *)           echo " still arrive. Whether they merge by themselves is UNKNOWN: this run could not"
+                 echo " read what $DEFAULT_BRANCH requires, so it will not promise either way." ;;
+  esac
 fi
 echo
 if $DRY_RUN; then

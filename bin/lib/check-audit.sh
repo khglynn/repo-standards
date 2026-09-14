@@ -26,6 +26,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HERE"
 fail=0
+TMPDIFF=$(mktemp); trap 'rm -f "$TMPDIFF"' EXIT
 
 say() { if [ "$2" = "$3" ]; then echo "ok: $1"; else echo "FAIL: $1 — got '$2', wanted '$3'"; fail=1; fi; }
 
@@ -402,47 +403,54 @@ v "the approve rule still wins over the security-only branch" \
   "drift: Actions may not approve pull requests here, so the workflow's approvals will be refused" \
   no false yes false no yes true Vercel
 
-# --- and the whole output alphabet, swept exhaustively.
-# Every case above is one hand-picked point. This is the complement: run the rule over all
-# 1,440 combinations of its eight inputs and pin the SET of answers it can produce. It is
-# the cheapest way to prove two things at once — that the retired
-# "merge rules but no dependabot.yml" wording is unreachable rather than merely unused, and
-# that no future edit can introduce a status word the renderer has never seen. The renderer
-# switches on `startswith("enrolled" / "security-only" / "fork" / "unknown")` and files
-# everything else under DRIFTING, so a typo'd verdict would not error — it would quietly be
-# counted as drift in the weekly digest.
-sweep=$(for unreadable in yes no; do
-  for is_fork in true false; do
-    for stub in yes no source inline unreadable; do
-      for approve in true false "?"; do
-        for db in yes no; do
-          for manifest in yes no; do
-            for automerge in true false "?"; do
-              for checks in ci "—"; do
-                verdict "$unreadable" "$is_fork" "$stub" "$approve" \
-                        "$db" "$manifest" "$automerge" "$checks"
-              done; done; done; done; done; done; done; done | sort -u)
-want_alphabet=$(printf '%s\n' \
-  "drift: Actions may not approve pull requests here, so the workflow's approvals will be refused" \
-  "drift: gets update PRs but nothing merges them" \
-  "drift: no required check, so nothing can safely auto-merge" \
-  "drift: repo setting 'allow auto-merge' is off" \
-  "drift: still has its own private copy of the merge rules" \
-  "enrolled" \
-  "enrolled (security fixes only)" \
-  "enrolled (this repo IS the standard)" \
+# --- the overlapping cases, where the ORDER of the chain is the only thing deciding.
+# Every case above sets one condition at a time, and that is exactly how an ordering bug
+# survives: Codex swapped the fork branch with the unreadable-stub branch and nothing
+# noticed, because no case was both at once.
+v "a fork whose stub is unreadable is still a fork" \
   "fork — upstream's config, leave it alone" \
-  "security-only" \
-  "security-only (nothing to update)" \
+  no true unreadable true yes yes true ci
+v "an unreadable tree beats a fork" \
   "unknown: could not read this repo's file list (API error or truncated tree)" \
+  yes true unreadable false yes yes "?" "—"
+v "a fork beats the approve-switch rule" \
+  "fork — upstream's config, leave it alone" \
+  no true yes false yes yes true ci
+v "an unreadable stub beats the approve-switch rule" \
   "unknown: could not read this repo's merge-rules workflow" \
-  "unknown: could not read this repo's settings" | sort -u)
-if [ "$sweep" = "$want_alphabet" ]; then
-  echo "ok: all 1,440 input combinations produce exactly the 14 known status words"
+  no false unreadable false yes yes true ci
+v "the standards repo is not demoted by a missing gate" \
+  "enrolled (this repo IS the standard)" \
+  no false source true yes yes false "—"
+
+# --- and the FULL mapping, pinned as a checked-in fixture.
+# The first version of this asserted only the SET of words the rule can produce (`sort -u`),
+# which throws away which input produced which answer — and Codex proved that hole by
+# swapping two branches with the whole suite still green. The order of an if/elif chain is
+# its logic, so all 1,440 input -> output lines are pinned. Regenerate deliberately with
+# `bin/lib/verdict-matrix.sh > bin/lib/fixtures/audit/verdict-matrix.txt`, READ the diff,
+# then commit it; a regenerated fixture nobody read is the same as no fixture at all.
+MATRIX=bin/lib/fixtures/audit/verdict-matrix.txt
+if diff -u "$MATRIX" <(bin/lib/verdict-matrix.sh) > "$TMPDIFF"; then
+  echo "ok: all $(grep -cv '^#' "$MATRIX") input combinations map to their pinned status word"
 else
-  echo "FAIL: the rule's output alphabet changed"
-  diff <(printf '%s\n' "$want_alphabet") <(printf '%s\n' "$sweep") | sed 's/^/     /'
+  echo "FAIL: the verdict rule's input -> output mapping changed"
+  head -40 "$TMPDIFF" | sed 's/^/     /'
+  echo "     (if the change is intended: bin/lib/verdict-matrix.sh > $MATRIX, read the diff, commit it)"
   fail=1
+fi
+# …and the alphabet, read off the pinned matrix rather than swept again. It is the sentence
+# a human can check: the renderer switches on `startswith`, so a status word it has never
+# seen is not an error — it is silently counted as drift in the weekly digest.
+# grep -v '^#' first: the fixture's two header lines end in "-> status", and counting them
+# as data is how this very assertion first read "15 distinct status words" and "1441
+# combinations". Caught by running it, 2026-09-14.
+alphabet=$(grep -v '^#' "$MATRIX" | sed -n 's/.* -> //p' | sort -u | wc -l | tr -d ' ')
+say "the rule produces exactly 14 distinct status words" "$alphabet" "14"
+if grep -qF "merge rules but no dependabot.yml" "$MATRIX"; then
+  echo "FAIL: the retired 'merge rules but no dependabot.yml' verdict is reachable again"; fail=1
+else
+  echo "ok: the retired no-dependabot.yml verdict is unreachable, not merely unused"
 fi
 
 echo "--- 10. the security-only enrolment through all three renderings"
