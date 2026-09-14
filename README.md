@@ -175,6 +175,17 @@ lands in `#dependabot` every Monday morning (the routine that posts it is descri
 [`routines/weekly-digest.md`](routines/weekly-digest.md)). It answers three questions and
 nothing else:
 
+**Where it runs.** The audit runs in this repo's own weekly GitHub Actions job
+(`.github/workflows/weekly-audit.yml`, Monday mornings), which leaves the finished message
+on the `audit-output` branch as `latest-digest.md`; the routine only reads that file and
+posts it. The routine cannot run the audit itself — its cloud sandbox has no `gh` and no
+token that reaches the other repos (found 2026-09-14). The job needs one repository
+secret, `AUDIT_READ_TOKEN`: a fine-grained personal access token that can only read
+(Actions, Administration, Contents, Metadata, Pull requests — all of Kevin's repos), so a
+leak could look but never change anything. Until the secret exists the job fails at its
+first step and the routine posts a shorter fallback that says the automatic check could
+not run.
+
 **Is anything waiting for you?** How many repos keep themselves up to date, how many update
 pull requests are sitting open, and how old the oldest one is — then one line per repo that
 has something waiting.

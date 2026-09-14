@@ -9,7 +9,19 @@ check so nothing drifts" from Kevin's original ask.
 created and edited through the `playwright-2` browser profile (`~/.playwright-2`) — the
 same profile that owns the four `Dependabot verdict` routines. See
 `routines/dependabot-verdict.md` for why that profile and not the Claude in Chrome
-extension.
+extension. Live since 2026-09-14 as `trig_01TTfxzWdWUA3J9PGPP6w6ap`.
+
+**Where the audit itself runs — not in the routine.** The routine's cloud sandbox has no
+`gh` command at all (`gh: command not found`, found on its first run, 2026-09-14 07:02 CT)
+and no token that reaches the other repos, so `bin/audit` can never run there. It runs
+instead in this repo's own GitHub Actions job, `.github/workflows/weekly-audit.yml`, every
+Monday before the routine wakes up, and leaves its output as `latest-digest.md` on the
+`audit-output` branch. The routine reads that file and posts it. That split is deliberate:
+the part that needs credentials never touches a model, and the part that needs a model
+never touches credentials. The job needs one repository secret, `AUDIT_READ_TOKEN`, a
+fine-grained personal access token that can only read (the exact permissions are in the
+comment at the top of that workflow); until it exists the job fails at its first step and
+the routine posts the fallback, which says the automatic check could not run.
 
 **How it differs from the verdict routines.** Those fire on a GitHub event, one routine per
 repo, and speak about a single pull request. This one is on a clock, covers every repo at
@@ -21,9 +33,11 @@ still open on Monday gets one line here and keeps whatever verdict it already go
 ## Form values — create it by hand at claude.ai/code/routines/new
 
 The click-by-click recipe that works in this form is in BUILD-LOG, 2026-09-13 22:44. The
-one thing that recipe does not cover is the schedule card, because every routine built so
-far used a GitHub trigger. **Unverified as of 2026-09-14: nobody has filled in the schedule
-card in this form yet.** Expect the field names below to be close but check them on screen.
+schedule card, first filled in on 2026-09-14: pressing **Weekly** selects Monday by itself
+and shows a plain `At` time box; the timezone is the browser's own and the card confirms
+it in words ("Runs every Monday at 8:00 AM CDT"). The GitHub connector appears in the
+"Add connector" list under the name **Github+**. Typing a name into that list's search box
+and clicking the one match is the reliable way to add a connector.
 
 | Field | Value |
 |---|---|
@@ -32,7 +46,7 @@ card in this form yet.** Expect the field names below to be close but check them
 | Model | `Opus 5` |
 | Repository | `khglynn/repo-standards` |
 | Trigger | **Schedule**, weekly, **Monday**, **08:00**, timezone **America/Chicago** |
-| Connectors | **Slack** and the **GitHub** connector, and nothing else |
+| Connectors | **Slack** and **Github+**, and nothing else |
 | Auto-fix | off |
 
 **Clearing the connectors is the fiddly part** and it behaves the same way here as in the
@@ -42,12 +56,14 @@ re-render and leaves a random one behind. Then add Slack and GitHub back through
 "Add connector".
 
 **Why the repository is `repo-standards` and not one of the product repos.** The routine
-needs the checkout only to run `bin/audit`, which lives here. It reads every other repo
-through the GitHub API, not through a checkout.
+needs the checkout only to reach the `audit-output` branch, which lives here. Everything
+about the other repos is already inside that file.
 
 **Verify on the routine's page after saving:** the name, `Default · Opus 5`, the schedule
 line reading Monday 08:00 America/Chicago, `khglynn/repo-standards`, exactly two
-connectors, and the phrase "runs out" somewhere in the instructions.
+connectors (Slack, Github+), and the phrase "audit-output" somewhere in the instructions.
+Then press "Run now" once and read the run: it should show the file being read, or say
+plainly why it fell back.
 
 ---
 
@@ -60,40 +76,38 @@ lockfile or a build minute is to understand the answer.
 
 Do this, in order:
 
-1. Try the real audit first. In the checked-out repository, run `gh auth status`. If it
-   succeeds, run `bin/audit --digest` and wait for it — it takes two to three minutes
-   across about forty repositories, which is normal and not a hang. Its output is already
-   written in the shape described below; use its numbers exactly as printed and do not
+1. Read this week's audit. It was produced a few hours ago by a job on GitHub's own
+   machines; this environment has no GitHub command-line tool and cannot run the audit
+   itself, so do not try. In the checked-out repository run
+   `git fetch --depth 1 origin audit-output && git show FETCH_HEAD:latest-digest.md`.
+   If that fails, ask the GitHub connector for the file `latest-digest.md` on the
+   `audit-output` branch of khglynn/repo-standards. The file's first line carries the date
+   it was produced; if that date is more than six days old, treat the file as missing.
+   Its text is already written for Kevin; use its numbers exactly as printed and do not
    recompute them.
 
-   Two things it may tell you instead of a number, and both must survive into the message
+   Two things it may say instead of a number, and both must survive into the message
    word for word rather than being tidied away: that build time was not checked this week
    (it will say so in place of the minutes, and there is then no figure and no run-out
    date — do not write a zero, and do not work one out yourself), and that some
    repositories could not be read. An unchecked week and a clean week look identical
    unless the message says which one this was.
 
-   If it refuses to start because GitHub's hourly limit is too low, it says when to come
-   back and prints two cheaper commands. Do not wait for the reset: run
-   `bin/audit --digest --skip-actions`, which costs almost nothing and still reports
-   which repositories have fallen out of the standard. That output says for itself that
-   build time went unchecked; carry it through. If that refuses too, go to step 2 and say
-   the automatic check could not run.
-
-2. If `gh auth status` fails, or `bin/audit --digest` exits non-zero or prints nothing,
-   fall back to the GitHub connector. List the open pull requests opened by Dependabot in
-   each of these repositories: eachie, festival-navigator, kevinhg-com, list-maker. Count
+2. If the file is missing or stale, fall back to the GitHub connector. For each of these
+   repositories — eachie, festival-navigator, kevinhg-com, list-maker — list the open pull
+   requests with one list call per repository (never the search endpoint, which
+   rate-limits after a few calls) and keep only the ones opened by dependabot[bot]. Count
    them and find the oldest. You will not be able to check for drift or for build-time
    usage this way, and you must say so in plain words rather than leaving it out.
 
 3. Post ONE message to the Slack channel #dependabot (channel id C0C1114321Z).
 
-   **If `bin/audit --digest` ran, post what it printed, as it printed it.** It is already
+   **If you read this week's audit file, post it as it is written.** It is already
    written for Kevin, already inside the length it needs to be, and already says the
    careful things — that the minutes are an estimate, that a figure is a floor, that
    something went unmeasured. Do not rewrite it, do not summarise it, do not drop lines to
    make it shorter, and do not add a line of your own. If some part of it reads oddly,
-   post it anyway and say so in your run notes; the wording belongs in the tool, where it
+   post it anyway and say so in your run notes; the wording belongs in the audit, where it
    can be reviewed, not in a rewrite nobody sees.
 
    **Only if you fell back to step 2**, write the message yourself in this shape:
@@ -126,8 +140,8 @@ Do this, in order:
    is about 150 words. Never wrap anything in angle brackets: Slack turns them into link
    markup and the message breaks.
 
-   These rules do not apply to the audit's own output, which already follows them and
-   which you post unchanged. The two instructions used to contradict each other — "use its
+   These rules do not apply to the audit file, which already follows them and which you
+   post unchanged. The two instructions used to contradict each other — "use its
    numbers exactly as printed" alongside a word limit the real output exceeded — which
    left the routine quietly choosing which repositories to drop. The length is the tool's
    problem now, and it enforces it.

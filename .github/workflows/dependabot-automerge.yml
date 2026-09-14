@@ -98,6 +98,11 @@ jobs:
     # only ever acts on pull requests Dependabot itself opened.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
+    # A hang with no ceiling inherits GitHub's six-hour default — an eighth of the monthly
+    # private allowance for one stuck run, in every enrolled repo at once. This job makes
+    # a handful of API calls and never waits on anything; ten minutes is generous. Found by
+    # this repo's own bin/audit the day the timeout check shipped (2026-09-14).
+    timeout-minutes: 10
     # One run per pull request. A Dependabot PR can fire `synchronize` several times in a
     # row (each rebase is a new push); queuing them serially avoids two runs racing to
     # enable auto-merge on the same PR. NOTE: GitHub keeps at most ONE pending run per
