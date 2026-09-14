@@ -224,10 +224,23 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   # read as NO required check — which is a drift verdict about a repo that is fine, and the
   # same truncation sin as the tree listing above. (Found in bin/enroll's copy by a Codex
   # review, 2026-09-14; fixed in both.) One context per line across pages, joined here.
-  checks=$(gh api --paginate "repos/$R/rules/branches/${default_branch//\//%2F}?per_page=100" \
-             --jq '.[] | select(.type=="required_status_checks")
-                       | .parameters.required_status_checks[]?.context' 2>/dev/null \
-            | sort -u | jq -Rrs 'split("\n") | map(select(length > 0)) | join(", ")' 2>/dev/null || true)
+  #
+  # ⚠ THE EXIT STATUS IS WHAT GUARDS THIS, not the text. On a real HTTP error `gh api --jq`
+  # cannot apply the filter, so it writes the RAW ERROR BODY to stdout and exits 1 — measured
+  # 2026-09-14: `{"message":"Not Found","documentation_url":…,"status":"404"}` on one line.
+  # Piping that straight into a raw-text join made it a required-status-check CONTEXT, which
+  # is non-empty, which skipped the classic fallback below and reported a repo with no gate
+  # at all as `enrolled`. The previous jq-over-JSON form was accidentally immune (the filter
+  # just yielded nothing); this faster form is not, so the result is only used when gh says
+  # the call succeeded. Caught by the third Codex review, in code written one commit earlier
+  # to fix a different truncation bug.
+  checks=""
+  if rules_ctx=$(gh api --paginate "repos/$R/rules/branches/${default_branch//\//%2F}?per_page=100" \
+                   --jq '.[] | select(.type=="required_status_checks")
+                             | .parameters.required_status_checks[]?.context' 2>/dev/null); then
+    checks=$(printf '%s' "$rules_ctx" | sort -u \
+              | jq -Rrs 'split("\n") | map(select(length > 0)) | join(", ")' 2>/dev/null || true)
+  fi
   if [ -z "$checks" ]; then
     checks=$(gh api "repos/$R/branches/${default_branch//\//%2F}/protection" 2>/dev/null \
               | jq -r '(((.required_status_checks.checks // []) | map(.context))

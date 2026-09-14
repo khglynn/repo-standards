@@ -26,7 +26,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HERE"
 fail=0
-TMPDIFF=$(mktemp); trap 'rm -f "$TMPDIFF"' EXIT
+TMPWORK=$(mktemp -d); TMPDIFF="$TMPWORK/diff"; trap 'rm -rf "$TMPWORK"' EXIT
 
 say() { if [ "$2" = "$3" ]; then echo "ok: $1"; else echo "FAIL: $1 — got '$2', wanted '$3'"; fail=1; fi; }
 
@@ -489,6 +489,48 @@ if [ -z "$bad" ]; then
 else
   echo "FAIL: some combination accepts despite the newest bot PR missing the check"
   printf '%s\n' "$bad" | sed 's/^/     /'; fail=1
+fi
+
+echo "--- 9c. a failed gh call must never become a required status check"
+# ⚠ THE PREMISE, measured 2026-09-14: on a real HTTP error `gh api --jq` cannot apply the
+# filter, so it writes the RAW ERROR BODY to stdout and exits 1 —
+# `{"message":"Not Found","documentation_url":…,"status":"404"}`, all on one line. Piping
+# that into a raw-text join makes it a required-status-check CONTEXT, which is non-empty,
+# which skips the classic-protection fallback and reports a repo with NO GATE AT ALL as
+# `enrolled`. The old jq-over-JSON form was accidentally immune; the faster paginated form
+# is not, and this test is the reason the result is now used only when gh reports success.
+# (Found by the third Codex review, in code written one commit earlier to fix a different
+# truncation bug — which is roughly the whole argument for the third review.)
+STUB="$TMPWORK/stub"; mkdir -p "$STUB"
+cat > "$STUB/gh" <<'STUBEOF'
+#!/usr/bin/env bash
+# Behaves like the real gh on an HTTP error: error body on STDOUT, non-zero exit.
+echo '{"message":"Not Found","documentation_url":"https://docs.github.com/x","status":"404"}'
+exit 1
+STUBEOF
+chmod +x "$STUB/gh"
+JOIN='jq -Rrs "split(\"\n\") | map(select(length > 0)) | join(\", \")"'
+
+# The GUARDED shape, which is what bin/audit and bin/enroll both use now.
+guarded=$(PATH="$STUB:$PATH" bash -c "
+  if c=\$(gh api whatever --jq '.[]' 2>/dev/null); then printf '%s' \"\$c\" | $JOIN; fi" 2>/dev/null)
+say "a failed gh call yields no required check" "$guarded" ""
+
+# The UNGUARDED shape, run only to prove this test can tell the difference. An assertion
+# whose negative case was never demonstrated is an assertion that might always pass.
+unguarded=$(PATH="$STUB:$PATH" bash -c "gh api whatever --jq '.[]' 2>/dev/null | $JOIN" 2>/dev/null || true)
+if [ -n "$unguarded" ]; then
+  echo "ok: …and the unguarded shape really would have invented one ($(printf '%.32s' "$unguarded")…)"
+else
+  echo "FAIL: the stub did not reproduce the bug, so the test above proves nothing"; fail=1
+fi
+
+# …and the shape itself cannot come back. A `gh api` piped STRAIGHT into the raw-text join
+# is the bug, in either script.
+if grep -nE 'gh api[^|]*\|[^|]*jq -Rrs' bin/audit bin/enroll; then
+  echo "FAIL: a gh api call pipes directly into the raw-text join again"; fail=1
+else
+  echo "ok: neither script pipes gh api straight into the raw-text join"
 fi
 
 echo "--- 10. the security-only enrolment through all three renderings"

@@ -249,7 +249,7 @@ if [ -n "$EXTERNAL_CHECK" ]; then
   # confident-wrong-empty this loop's other comments are about (Codex re-review, 2026-09-14).
   bot_read=0
   bot_missing=0
-  bot_newest=""        # the newest READABLE Dependabot PR, and whether it carried the check
+  bot_newest=""        # the newest CONCLUSIVE Dependabot PR, and whether it carried the check
   bot_newest_ok=""
   heads_total=0
   heads_read=0
@@ -289,14 +289,13 @@ if [ -n "$EXTERNAL_CHECK" ]; then
     if runs=$(gh api --paginate "repos/$TARGET/commits/$head_sha/check-runs?per_page=100" \
                 --jq '.check_runs[].name' </dev/null 2>/dev/null); then
       heads_read=$((heads_read + 1))
-      st_read=yes
-      if [ "$is_bot" = "yes" ]; then bot_read=$((bot_read + 1)); fi
+      st_full=yes
       if statuses=$(gh api --paginate "repos/$TARGET/commits/$head_sha/status?per_page=100" \
                       --jq '.statuses[].context' </dev/null 2>/dev/null); then :; else
-        statuses=""; heads_partial="$heads_partial #$pr_num"
+        statuses=""; st_full=no; heads_partial="$heads_partial #$pr_num"
       fi
     else
-      runs=""; statuses=""; st_read=no
+      runs=""; statuses=""; st_full=no
       heads_unread="$heads_unread #$pr_num"
     fi
 
@@ -319,14 +318,24 @@ if [ -n "$EXTERNAL_CHECK" ]; then
       [ -n "$proof" ] || proof="$hit"
       if [ "$is_bot" = "yes" ] && [ -z "$bot_proof" ]; then bot_proof="$hit"; fi
     fi
-    # The pull requests arrive newest-first, so the FIRST readable Dependabot one is the
+    # The pull requests arrive newest-first, so the FIRST CONCLUSIVE Dependabot one is the
     # most recent — and that is the one that speaks to today. An older match used to stand
     # on its own: a Vercel project that stopped building bot branches last week still
     # enrolled cleanly on evidence from a month ago (Codex re-review, 2026-09-14).
-    if [ "$is_bot" = "yes" ] && [ "$st_read" = "yes" ]; then
+    #
+    # ⚠ AND "CONCLUSIVE" IS NOT "READ". A hit is conclusive on its own — positive evidence
+    # needs only the one surface it appeared on. But concluding the check is ABSENT needs
+    # BOTH surfaces read, because it may live on the one that failed. The first cut counted
+    # a head as read when its check-runs call succeeded, so a bot PR whose STATUS list
+    # failed and whose check-runs carried nothing was recorded as "does not have it" — and
+    # that alone refuses the enrolment. An unread surface is not an answer. (Third Codex
+    # review, 2026-09-14.)
+    if [ "$is_bot" = "yes" ]; then
       if [ -n "$hit" ]; then
+        bot_read=$((bot_read + 1))
         if [ -z "$bot_newest" ]; then bot_newest="#$pr_num"; bot_newest_ok=yes; fi
-      else
+      elif [ "$st_full" = "yes" ]; then
+        bot_read=$((bot_read + 1))
         bot_missing=$((bot_missing + 1))
         if [ -z "$bot_newest" ]; then bot_newest="#$pr_num"; bot_newest_ok=no; fi
       fi

@@ -49,7 +49,7 @@ evidence_verdict() {
       else
         printf 'accept-bot-older-gap\n'
       fi
-    elif [ "$allow" = "1" ]; then
+    elif [ "$allow" = "1" ]; then   # exactly "1" — "true"/"yes"/"0" are NOT an override
       printf 'accept-override\n'
     else
       printf 'refuse-newest\n'
