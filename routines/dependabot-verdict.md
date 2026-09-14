@@ -4,8 +4,10 @@
 **Trigger:** GitHub → Pull request → `labeled`. Filters: Author equals `dependabot[bot]`; Labels is one of `major-review-needed`, `dependabot-needs-human`, `no-ci-gate`.
 **Why the label, not "opened":** the shared workflow classifies every Dependabot PR within seconds of it opening. Patch and minor bumps merge themselves once CI is green and never need a human. Firing on the label means the routine only ever runs on the exceptions, so it never spends a run (Max: 15 a day) on something that was about to merge itself, and never posts a verdict on a PR that then auto-merges.
 **Connectors:** Slack only. Everything else removed from the routine.
-**Repos:** every enrolled repo (eachie first; add each repo as it is enrolled).
+**Repos:** one routine per enrolled repo. A routine takes exactly one GitHub trigger and a trigger names exactly one repository (checked in the form 2026-09-13), so each enrolled repo gets its own copy of this routine with only that repo attached; that also keeps each run cloning one repo. Names: `Dependabot verdict · <repo>`.
 **Model:** Opus 5.
+
+**First automatic run (2026-09-13 21:38 CT):** relabelling eachie #143 fired the routine by itself within a minute of the GitHub App being linked to the personal login (see BUILD-LOG, 2026-09-13); the verdict on pnpm/action-setup 4 → 5 landed in #dependabot at 21:39:55 CT in the agreed shape.
 
 **First run (manual, 2026-09-11 22:00Z):** posted https://trimmedia.slack.com/archives/C0C1114321Z/p1789164059996589 on eachie #162 (vite 7 → 8): identified the PR by itself, found vite is dev-only (vitest + Storybook), read the v8 migration notes, ran the Storybook build under vite 8 because CI never does, recommended Merge. Prompt fixed the same evening so the last line is a plain URL (angle-bracket placeholders had become Slack link markup).
 
