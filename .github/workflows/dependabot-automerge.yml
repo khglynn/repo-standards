@@ -300,10 +300,13 @@ jobs:
           checks=""
           unreadable=false
 
-          if rules=$(gh api "repos/$REPO/rules/branches/$base_esc" 2>/dev/null); then
+          # --paginate --slurp: the endpoint returns 30 rules a page, and a required check
+          # on page two would read as "no gate" (fail-closed, but wrong). Same fix as
+          # bin/enroll and bin/audit got on 2026-09-14; .[][] flattens the pages.
+          if rules=$(gh api --paginate --slurp "repos/$REPO/rules/branches/$base_esc?per_page=100" 2>/dev/null); then
             checks=$(printf '%s' "$rules" | jq -r '
-              [.[] | select(.type == "required_status_checks")
-                   | .parameters.required_status_checks[]?.context] | unique | join(",")')
+              [.[][] | select(.type == "required_status_checks")
+                     | .parameters.required_status_checks[]?.context] | unique | join(",")')
           else
             echo "note: could not read rulesets for $BASE_BRANCH (permissions or none configured)"
           fi
