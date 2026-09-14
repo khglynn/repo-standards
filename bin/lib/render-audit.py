@@ -416,8 +416,19 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     # breath, because "about 0 minutes … inside the free pool" is what an unmeasured month
     # used to look like in Slack, and it reads exactly like good news (2026-09-14).
     if not m["measured"]:
-        budget = ("Build time was not checked this week, so there is no figure and no "
-                  "run-out date — not a zero.")
+        # Four ways not to have a figure, and the message says which. "Not checked" and
+        # "checked and could not be read" want different things from Kevin: the first is
+        # a flag on the run, the second is usually a token that has stopped reaching the
+        # private repos.
+        if m["reason"] == "invisible":
+            budget = ("No private repository's build time could be read this week, so "
+                      "there is no figure and no run-out date — not a zero.")
+        elif m["reason"] == "unread":
+            budget = ("Every private repository's builds went unread this week, so there "
+                      "is no figure and no run-out date — not a zero.")
+        else:
+            budget = ("Build time was not checked this week, so there is no figure and no "
+                      "run-out date — not a zero.")
     else:
         budget = ("Build time this month: about %d of the free 3,000 private-repo minutes "
                   "(an estimate)." % m["private"])
@@ -506,11 +517,15 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     if parsers_used(rows).get("regex"):
         tail.append("Note: the check for repeated test runs could not run this week, so "
                     "nothing here says whether any repo has them.")
-    if not m["measured"]:
+    if m["reason"] in ("skipped", "none"):
         # The other half of a skipped Actions pass, and the part that is easy to miss: the
         # approval-permission drift rule reads the same scan, so a repo that is genuinely
         # half set up counts as fine in the headline above. A silent week and an unchecked
         # week look identical unless the message says which one this was.
+        #
+        # It is only true of those two reasons. When the scan ran but the private repos'
+        # builds could not be read, the permission check did run, and saying otherwise
+        # would understate the headline in the other direction.
         tail.append("Note: the build-time and repository-permission checks were skipped "
                     "this week, so a repo could be half set up in a way this message "
                     "cannot see.")

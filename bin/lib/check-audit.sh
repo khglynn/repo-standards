@@ -232,6 +232,13 @@ say "no private repo readable reads as not measured" \
 say "…and names why" \
     "$(render --mode json <<< "$INVIS" | jq -r '.minutes.reason')" "invisible"
 ID=$(render --mode digest <<< "$INVIS")
+if grep -qF -- "No private repository's build time could be read this week" <<< "$ID"; then
+  echo "ok: the digest says which kind of missing this was"
+else echo "FAIL: the digest does not distinguish unreadable from unchecked"; echo "$ID"; fail=1; fi
+# …and does NOT claim the permission check was skipped, because it was not.
+if grep -qF -- "repository-permission checks were skipped" <<< "$ID"; then
+  echo "FAIL: an unreadable-minutes run claims the permission check was skipped too"; fail=1
+else echo "ok: the permission check is not claimed skipped when it ran"; fi
 for lie in "minutes of the free" "inside the free pool" "private-repo minutes"; do
   if grep -qF -- "$lie" <<< "$ID"; then echo "FAIL: invisible-private digest claims \"$lie\""; fail=1
   else echo "ok: invisible-private digest makes no claim of \"$lie\""; fi
