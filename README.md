@@ -109,10 +109,20 @@ arriving and the promise would be false.
 **`--external-check <context>`** takes a required check that no workflow declares. Nothing
 in the repo can confirm that name, so `enroll` confirms it against history instead: it reads
 the five most recent pull requests and, for each one, what actually reported a check on it.
-A name nothing has ever reported is refused, with the real names printed; a name that checks
-out is accepted, and it tells you which pull request proved it. One mistyped letter is all
-it takes to build a gate that can never go green, and every update pull request would then
-queue behind it forever.
+A name nothing has ever reported is refused, with the real names printed. One mistyped
+letter is all it takes to build a gate that can never go green, and every update pull
+request would then queue behind it forever.
+
+It also looks at **whose** pull requests those were, because a check that reports on your
+pull requests may not report on Dependabot's — a Vercel project can be set to skip bot
+branches, and a workflow can be scoped to branches Dependabot never uses. So:
+
+- reported on a Dependabot pull request → that is the real proof, and it says which one;
+- reported only on yours, with no Dependabot pull request among the five → accepted, with a
+  line telling you nothing here proves it fires on a `dependabot/*` branch. Watch the first
+  security PR;
+- reported on yours while Dependabot's own pull requests went ungated → **refused.** That is
+  not a missing answer, it is the wrong one, seen directly.
 
 The one thing to know about this shape: **the gate belongs to somebody else.** If the Vercel
 project is deleted, or stops building this repo's branches, the check goes quiet and pull
@@ -128,6 +138,10 @@ The labels and the merge rules, no `dependabot.yml`, and no gate. Security fixes
 wait for you, labelled `no-ci-gate`. Use it for a repo that should be under the standard but
 has nothing to test it with yet — the audit will keep saying it is half set up, which is
 exactly what you want it to say until the gate exists.
+
+If the branch turns out to *already* require a check — from a ruleset you set up months ago,
+say — `enroll` reads that and tells you, rather than promising that nothing will merge.
+Leaving the flag off means "I am not naming a check", not "this branch has none".
 
 ### What happens in all three
 
