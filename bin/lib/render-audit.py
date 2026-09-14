@@ -217,9 +217,17 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     head.append(budget)
 
     # ---- one line per repo that needs something
+    # Repos that could not be read are collapsed into a single line once there are more
+    # than a couple: forty identical "could not read" lines is not a Slack message, and
+    # when the cause is one shared thing (an exhausted API budget) forty lines say
+    # exactly as much as one does.
+    unknown = [r for r in rows if r["status"].startswith("unknown")]
+    collapse_unknown = len(unknown) > 2
     body = []
     for r in sorted(rows, key=lambda x: (-(x.get("pr_count") or 0), x["name"])):
         drift = r["status"].startswith("drift") or r["status"].startswith("unknown")
+        if collapse_unknown and r["status"].startswith("unknown") and not r.get("pr_count"):
+            continue
         if not drift and not r.get("pr_count"):
             continue
         bits = []
@@ -227,10 +235,14 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
             bits.append("%d update %s waiting, oldest %d %s"
                         % (r["pr_count"], _plural(r["pr_count"], "pull request"),
                            r["pr_oldest_days"], _plural(r["pr_oldest_days"], "day")))
-        if drift:
+        if drift and not (collapse_unknown and r["status"].startswith("unknown")):
             bits.append(r["status"].split(":", 1)[-1].strip()
                         if ":" in r["status"] else r["status"])
         body.append("- %s — %s." % (r["name"], "; ".join(bits)))
+    if collapse_unknown:
+        body.append("- %d repos could not be read this week, so nothing is known about "
+                    "them — that is usually a GitHub rate limit, not a problem with the "
+                    "repos." % len(unknown))
 
     # ---- one trailing warning line, only when there is something in it
     missing, double, unparsed = warn_lines(rows)

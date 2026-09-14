@@ -118,11 +118,33 @@ class Client:
         return True
 
     def rate_remaining(self):
-        data, _ = self.get("rate_limit", tries=1)
+        """How many calls are really left, and when the budget resets.
+
+        DO NOT USE `/rate_limit` FOR THIS. On 2026-09-14 that endpoint reported
+        `remaining: 5000, used: 0` while every real call came back 403 "API rate limit
+        exceeded for user ID 19673024" — the 403's own headers saying `Remaining: 0,
+        Used: 5000`. The endpoint reports a token bucket; the throttle that actually bites
+        is applied at the user level across everything. Trusting `/rate_limit` cost a
+        whole audit run that produced a complete, confident, entirely empty report: forty
+        repos all reading "could not read this repo's file list".
+
+        So this probes with a real, cheap call and reads the headers off it. One call
+        spent to avoid spending fifteen hundred.
+        """
+        req = urllib.request.Request(API + "/user", method="GET")
+        req.add_header("Authorization", "Bearer " + self.token)
+        req.add_header("Accept", "application/vnd.github+json")
         try:
-            return data["resources"]["core"]["remaining"]
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                headers = resp.headers
+        except urllib.error.HTTPError as exc:
+            headers = exc.headers
         except Exception:
-            return None
+            return None, None
+        try:
+            return int(headers.get("X-RateLimit-Remaining")), int(headers.get("X-RateLimit-Reset"))
+        except (TypeError, ValueError):
+            return None, None
 
     def get(self, path, tries=4):
         url = path if path.startswith("http") else API + "/" + path.lstrip("/")
@@ -317,6 +339,8 @@ def main():
                          "and a large response); timing = wall-clock per run (cheap, reads "
                          "low); auto = jobs unless the hourly API budget cannot cover it")
     ap.add_argument("--progress", action="store_true", help="dots on stderr")
+    ap.add_argument("--preflight", action="store_true",
+                    help="print the real remaining API budget and exit; 3 means exhausted")
     args = ap.parse_args()
 
     since = args.since or month_start(dt.date.today()).isoformat()
@@ -330,6 +354,18 @@ def main():
             print("actions-scan: no GitHub token (%s)" % exc, file=sys.stderr)
             sys.exit(1)
     client = Client(token)
+
+    if args.preflight:
+        remaining, reset = client.rate_remaining()
+        if remaining is None:
+            print("unknown")
+            sys.exit(0)
+        if remaining < 200:
+            when = dt.datetime.fromtimestamp(reset).strftime("%H:%M") if reset else "soon"
+            print("exhausted %d %s" % (remaining, when))
+            sys.exit(3)
+        print("ok %d" % remaining)
+        sys.exit(0)
 
     repos = []
     for line in sys.stdin.read().splitlines():
@@ -367,7 +403,7 @@ def main():
     method = args.method
     note = None
     if method == "auto":
-        remaining = client.rate_remaining()
+        remaining, _ = client.rate_remaining()
         if remaining is not None and remaining < len(tasks) * 1.2:
             method = "timing"
             note = ("API budget short (%s calls left, %d runs to measure), so minutes were "

@@ -546,3 +546,111 @@ needs one `/timing` call per run. Serial, inside the existing bash loop, that is
 per-repo Actions work moved into one concurrent Python helper that runs once for every repo before
 the bash loop, and the loop reads its JSON. `bin/audit` stays read-only: the helper issues GET and
 nothing else.
+
+### What got built
+
+| File | What |
+|---|---|
+| `bin/lib/workflow-hygiene.py` | The two Actions warnings — jobs with no `timeout-minutes`, and the push+pull_request double run. PyYAML, with a regex fallback for hosts without it. |
+| `bin/lib/actions-scan.py` | Everything per repo that needs the Actions API — the approve switch, the minutes estimate, the workflow files — done concurrently, GET only. |
+| `bin/lib/render-audit.py` | The three output shapes: the table, `--json`, `--digest`. |
+| `bin/lib/check-workflow-hygiene.sh` + `bin/lib/fixtures/workflow-hygiene/` | 15 fixture assertions, in CI. |
+| `bin/lib/check-audit.sh` + `bin/lib/fixtures/audit/` | 17 assertions on the tree predicate and the digest's wording, in CI. |
+| `bin/audit` | The columns, the modes, the preflight, and the truncation fix below. |
+| `routines/weekly-digest.md` | The Monday-morning routine's prompt and form values. |
+| `README.md` | "What the weekly digest tells you", plus one line per new column. |
+
+### The bug that was already there: the audit had been lying for three days
+
+`bin/audit` decided whether a repo's file list was readable with
+`jq -r '.truncated // "err"'`. **jq's `//` treats `false` as empty, exactly like null** —
+and `"truncated": false` is the good answer. So every repo, on every run, came back
+`unknown: could not read this repo's file list (API error or truncated tree)` while the
+table printed in full and looked completely normal. It shipped 2026-09-11 in `cd917d9`,
+which was itself the fix for review finding 12 (the opposite failure: a truncated tree
+reading as "no dependencies"). Nobody re-read the status column afterwards.
+
+Fixed to `if type=="object" and has("truncated") then (.truncated|tostring) else "err" end`,
+put on its own named line (`TREE_STATE_JQ`) so `bin/lib/check-audit.sh` extracts and runs
+the real program rather than a retyped copy — the same trick `check-classifier.sh` uses
+for the classification jq. All three cases are pinned.
+
+Before: `0 enrolled, 0 security-only, 0 forks, 0 drifting, 40 unreadable`.
+After: `5 enrolled, 29 security-only, 6 forks, 0 drifting`.
+
+### How the minutes are counted, and the two measurements that decided it
+
+**`billable` in `/actions/runs/{id}/timing` is all zeros on this account.** Every
+`total_ms: 0`, every `job_runs[].duration_ms: 0` — on private repos as well as public, on
+completed successful runs (eachie, kevinhg-com, repo-standards, checked by hand). Reading
+the field whose name says "billable" would have reported 0 minutes used, for ever,
+confidently.
+
+**Wall-clock per run (`run_duration_ms`, which the brief specified) reads low — and the
+first measurement of how low was wrong.** eachie's 100 most recent runs put wall-clock
+within 1% of a real per-job figure, which looked conclusive. Widening to every private
+repo for 09-01..09-11 (655 runs) gave **2,573 wall-clock against 2,962 per-job — 15%
+apart**. The first sample happened to be runs that put nothing in parallel; a run whose
+jobs overlap bills the sum and measures the max. For a number whose whole job is to warn
+before a budget runs out, 15% low is the wrong direction, so the method changed.
+
+**What it does now:** each job's `started_at` → `completed_at` from
+`/actions/runs/{id}/jobs`, rounded **up to the whole minute** the way GitHub bills,
+skipped jobs excluded, times the runner multiplier read from the job's labels (Linux 1x,
+Windows 2x, macOS 10x). Same call count as the timing endpoint, larger responses.
+
+**Hand-check, as the brief asked.** `kevinhg-com`, 41 runs this month, estimate 49
+minutes. Three runs read by hand: `verify` 56s, `automerge` 9s, `verify` 55s → 3 billed
+minutes for 120 seconds of work, because every job that runs at all costs a whole minute.
+That is exactly the behaviour that makes a wall-clock sum (2 minutes) wrong. A second,
+independent cross-check on the same repo — summing `updated_at - run_started_at` straight
+off the runs list — gave 27.1 minutes against the timing endpoint's 27, so the two
+wall-clock paths agree with each other and both sit below the billing rule, as they should.
+
+**Against the one real invoice number available:** GitHub's billing page read 2,058 private
+minutes at some point on 2026-09-11 (BUILD-LOG, 2026-09-11). This method gives 1,776 for
+09-01..09-10 and 2,962 for 09-01..09-11, so a mid-day-11 snapshot falls inside the bracket.
+Corroboration, not proof. The billing endpoints would settle it and are deliberately not
+called: they need a classic token with the `user` scope, and minting one so a read-only
+monitor can see one number is a worse secret than the problem (repo-standards#1 agrees).
+
+### The API budget, and the second way this tool learned to lie
+
+A full run is **~1,600 API calls, a third of GitHub's hourly 5,000**, almost all of it
+measuring minutes. Weekly, that is free. Iterating on it is not — this session exhausted
+the hour twice.
+
+The first exhaustion looked like a hang: `bin/audit` sat for fifteen minutes with no
+output, because the client slept whenever a response said `X-RateLimit-Remaining: 0`,
+which is right for a brief throttle and catastrophic for the hourly one. Now the retry has
+a bounded sleep budget and an exhausted hourly limit fails fast.
+
+The second was worse and is the more useful finding. **`GET /rate_limit` reported
+`remaining: 5000, used: 0` while every real call returned 403 "API rate limit exceeded for
+user ID 19673024" — and the 403's own headers said `Remaining: 0, Used: 5000`.** The
+endpoint reports a token bucket; the throttle that actually bites is applied at the user
+level across every tool on the machine. A wait-loop that trusted `/rate_limit` released
+early, and the audit then produced a complete, well-formatted, entirely empty report: all
+forty repos reading "could not read this repo's file list", zero minutes everywhere,
+`0 of 40 repos keep themselves up to date`. Nothing errored. Nothing looked wrong.
+
+Two fixes, because one was not enough:
+1. The remaining budget is now read from **a real call's response headers** (`GET /user`),
+   never from `/rate_limit`.
+2. `bin/audit` **preflights** and refuses to start when the budget is gone, printing when
+   to come back, instead of spending an hour producing a confident lie:
+   `GitHub's hourly API budget is used up (0 calls left). This audit needs about 1,600.
+   Come back after 03:42 and run it again.`
+3. And the digest now collapses more than two unreadable repos into one line, because
+   forty identical "could not read" lines is not a Slack message.
+
+### Two workflow-hygiene details the naive checks get wrong
+
+- **A reusable-workflow caller may not carry `timeout-minutes`** — GitHub rejects the
+  file. Every enrolled repo has exactly such a job (the ten-line stub), so a checker that
+  did not skip them would warn on every enrolled repo for ever with no legal way to clear
+  it. Skipped, with a fixture pinning it.
+- **`push` on tags only, alongside `pull_request`, is not a double run.** A commit on a
+  pull-request branch is not a tag push. Fixture pins that too, along with the correct
+  shape (`push` restricted to the default branch), which must stay silent or the warning
+  fires on this repo's own `ci.yml` and gets tuned out.
