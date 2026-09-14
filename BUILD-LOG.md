@@ -813,6 +813,17 @@ is a real warning, not an artefact of counting free runs. Two private repos are 
   been read in a terminal.
 - The larger-runner Dependabot exception above.
 
+### One finding for the lead, left untouched under tonight's rule
+
+The full run's warnings open with **this repo's own shared workflow**:
+`repo-standards: no time limit on dependabot-automerge.yml:automerge`. That is the file
+that runs, with write permission, inside every enrolled repo — so the one job in the
+account that most wants a ceiling is the one without one, and a hang there inherits
+GitHub's six-hour default in whichever repo it happens to be running in. The brief forbids
+editing `.github/workflows/dependabot-automerge.yml` tonight (Codex had it), so it is
+recorded and not touched. It is a one-line change (`timeout-minutes:` on the `automerge`
+job, line 96) whenever that lock lifts.
+
 ### Closing note
 
 Finished this stage: the not-measured fix and its fixtures, the parser reporting, the
