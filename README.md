@@ -121,8 +121,15 @@ branches, and a workflow can be scoped to branches Dependabot never uses. So:
 - reported only on yours, with no Dependabot pull request among the five → accepted, with a
   line telling you nothing here proves it fires on a `dependabot/*` branch. Watch the first
   security PR;
-- reported on yours while Dependabot's own pull requests went ungated → **refused.** That is
-  not a missing answer, it is the wrong one, seen directly.
+- reported on yours while Dependabot's newest readable pull request went without it →
+  **refused.** That is not a missing answer, it is the wrong one, seen directly — and an
+  older Dependabot pull request that *did* have it does not overrule the newest one, because
+  an integration that stopped building bot branches last week looks exactly like that.
+
+That last refusal can be wrong in one case a person can see and the script cannot: a
+Dependabot pull request that predates the integration, or one opened seconds ago whose build
+has not started. Re-run with `ALLOW_UNPROVEN_CHECK=1` and it is accepted with the warning
+kept — the same escape-hatch shape as `ALLOW_FORK=1`.
 
 The one thing to know about this shape: **the gate belongs to somebody else.** If the Vercel
 project is deleted, or stops building this repo's branches, the check goes quiet and pull
