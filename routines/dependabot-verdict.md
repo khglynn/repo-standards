@@ -12,6 +12,7 @@
 | festival-navigator | `trig_01Q8SKMN4TZGLLoKXViLQBwK` | 2026-09-13 |
 | kevinhg-com | `trig_01YX6RSVZ63xfPyMiqy4J2Ur` | 2026-09-13 |
 | list-maker | `trig_01KJQ1Lz1eaPsaVL4WsAfng5` | 2026-09-13 |
+| ynai | `trig_01S8V7kddMxPZbyLrDWgEBk3` (security-only enrolment; majors among its security fixes still get a verdict) | 2026-09-14 |
 
 All four carry the same prompt (below), Opus 5, Slack as the only connector, trigger `pull_request.labeled` filtered to author `dependabot[bot]` and labels `major-review-needed, dependabot-needs-human, no-ci-gate`. Edit them through the playwright-2 profile; there is no duplicate button, so a fifth repo means the form again (about a dozen clicks; the recipe is in this session's BUILD-LOG entry for 2026-09-13).
 **Model:** Opus 5.
