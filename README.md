@@ -2,7 +2,7 @@
 
 **One place that decides how dependency updates work across all of Kevin's repos.**
 
-Last verified: 2026-09-11.
+Last verified: 2026-09-14.
 
 ---
 
@@ -66,6 +66,11 @@ individually. Every one has to be an allowed level, or the whole PR stops.
 
 ## How to enroll a repo
 
+There are **three shapes**, and you pick between them by answering one question about the
+repo: *what, if anything, actually builds or tests a change before it merges?*
+
+### 1. The full shape — the repo has its own CI
+
 ```bash
 cd ~/DevKev/personal/repo-standards
 
@@ -76,18 +81,63 @@ bin/enroll khglynn/some-repo --ci-check <the CI job name> --dry-run
 bin/enroll khglynn/some-repo --ci-check <the CI job name>
 ```
 
-It creates the labels, works out which package ecosystems the repo has, writes the files,
-**opens a pull request** (it never pushes to `main`), turns on the repo's "allow auto-merge"
-setting, and adds a rule requiring that CI check on the default branch — with **you** able
-to bypass it, so pushing straight to `main` still works exactly as it does today.
-
-Then **you merge the pull request.** Nothing takes effect before that: GitHub will only run
-a workflow that is already on the default branch.
+Routine "there's a newer version" pull requests start arriving, and the patch and minor
+ones merge themselves as soon as that job goes green. `enroll` works out which package
+ecosystems the repo has and writes a `dependabot.yml` covering them — unless the repo
+already has one, which it never overwrites.
 
 **The `--ci-check` value** is the *job* name from the repo's CI workflow, not the workflow's
 name. For example in `festival-navigator/.github/workflows/ci.yml`, the workflow is called
-`CI` but the job is `checks` — `checks` is the right answer. Leave the flag off and the repo
-gets labels and update PRs, but nothing will merge on its own.
+`CI` but the job is `checks` — `checks` is the right answer.
+
+### 2. Security fixes only, gated on something that is not a workflow
+
+About 29 repos have no CI workflow at all — but several of them *deploy*, so something does
+build every change: Vercel, or Cloudflare. That build is a perfectly good gate. It simply
+is not a GitHub Actions job, and until 2026-09-14 this tool had no way to say so.
+
+```bash
+bin/enroll khglynn/ynai --security-only --external-check Vercel --dry-run
+```
+
+**`--security-only`** writes no `dependabot.yml`, so no routine version bumps are opened in
+this repo at all. GitHub's account-wide *security* fixes still arrive — those need no file
+in any repo — and from here on they approve and merge themselves once the check is green.
+If the repo already has a `dependabot.yml` it refuses, because version updates would keep
+arriving and the promise would be false.
+
+**`--external-check <context>`** takes a required check that no workflow declares. Nothing
+in the repo can confirm that name, so `enroll` confirms it against history instead: it reads
+the five most recent pull requests and, for each one, what actually reported a check on it.
+A name nothing has ever reported is refused, with the real names printed; a name that checks
+out is accepted, and it tells you which pull request proved it. One mistyped letter is all
+it takes to build a gate that can never go green, and every update pull request would then
+queue behind it forever.
+
+The one thing to know about this shape: **the gate belongs to somebody else.** If the Vercel
+project is deleted, or stops building this repo's branches, the check goes quiet and pull
+requests pile up waiting rather than failing. Worth a glance if updates stop landing.
+
+### 3. Security fixes only, nothing merging
+
+```bash
+bin/enroll khglynn/some-repo --security-only
+```
+
+The labels and the merge rules, no `dependabot.yml`, and no gate. Security fixes arrive and
+wait for you, labelled `no-ci-gate`. Use it for a repo that should be under the standard but
+has nothing to test it with yet — the audit will keep saying it is half set up, which is
+exactly what you want it to say until the gate exists.
+
+### What happens in all three
+
+`enroll` creates the labels, **opens a pull request** (it never pushes to `main`), turns on
+the repo's "allow auto-merge" setting and its "Actions may approve pull requests" switch,
+and adds a rule requiring your check on the default branch — with **you** able to bypass it,
+so pushing straight to `main` still works exactly as it does today.
+
+Then **you merge the pull request.** Nothing takes effect before that: GitHub will only run
+a workflow that is already on the default branch.
 
 Running `enroll` twice does nothing the second time — including leaving any exception you
 carved into the stub exactly where you put it. Re-running it across every repo is the
@@ -152,8 +202,14 @@ every repo reads "could not be read". It prints a markdown table with one row pe
 and one **status** word at the end:
 
 - `enrolled` — updates land by themselves here
-- `security-only` — protected against known vulnerabilities, not kept current. A fine
-  resting state for a repo nobody deploys
+- `enrolled (security fixes only)` — the merge rules are in place and working, and the
+  `dependabot.yml` is missing on purpose (shape 2 or 3 above). No routine version bumps
+  arrive; the security ones merge themselves. Counted among the repos that keep themselves
+  up to date, because the repo genuinely is handled — with the parenthetical said out loud,
+  since "up to date" on its own would overstate it
+- `security-only` — no merge rules either. Protected against known vulnerabilities, not
+  kept current, and nothing merges by itself. A fine resting state for a repo nobody
+  deploys
 - `fork — upstream's config, leave it alone` — a fork's `dependabot.yml` belongs to whoever
   you forked from. Enrolling one means a merge conflict on every sync, so forks are never
   counted as drift. `enroll` refuses them outright (`ALLOW_FORK=1` overrides, if you ever
@@ -189,8 +245,9 @@ requests — all of Kevin's repos), so a leak could look but never change anythi
 the secret exists the job fails at its first step and the routine posts a shorter
 fallback that says the automatic check could not run.
 
-**Is anything waiting for you?** How many repos keep themselves up to date, how many update
-pull requests are sitting open, and how old the oldest one is — then one line per repo that
+**Is anything waiting for you?** How many repos keep themselves up to date — and, when any
+of them are the security-fixes-only shape, how many of that number are — plus how many
+update pull requests are sitting open and how old the oldest one is — then one line per repo that
 has something waiting.
 
 **Has anything quietly fallen out of the standard?** Any repo that is half set up gets its
