@@ -1,0 +1,14 @@
+# `timeout-minutes` on a STEP is legal and caps that step only — it does not cap the job,
+# which still inherits GitHub's six-hour default. So this job must still be reported. The
+# regex fallback used to accept it, because it looked for the key at any indentation.
+# Expect exactly: step-level-timeout.yml:unit
+name: CI
+on:
+  pull_request:
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: A step with its own limit
+        timeout-minutes: 5
+        run: echo unit

@@ -29,12 +29,42 @@ expect() {
   fi
 }
 
-echo "--- (c) jobs without timeout-minutes"
-expect timeouts-present.yml            missing_timeout '[]'
-expect timeouts-missing.yml            missing_timeout '["timeouts-missing.yml:unit"]'
+# The timeout question is asked of BOTH parsers, every fixture, because the two paths
+# disagreed for a day and only one of them is the one a cloud routine takes. On
+# 2026-09-14 the regex fallback answered `[]` for the two fixtures below — a job whose
+# STEPS carry `uses:` (which it read as a reusable-workflow caller) and a job whose only
+# `timeout-minutes:` is on a step (which caps the step, not the job). Between them that
+# is most real workflows, so the digest would have said "no repos have this problem"
+# forever. Testing one parser per fixture is what let that through.
+expect_both() {
+  local file="$1" want="$2" got
+  for engine in pyyaml regex; do
+    if [ "$engine" = regex ]; then
+      got=$(WORKFLOW_HYGIENE_NO_YAML=1 python3 bin/lib/workflow-hygiene.py \
+              --default-branch main "$FIX/$file" | jq -c '.missing_timeout')
+    else
+      got=$(scan "$file" | jq -c '.missing_timeout')
+    fi
+    if [ "$got" = "$want" ]; then
+      echo "ok: $file ($engine) missing_timeout = $want"
+    else
+      echo "FAIL: $file ($engine) missing_timeout = $got, expected $want"
+      fail=1
+    fi
+  done
+}
+
+echo "--- (c) jobs without timeout-minutes — every fixture through both parsers"
+expect_both timeouts-present.yml  '[]'
+expect_both timeouts-missing.yml  '["timeouts-missing.yml:unit"]'
 # The exclusion that keeps this check usable at all: a reusable-workflow caller cannot
 # legally carry timeout-minutes, and every enrolled repo has one.
-expect reusable-caller.yml             missing_timeout '[]'
+expect_both reusable-caller.yml   '[]'
+# …and the exclusion must not spread to a job that merely CONTAINS a `uses:` step, which
+# is how most jobs are written.
+expect_both steps-with-uses.yml   '["steps-with-uses.yml:unit"]'
+# A step-level timeout caps that step only. The job still inherits the six-hour default.
+expect_both step-level-timeout.yml '["step-level-timeout.yml:unit"]'
 
 echo "--- (d) the double trigger"
 expect double-trigger-all-branches.yml   double_trigger '["double-trigger-all-branches.yml"]'
@@ -57,7 +87,7 @@ echo "--- the regex fallback (hosts without PyYAML — the weekly digest may run
 got=$(WORKFLOW_HYGIENE_NO_YAML=1 python3 bin/lib/workflow-hygiene.py --default-branch main \
         "$FIX/timeouts-missing.yml" | jq -c '[.parser, .missing_timeout]')
 if [ "$got" = '["regex",["timeouts-missing.yml:unit"]]' ]; then
-  echo "ok: regex fallback finds the same missing timeout"
+  echo "ok: regex fallback names itself and finds the same missing timeout"
 else
   echo "FAIL: regex fallback gave $got"
   fail=1

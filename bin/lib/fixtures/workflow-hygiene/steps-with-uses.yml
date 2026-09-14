@@ -1,0 +1,16 @@
+# The style most real workflows are written in: a job whose STEPS include `uses:`. The
+# job itself is not a reusable-workflow caller and has no time limit, so it must be
+# reported. The regex fallback used to skip every job shaped like this — it matched the
+# step's `uses:` at any indentation and read the whole job as a caller — which made the
+# check find nothing on ordinary files. Expect exactly: steps-with-uses.yml:unit
+name: CI
+on:
+  pull_request:
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+      - name: Run the tests
+        run: echo unit

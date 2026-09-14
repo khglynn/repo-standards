@@ -132,6 +132,27 @@ _JOB_KEY_RE = re.compile(r"^(\s{2,4})([A-Za-z_][A-Za-z0-9_-]*):\s*(?:#.*)?$")
 
 
 def _jobs_missing_timeout_regex(text):
+    """The same question as _jobs_missing_timeout, answered without a YAML parser.
+
+    THE INDENT IS THE WHOLE TRICK, and the first version of this function got it wrong in
+    a way that made the check useless on ordinary workflows. It asked `^\s+uses:` and
+    `^\s+timeout-minutes:` — *any* indentation — so a job written in the common style
+
+        unit:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Check out
+              uses: actions/checkout@v5
+
+    looked like a reusable-workflow caller (because one of its STEPS says `uses:`) and was
+    skipped silently. Every such job — which is most of them — went unchecked, and the
+    mirror bug let a STEP's own `timeout-minutes:` satisfy the JOB-level check it is not.
+    The regex path is the path a cloud routine takes (no PyYAML), so the weekly digest
+    would have reported "no repos have this problem" forever. Found by review 2026-09-14.
+
+    A job's own keys sit exactly two spaces deeper than its key, so both questions are
+    anchored to that column and nothing nested below it can answer them.
+    """
     lines = text.splitlines()
     start = None
     for i, line in enumerate(lines):
@@ -145,13 +166,14 @@ def _jobs_missing_timeout_regex(text):
     indent = None
     body = []
 
-    def close():
+    def close(job_indent):
         if current is None:
             return
         joined = "\n".join(body)
-        if re.search(r"^\s+uses:", joined, re.M):
-            return
-        if not re.search(r"^\s+timeout-minutes:", joined, re.M):
+        col = " " * (job_indent + 2)  # the job's OWN keys, not its steps'
+        if re.search(r"^%suses:" % col, joined, re.M):
+            return  # a reusable-workflow caller; timeout-minutes is not allowed here
+        if not re.search(r"^%stimeout-minutes:" % col, joined, re.M):
             missing.append(current)
 
     for line in lines[start:]:
@@ -159,14 +181,14 @@ def _jobs_missing_timeout_regex(text):
             break  # back to a top-level key: jobs: is over
         m = _JOB_KEY_RE.match(line)
         if m and (indent is None or len(m.group(1)) == indent):
-            close()
+            close(indent if indent is not None else 0)
             indent = len(m.group(1))
             current = m.group(2)
             body = []
             continue
         if current is not None:
             body.append(line)
-    close()
+    close(indent if indent is not None else 0)
     return missing
 
 
