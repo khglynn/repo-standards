@@ -25,9 +25,17 @@
 # The status column is the thing to read:
 #   enrolled       — dependabot.yml + the pointer stub + auto-merge on + a required check
 #                    + the approve switch. Routine updates land by themselves here.
-#   security-only  — no version-update config. Still covered by account-wide Dependabot
-#                    security alerts and fixes; just not kept current for its own sake.
-#                    A perfectly fine state for a repo nobody deploys.
+#   enrolled (security fixes only)
+#                  — the same machinery with the dependabot.yml deliberately left out
+#                    (`bin/enroll --security-only`). No routine version bumps arrive; the
+#                    account-wide SECURITY fixes do, and those merge themselves behind the
+#                    required check. Counted among the repos that keep themselves up to
+#                    date, with the parenthetical said out loud, because the repo IS
+#                    handled — the decision to skip routine bumps was made on purpose.
+#   security-only  — no version-update config AND no merge rules. Still covered by
+#                    account-wide Dependabot security alerts and fixes; just not kept
+#                    current, and nothing merges by itself. A perfectly fine resting state
+#                    for a repo nobody deploys.
 #   drift: …       — half-enrolled, and the reason says which half. This is the column
 #                    that makes drift impossible to not notice.
 #
@@ -50,7 +58,9 @@ while [ $# -gt 0 ]; do
     --digest) MODE="digest"; shift ;;
     --cap) CAP="${2:-300}"; shift 2 ;;
     --skip-actions) SKIP_ACTIONS=yes; shift ;;
-    -h|--help) sed -n '2,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    # The header block itself, not a hard-coded line range: bin/enroll's identical range
+    # silently truncated its help mid-sentence the moment its header grew (2026-09-14).
+    -h|--help) awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -58,6 +68,11 @@ for t in gh jq python3; do command -v "$t" >/dev/null || { echo "missing tool: $
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SINCE="$(date +%Y-%m-01)"
+
+# The status column's rule, in its own file so the self-check can run the REAL one against
+# a table of cases instead of a retyped copy. See bin/lib/verdict.sh for why.
+# shellcheck source=bin/lib/verdict.sh
+. "$HERE/bin/lib/verdict.sh"
 
 # Is the tree response readable and complete? Prints "false" (not truncated — good),
 # "true" (truncated), or "err" (no answer at all).
@@ -227,47 +242,10 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     pr_cell="$pr_count (oldest ${pr_age}d)"
   fi
 
-  # --- the verdict
-  # A fork's dependabot.yml belongs to whoever we forked FROM. Enrolling one means fighting
-  # upstream on every sync, so a fork is never drift — it is just not ours to standardise.
-  if [ "$unreadable" = "yes" ]; then
-    status="unknown: could not read this repo's file list (API error or truncated tree)"
-  elif [ "$is_fork" = "true" ]; then
-    status="fork — upstream's config, leave it alone"
-  elif [ "$has_stub" = "unreadable" ]; then
-    status="unknown: could not read this repo's merge-rules workflow"
-  elif { [ "$has_stub" = "yes" ] || [ "$has_stub" = "source" ]; } && [ "$approve" = "false" ]; then
-    # The switch whose absence stranded three list-maker PRs on 2026-09-14: the shared
-    # workflow's `gh pr review --approve` is refused outright, so in any repo with a
-    # one-approval rule the PR queues behind a review that can never arrive.
-    status="drift: Actions may not approve pull requests here, so the workflow's approvals will be refused"
-  elif [ "$has_stub" = "source" ] && [ "$has_dependabot" = "yes" ]; then
-    status="enrolled (this repo IS the standard)"
-  elif [ "$has_stub" = "inline" ]; then
-    status="drift: still has its own private copy of the merge rules"
-  elif [ "$has_dependabot" = "no" ] && [ "$has_stub" = "no" ]; then
-    if [ "$has_manifest" = "yes" ]; then
-      status="security-only"
-    else
-      status="security-only (nothing to update)"
-    fi
-  elif [ "$has_dependabot" = "yes" ] && [ "$has_stub" = "no" ]; then
-    status="drift: gets update PRs but nothing merges them"
-  elif [ "$has_stub" = "yes" ] && [ "$has_dependabot" = "no" ]; then
-    status="drift: merge rules but no dependabot.yml, so no update PRs"
-  elif [ "$auto_merge" = "?" ]; then
-    # The repo call failed, so the setting was never read. Reporting the switch as OFF
-    # here would be the same shape as the stub bug above, and it lands on the repos that
-    # got everything else right — only a repo with both the stub and dependabot.yml
-    # reaches this line at all.
-    status="unknown: could not read this repo's settings"
-  elif [ "$auto_merge" != "true" ]; then
-    status="drift: repo setting 'allow auto-merge' is off"
-  elif [ "$checks" = "—" ]; then
-    status="drift: no required check, so nothing can safely auto-merge"
-  else
-    status="enrolled"
-  fi
+  # --- the verdict, from bin/lib/verdict.sh. Every branch and the reasoning behind it
+  # lives there; it is a pure function of these eight strings so it can actually be tested.
+  status=$(verdict "$unreadable" "$is_fork" "$has_stub" "$approve" \
+                   "$has_dependabot" "$has_manifest" "$auto_merge" "$checks")
 
   pushed_day=${pushed_at%%T*}
   jq -nc --arg name "$name" --arg visibility "$visibility" --arg pushed "$pushed_day" \

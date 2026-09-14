@@ -40,12 +40,29 @@ def load(stream):
 
 
 def counts(rows):
-    c = {"total": len(rows), "enrolled": 0, "security_only": 0,
-         "forks": 0, "drifting": 0, "unreadable": 0}
+    """How many repos are in each state — and, inside "enrolled", how many of those are
+    the security-fixes-only shape.
+
+    WHY THAT ONE IS COUNTED AS ENROLLED (2026-09-14). `bin/enroll --security-only` writes
+    the merge rules and deliberately no `dependabot.yml`, so the repo takes GitHub's
+    account-wide security fixes, merges them behind its required check, and gets no routine
+    version bumps. Filing that under `security-only` would put a repo whose security fixes
+    merge themselves in the same bucket as one where nothing merges at all, which is the
+    more misleading of the two errors — the repo IS handled.
+
+    So it counts as enrolled and the headline says the parenthetical out loud, because
+    "keeps itself up to date" on its own overstates what a security-only repo does. The
+    count is carried separately rather than re-derived from the strings downstream: one
+    place decides what the word means.
+    """
+    c = {"total": len(rows), "enrolled": 0, "enrolled_security_only": 0,
+         "security_only": 0, "forks": 0, "drifting": 0, "unreadable": 0}
     for r in rows:
         s = r["status"]
         if s.startswith("enrolled"):
             c["enrolled"] += 1
+            if "security fixes only" in s:
+                c["enrolled_security_only"] += 1
         elif s.startswith("security-only"):
             c["security_only"] += 1
         elif s.startswith("fork"):
@@ -221,8 +238,13 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
     m = minutes_picture(rows, since, method, today)
     print("# Repo standards audit — %s" % m["today"].isoformat(), file=out)
     print(file=out)
-    summary = ("%d active repos under `%s`: **%d enrolled**, %d security-only, "
-               "%d forks, **%d drifting**" % (c["total"], owner, c["enrolled"],
+    enrolled_txt = "**%d enrolled**" % c["enrolled"]
+    if c["enrolled_security_only"]:
+        # Without this the count silently absorbs repos that take no routine version
+        # updates at all, and the word "enrolled" quietly means two different things.
+        enrolled_txt += " (%d for security fixes only)" % c["enrolled_security_only"]
+    summary = ("%d active repos under `%s`: %s, %d security-only, "
+               "%d forks, **%d drifting**" % (c["total"], owner, enrolled_txt,
                                               c["security_only"], c["forks"], c["drifting"]))
     if c["unreadable"]:
         summary += ", **%d unreadable**" % c["unreadable"]
@@ -364,6 +386,10 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
           file=out)
     print("_`security-only` means \"protected against known vulnerabilities, not kept current\"._",
           file=out)
+    print("_`enrolled (security fixes only)` is that plus the merge rules: no routine version_",
+          file=out)
+    print("_bumps arrive, and the security ones merge themselves once the required check is green._",
+          file=out)
     print("_To move a repo from security-only to enrolled: `bin/enroll %s/<name> --ci-check "
           "<check>`._" % owner, file=out)
 
@@ -398,6 +424,12 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     # ---- headline: what a person needs to know before deciding to read further.
     head = ["*Dependency check — %s*" % m["today"].strftime("%-d %b %Y"), ""]
     line = "%d of %d repos keep themselves up to date" % (c["enrolled"], c["total"])
+    if c["enrolled_security_only"]:
+        # Five words, and they are the difference between a true sentence and a flattering
+        # one: a security-only repo merges its security fixes and takes no routine version
+        # bumps at all. The headline is never trimmed by the word cap below — only the repo
+        # list gives way — so this cannot quietly disappear on a busy week.
+        line += " (%d for security fixes only)" % c["enrolled_security_only"]
     if c["drifting"]:
         line += "; %d %s half set up" % (c["drifting"], _plural(c["drifting"], "is", "are"))
     line += "."

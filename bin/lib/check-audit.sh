@@ -313,4 +313,186 @@ PYEOF
 say "free/billed verdicts, and the runner multipliers" "$got" \
     '{"free":[true,false,false],"runners":[["UBUNTU",1],["WINDOWS",2],["MACOS",10],["SELF",0],["UBUNTU",1]]}'
 
+echo "--- 9. the status word itself, run against a table of cases"
+# Until 2026-09-14 this rule lived inline in bin/audit's repo loop and the only way to
+# exercise it was to call GitHub forty times — so the column bin/audit calls "the whole
+# point of this tool" had no test at all, while the two jq predicates above it had four
+# each. It is a function in bin/lib/verdict.sh now, and this is the real one, sourced, not
+# a retyped copy. Every branch is pinned, not only the new ones: the extraction has to be
+# proved equivalent, and the ORDER of the chain is the logic.
+# shellcheck source=bin/lib/verdict.sh
+. bin/lib/verdict.sh
+#    v <label> <expected>  unreadable is_fork stub approve dependabot manifest auto_merge checks
+v() { local label="$1" want="$2"; shift 2; say "$label" "$(verdict "$@")" "$want"; }
+
+v "an unreadable tree beats every other answer" \
+  "unknown: could not read this repo's file list (API error or truncated tree)" \
+  yes true inline false yes yes "?" "—"
+v "a fork is never drift" \
+  "fork — upstream's config, leave it alone" \
+  no true no true no yes true "—"
+v "an unreadable stub is unknown, not inline" \
+  "unknown: could not read this repo's merge-rules workflow" \
+  no false unreadable true yes yes true ci
+v "approve off is drift, stub kind 'yes'" \
+  "drift: Actions may not approve pull requests here, so the workflow's approvals will be refused" \
+  no false yes false yes yes true ci
+v "approve off is drift, stub kind 'source' too" \
+  "drift: Actions may not approve pull requests here, so the workflow's approvals will be refused" \
+  no false source false yes yes true ci
+v "the standards repo knows what it is" \
+  "enrolled (this repo IS the standard)" \
+  no false source true yes yes true ci
+v "a private copy of the merge rules is the drift this exists to end" \
+  "drift: still has its own private copy of the merge rules" \
+  no false inline true no yes true ci
+v "nothing configured, but there is something to update" \
+  "security-only" \
+  no false no true no yes true "—"
+v "nothing configured and nothing to update" \
+  "security-only (nothing to update)" \
+  no false no true no no true "—"
+v "update PRs with nothing to merge them" \
+  "drift: gets update PRs but nothing merges them" \
+  no false no true yes yes true "—"
+v "the full shape" \
+  "enrolled" \
+  no false yes true yes yes true ci
+v "everything but the required check" \
+  "drift: no required check, so nothing can safely auto-merge" \
+  no false yes true yes yes true "—"
+v "everything but the repo switch" \
+  "drift: repo setting 'allow auto-merge' is off" \
+  no false yes true yes yes false ci
+v "the settings call failed, so the switch is unknown and not off" \
+  "unknown: could not read this repo's settings" \
+  no false yes true yes yes "?" ci
+
+# --- the shape added 2026-09-14: the stub, no dependabot.yml, and that is deliberate.
+v "a security-only enrolment is enrolled, not drift" \
+  "enrolled (security fixes only)" \
+  no false yes true no yes true Vercel
+v "…and an external check counts like any other context" \
+  "enrolled (security fixes only)" \
+  no false yes true no yes true "Vercel, checks"
+v "…even on a repo with no app manifest at all" \
+  "enrolled (security fixes only)" \
+  no false yes true no no true Vercel
+# --skip-actions leaves `approve` unreadable. That must not turn a good repo into drift —
+# the same absent-versus-false rule the APPROVE_JQ test above pins, one level up.
+v "…and an unread approve switch does not demote it" \
+  "enrolled (security fixes only)" \
+  no false yes "?" no yes true Vercel
+# A stub that can merge nothing is still drift, and it gets the MISSING-GATE message, not
+# the retired "no dependabot.yml" one — that file is now the intended half, and naming it
+# would send Kevin to fix the thing that is not broken.
+v "a security-only stub with no gate is still drift" \
+  "drift: no required check, so nothing can safely auto-merge" \
+  no false yes true no yes true "—"
+v "…and the retired wording is really gone" \
+  "drift: no required check, so nothing can safely auto-merge" \
+  no false yes true no no true "—"
+v "a security-only stub with auto-merge off is drift" \
+  "drift: repo setting 'allow auto-merge' is off" \
+  no false yes true no yes false Vercel
+v "a security-only stub whose settings could not be read is unknown" \
+  "unknown: could not read this repo's settings" \
+  no false yes true no yes "?" Vercel
+v "the approve rule still wins over the security-only branch" \
+  "drift: Actions may not approve pull requests here, so the workflow's approvals will be refused" \
+  no false yes false no yes true Vercel
+
+# --- and the whole output alphabet, swept exhaustively.
+# Every case above is one hand-picked point. This is the complement: run the rule over all
+# 1,440 combinations of its eight inputs and pin the SET of answers it can produce. It is
+# the cheapest way to prove two things at once — that the retired
+# "merge rules but no dependabot.yml" wording is unreachable rather than merely unused, and
+# that no future edit can introduce a status word the renderer has never seen. The renderer
+# switches on `startswith("enrolled" / "security-only" / "fork" / "unknown")` and files
+# everything else under DRIFTING, so a typo'd verdict would not error — it would quietly be
+# counted as drift in the weekly digest.
+sweep=$(for unreadable in yes no; do
+  for is_fork in true false; do
+    for stub in yes no source inline unreadable; do
+      for approve in true false "?"; do
+        for db in yes no; do
+          for manifest in yes no; do
+            for automerge in true false "?"; do
+              for checks in ci "—"; do
+                verdict "$unreadable" "$is_fork" "$stub" "$approve" \
+                        "$db" "$manifest" "$automerge" "$checks"
+              done; done; done; done; done; done; done; done | sort -u)
+want_alphabet=$(printf '%s\n' \
+  "drift: Actions may not approve pull requests here, so the workflow's approvals will be refused" \
+  "drift: gets update PRs but nothing merges them" \
+  "drift: no required check, so nothing can safely auto-merge" \
+  "drift: repo setting 'allow auto-merge' is off" \
+  "drift: still has its own private copy of the merge rules" \
+  "enrolled" \
+  "enrolled (security fixes only)" \
+  "enrolled (this repo IS the standard)" \
+  "fork — upstream's config, leave it alone" \
+  "security-only" \
+  "security-only (nothing to update)" \
+  "unknown: could not read this repo's file list (API error or truncated tree)" \
+  "unknown: could not read this repo's merge-rules workflow" \
+  "unknown: could not read this repo's settings" | sort -u)
+if [ "$sweep" = "$want_alphabet" ]; then
+  echo "ok: all 1,440 input combinations produce exactly the 14 known status words"
+else
+  echo "FAIL: the rule's output alphabet changed"
+  diff <(printf '%s\n' "$want_alphabet") <(printf '%s\n' "$sweep") | sed 's/^/     /'
+  fail=1
+fi
+
+echo "--- 10. the security-only enrolment through all three renderings"
+# It must read as ENROLLED (the repo is handled — its security fixes merge themselves) and
+# the parenthetical must survive, because "keeps itself up to date" alone overstates a repo
+# that takes no routine version bumps at all. Three rows: one of each shape.
+SEC='{"name":"ynai","visibility":"PRIVATE","pushed":"2026-09-14","manifest":"yes",
+ "dependabot":"no","stub":"yes","auto_merge":"true","checks":"Vercel","prs":"0",
+ "pr_count":0,"pr_oldest_days":null,"approve":true,"approve_cell":"true","minutes":100,
+ "runs":20,"free_runs":0,"timed":20,"capped":false,"runners":["UBUNTU"],
+ "missing_timeout":[],"double_trigger":[],"unparsed":[],"parser":"pyyaml","errors":[],
+ "is_fork":false,"status":"enrolled (security fixes only)"}'
+FULL=$(jq -c '.name="eachie" | .dependabot="yes" | .checks="unit" | .status="enrolled"' <<< "$SEC")
+HALF=$(jq -c '.name="wkt" | .checks="—"
+              | .status="drift: no required check, so nothing can safely auto-merge"' <<< "$SEC")
+THREE=$(printf '%s\n%s\n%s\n' "$(jq -c . <<< "$SEC")" "$FULL" "$HALF")
+
+ST=$(render --mode table <<< "$THREE")
+if grep -qF -- "**2 enrolled** (1 for security fixes only), 0 security-only" <<< "$ST"; then
+  echo "ok: the table counts it as enrolled and says which kind"
+else echo "FAIL: the table's summary hides the security-only enrolment"; echo "$ST"; fail=1; fi
+if grep -qF -- "| enrolled (security fixes only) |" <<< "$ST"; then
+  echo "ok: the row carries the status word"
+else echo "FAIL: the table row lost the status word"; fail=1; fi
+if grep -qF -- "no routine version_" <<< "$ST"; then
+  echo "ok: the table legend explains the new word"
+else echo "FAIL: the table legend does not explain the new status"; fail=1; fi
+
+SJ=$(render --mode json <<< "$THREE")
+say "json: two enrolled"                  "$(jq -r '.summary.enrolled' <<< "$SJ")" "2"
+say "json: one of them security-only"     "$(jq -r '.summary.enrolled_security_only' <<< "$SJ")" "1"
+say "json: none counted as security-only" "$(jq -r '.summary.security_only' <<< "$SJ")" "0"
+say "json: one drifting"                  "$(jq -r '.summary.drifting' <<< "$SJ")" "1"
+
+SD=$(render --mode digest <<< "$THREE")
+if grep -qF -- "2 of 3 repos keep themselves up to date (1 for security fixes only)" <<< "$SD"; then
+  echo "ok: the digest headline says it plainly"
+else echo "FAIL: the digest headline overstates or loses the count"; echo "$SD"; fail=1; fi
+if grep -qF -- "- wkt — no required check" <<< "$SD"; then
+  echo "ok: the half-set-up one still gets its own line"
+else echo "FAIL: the drifting repo lost its digest line"; echo "$SD"; fail=1; fi
+# A repo that IS fully enrolled must not be quietly described as security-only, so the
+# parenthetical has to be absent when nothing earns it.
+NOSEC=$(printf '%s\n%s\n' "$FULL" "$HALF")
+for m in table digest; do
+  if grep -qF -- "for security fixes only" <<< "$(render --mode "$m" <<< "$NOSEC")"; then
+    echo "FAIL: the $m claims a security-only enrolment where there is none"; fail=1
+  else echo "ok: the $m says nothing about security-only when no repo is"; fi
+done
+# …and the whole message still fits, with the extra words in the headline.
+cap_words "with a security-only enrolment" "$SD"
+
 exit "$fail"

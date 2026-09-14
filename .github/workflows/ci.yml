@@ -49,8 +49,13 @@ jobs:
       - name: Check the scripts
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck bin/enroll bin/audit bin/classify-pr bin/lib/check-classifier.sh \
-                     bin/lib/check-workflow-hygiene.sh bin/lib/check-audit.sh
+          # -x so shellcheck FOLLOWS the `source` directives rather than filing the
+          # sourced file under "not specified as input". bin/audit sources the verdict
+          # rule; without -x the one function that decides every status word would be
+          # linted only as a standalone file and never in the context that uses it.
+          shellcheck -x bin/enroll bin/audit bin/classify-pr bin/lib/verdict.sh \
+                     bin/lib/check-classifier.sh bin/lib/check-workflow-hygiene.sh \
+                     bin/lib/check-audit.sh
           python3 -m py_compile bin/lib/*.py
 
       # The one rule that exists in two places and cannot be deduplicated: the shared
