@@ -1475,3 +1475,134 @@ Enrolling khglynn/ynai
 
  YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
 ```
+
+### Round two: five more findings, and the same ordering bug twice in one afternoon
+
+The fixes were sent back to Codex (`cx-20260914-160440`, verdict SHIP WITH CHANGES again).
+Three of its five findings had already been caught while it ran; two were new. All five, and
+what each would have cost:
+
+1. **Two surfaces, one answer.** `GATE_STATE=none` was still reachable when only ONE of the
+   two places a required check can live had actually answered — rulesets empty while classic
+   protection failed, or the mirror image — and a swallowed `jq` failure did the same while
+   claiming the read had succeeded. Each surface is `present` / `absent` / `unknown` on its
+   own evidence now, and `none` needs **both** to say absent. The classic read separates 403
+   from 404 again (`gh api -i`) — **a bug this repo fixed once already**, in the shared
+   workflow on 2026-09-11, and which this session quietly reintroduced. That single fact is
+   the argument for having asked for a second review at all.
+2. **The ruleset read was itself unpaginated**, in `bin/enroll` and `bin/audit` both: 30
+   rules by default, so a required check on page two reads as no check at all. In enroll that
+   is a false "nothing merges here"; in audit it is a drift verdict about a repo that is
+   fine. `--paginate` on both.
+3. **A newer contradiction now outranks an older match.** The loop took the first Dependabot
+   hit and stopped, so a Vercel project that stopped building bot branches last week would
+   still have enrolled cleanly on month-old evidence. The newest *readable* Dependabot pull
+   request is what speaks to today.
+4. **An unreadable Dependabot head is not an ungated one.** `bot_seen` counted pull requests
+   before either history read succeeded, so a failed read produced the categorical "it does
+   not run on Dependabot's branches" refusal — contradicting the "nothing was inferred from
+   those" note printed three lines above it.
+5. **A failed PR lookup is not "there is no PR."** The branch is already pushed by then, so
+   swallowing the failure sent the run down the create path; creation fails because the PR
+   does exist, and its old description survives a branch that changed shape underneath it.
+
+**And then the same ordering bug, twice in one afternoon.** Fixing (3) put a `bot_proof`
+branch at the top of the evidence chain, which shadowed every recency branch below it — so
+the refusal never fired. A *simulated run* caught it; reading the code had not, twice. That
+is the second inline if/elif chain in this repo to go wrong by ordering in a single session,
+so it got the same treatment as the first: `bin/lib/check-evidence.sh`, a pure function of
+six values printing one verdict token, with all 216 input combinations pinned in
+`bin/lib/fixtures/audit/evidence-matrix.txt` and one invariant stated in words — *a readable
+Dependabot pull request missing the check can only ever end in refusal or a deliberate
+`ALLOW_UNPROVEN_CHECK=1`, never a quiet yes.*
+
+The method that actually found things, worth keeping: **every refusal path was exercised by
+injecting the failure into a throwaway copy of `bin/enroll`** (two unreachable PR heads; a
+check blanked on bot PRs; a check blanked on the newest bot PR only), run for real against
+`ynai`, then deleted. Three of the bugs above survived careful reading and died in under a
+minute to a simulated run.
+
+Final state: **128 assertions, 0 failures**, full CI suite green locally, two golden
+matrices (1,440 verdict rows, 216 evidence rows) pinned as fixtures.
+
+### One thing found and NOT fixed, because the brief forbids the file
+
+`.github/workflows/dependabot-automerge.yml:303` reads the base branch's rulesets
+**unpaginated** — `gh api "repos/$REPO/rules/branches/$base_esc"`, the same 30-rule default
+that was just fixed in `bin/enroll` and `bin/audit`. On a branch with more than 30 rules the
+gate would see no required check.
+
+**It fails in the safe direction**, which is why this is a note and not an alarm: an empty
+`checks` with the default `require-ci: true` sets `ok=false`, so the PR gets a `no-ci-gate`
+label and does **not** merge. Nothing merges untested; a PR would just wait for a human, with
+a comment that misdescribes why. None of Kevin's repos is near 30 rules today. The fix is one
+word (`--paginate`) plus `?per_page=100`, whenever that file is next touched.
+
+### The dry run, final
+
+**Still not enrolled** — the real enrol is the lead's call. Note the first evidence line: the
+check is now proven on Dependabot's *own* newest pull request, not merely on some pull
+request, and every check happens before a single label is created.
+
+```
+$ bin/enroll khglynn/ynai --security-only --external-check Vercel --dry-run
+DRY RUN — nothing below is actually written.
+Enrolling khglynn/ynai
+   --security-only: no dependabot.yml will be written, so this repo gets GitHub's
+   account-wide SECURITY fixes and no routine version-update pull requests.
+   default branch: main   visibility: private
+
+── Checks
+   verifying 'Vercel' against this repo's five most recent pull requests…
+   external check 'Vercel' reports on Dependabot's own pull requests ✓ — PR #15 by dependabot[bot] (as a commit status)
+   ⚠ it is reported by a third-party app, not by a file in this repo. If that
+     integration is ever removed or stops building this repo's branches, the gate
+     goes silent and update PRs will queue forever rather than fail loudly.
+
+── Labels
+   would ensure label: dependencies
+   would ensure label: major-review-needed
+   would ensure label: dependabot-needs-human
+   would ensure label: no-ci-gate
+   would ensure label: dependabot-opted-out
+
+── Ecosystems
+   not checked — --security-only writes no dependabot.yml, so nothing is composed
+   from the answer. Run without the flag to see what this repo would get.
+
+── Files
+   dependabot.yml: NOT written (--security-only) — no version-update PRs will be
+   opened here. GitHub's account-wide security fixes still arrive; they need no file.
+   automerge stub: new
+      ?? .github/workflows/dependabot-automerge.yml
+
+   would open a pull request on branch 'standards/enroll' containing:
+      ┄┄ new file: .github/workflows/dependabot-automerge.yml
+      [templates/caller-stub.yml verbatim — elided here]
+
+── Repo setting: allow auto-merge
+   would turn it on (gh api -X PATCH repos/khglynn/ynai -F allow_auto_merge=true)
+
+── Repo setting: Actions may approve pull requests
+   would turn it on (gh api -X PUT repos/khglynn/ynai/actions/permissions/workflow -F can_approve_pull_request_reviews=true)
+
+── CI gate (ruleset 'standards-ci')
+   would CREATE ruleset 'standards-ci'
+   requiring check 'Vercel' on main, repository admins bypass always
+
+════════════════════════════════════════════════════════════════════
+ khglynn/ynai — dry run — nothing changed
+════════════════════════════════════════════════════════════════════
+ Ecosystems found: not checked (--security-only writes no dependabot.yml)
+ Files proposed: .github/workflows/dependabot-automerge.yml
+ Pull request: (dry run — not opened)
+ CI gate: 'Vercel' required on main — reported by another service,
+          not by a workflow here (you can still push directly)
+
+ SECURITY FIXES ONLY. No dependabot.yml was written, so Dependabot will open no
+ routine version-update pull requests here. GitHub's account-wide security fixes
+ still arrive, and those are what will approve and merge themselves once
+ 'Vercel' is green. Nothing else merges by itself.
+
+ YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
+```
