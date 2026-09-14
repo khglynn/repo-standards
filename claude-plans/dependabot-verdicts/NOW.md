@@ -1,5 +1,5 @@
 # NOW — dependabot-verdicts arc (arc mode)
-last-updated: 2026-09-14 18:03 CDT · mode: arc · read GROUNDING.md first
+last-updated: 2026-09-14 18:10 CDT · mode: arc · read GROUNDING.md first
 (Clock note: stamps elsewhere in this folder that say "00:2x CT" were written two hours early; those events happened at 02:2x CDT, per the machine clock and commit times.)
 
 ## State (overnight 2026-09-13 → 09-14, unattended)
@@ -27,6 +27,6 @@ Waiting on Kevin: the `AUDIT_READ_TOKEN` secret (then run the weekly-audit job o
 
 ## For Kevin (self-contained)
 1. Mint the read-only token (two minutes, once a year; GitHub is not signed in on the kevn Chrome profile, so use whichever browser is): github.com/settings/personal-access-tokens/new → name `repo-standards weekly audit`, expiration 1 year, resource owner khglynn, "All repositories", permissions (all READ-ONLY): Actions, Administration, Contents, Metadata, Pull requests → Generate → copy. Then github.com/khglynn/repo-standards-audit/settings/secrets/actions → New repository secret → `AUDIT_READ_TOKEN` → Add. Then github.com/khglynn/repo-standards-audit/actions/workflows/weekly-audit.yml → Run workflow. Green = `latest-digest.md` in that repo is this week's audit and Monday's Slack message is the full one.
-2. The watcher's new #infra-ops webhook exists (Errors Bot, 17:59 CDT) and its address is on your clipboard. In a terminal: `gh secret set SLACK_WEBHOOK_URL -R khglynn/google_workspace_mcp` and paste when prompted. Then say so: I delete the old #misc-build-errors webhook, archive #misc-build-errors, and merge google_workspace_mcp#18 (the once-then-weekly fix) if you say merge. Note: both webhook addresses appeared on screen in this session's captures; rotate the new one (delete it on api.slack.com/apps → Errors Bot → Incoming Webhooks, add another) if you would rather no agent transcript held it.
+2. DONE 18:03–18:05: the watcher's `SLACK_WEBHOOK_URL` secret now points at #infra-ops (Kevin pasted the address in chat; stored with `gh secret set`, never through a browser field); the old #misc-build-errors webhook is deleted. Left for Kevin: merge google_workspace_mcp#18 (`gh pr merge 18 -R khglynn/google_workspace_mcp --squash`; its container-scan failure is pre-existing base-image CVEs, unrelated). After that the lead triggers one watcher run to prove the new channel end to end. Both webhook addresses appeared on screen in this session's captures; rotate the new one on api.slack.com/apps → Errors Bot → Incoming Webhooks if you would rather no transcript held it.
 3. ynai #18 (nodemailer 9 → 10) and #19 (deepmerge-ts 7 → 8), eachie #160 (ai 4 → 7): verdicts will appear in #dependabot; reply there with the "To act" line if you want them merged.
 4. The free private build minutes run out around 16 Sep (about 2,453 of 3,000 used on the morning audit). The $48 budget keeps builds running; the 27 jobs with no time limit are the lever if you would rather not spend.
