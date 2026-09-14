@@ -531,3 +531,18 @@ on CI.
 - Fixed live: PUT `actions/permissions/workflow` with `can_approve_pull_request_reviews=true` on festival-navigator, kevinhg-com, list-maker and repo-standards; re-ran the four runs; all four PRs approved by github-actions[bot] and merged 04:44–04:46Z.
 - Fixed in the standard: `bin/enroll` step 6b sets the switch (idempotent, dry-run aware); the workflow's approve step now checks for an existing APPROVED review by github-actions on the current head and otherwise approves and FAILS LOUDLY (`::error`) instead of pretending it was already approved. `PR_NUMBER` added to that step's env. actionlint and shellcheck clean.
 - Not yet covered: an audit column for this switch (fold into repo-standards#1).
+
+## 2026-09-14 overnight — `bin/audit` Phase 2 (session: audit-phase2 builder, Opus 5)
+
+Brief: `claude-plans/dependabot-verdicts/brief-audit-phase2.md`, spec `khglynn/repo-standards#1`.
+Banking as I go; this section grows downward and the findings land here before the commits do.
+
+**Environment confirmed before starting:** `gh` authed as `khglynn` (scopes `admin:org, gist, repo,
+workflow`), PyYAML 6.0.3, `actionlint` and `shellcheck` both present.
+
+**Sizing call made first, because it changes the design.** `GET /actions/runs?created=>=2026-09-01`
+returns 416 runs for eachie alone; across all 41 active repos it is ~1,320, and the minutes estimate
+needs one `/timing` call per run. Serial, inside the existing bash loop, that is 20+ minutes. So the
+per-repo Actions work moved into one concurrent Python helper that runs once for every repo before
+the bash loop, and the loop reads its JSON. `bin/audit` stays read-only: the helper issues GET and
+nothing else.
