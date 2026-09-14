@@ -11,17 +11,20 @@ same profile that owns the four `Dependabot verdict` routines. See
 `routines/dependabot-verdict.md` for why that profile and not the Claude in Chrome
 extension. Live since 2026-09-14 as `trig_01TTfxzWdWUA3J9PGPP6w6ap`.
 
-**Where the audit itself runs — not in the routine.** The routine's cloud sandbox has no
-`gh` command at all (`gh: command not found`, found on its first run, 2026-09-14 07:02 CT)
-and no token that reaches the other repos, so `bin/audit` can never run there. It runs
-instead in this repo's own GitHub Actions job, `.github/workflows/weekly-audit.yml`, every
-Monday before the routine wakes up, and leaves its output as `latest-digest.md` on the
-`audit-output` branch. The routine reads that file and posts it. That split is deliberate:
-the part that needs credentials never touches a model, and the part that needs a model
-never touches credentials. The job needs one repository secret, `AUDIT_READ_TOKEN`, a
-fine-grained personal access token that can only read (the exact permissions are in the
-comment at the top of that workflow); until it exists the job fails at its first step and
-the routine posts the fallback, which says the automatic check could not run.
+**Where the audit itself runs — not in the routine, and not in this repo.** The routine's
+cloud sandbox has no `gh` command at all (`gh: command not found`, found on its first run,
+2026-09-14 07:02 CT) and no token that reaches the other repos, so `bin/audit` can never
+run there. And its output names private repos, so it cannot be produced in this public
+repo's Actions log or committed to a public branch (Codex review, 2026-09-14). It runs in
+the private companion repo `khglynn/repo-standards-audit`, whose weekly job checks this
+repo out, runs `bin/audit --digest` every Monday before the routine wakes up, and commits
+the result there as `latest-digest.md`. The routine checks out *that* repo, reads the
+file, and posts it. That split is deliberate: the part that needs credentials never
+touches a model, and the part that needs a model never touches credentials. The job needs
+one repository secret in the private repo, `AUDIT_READ_TOKEN`, a fine-grained personal
+access token that can only read (the exact permissions are in that repo's README); until
+it exists the job fails at its first step and the routine posts the fallback, which says
+the automatic check could not run.
 
 **How it differs from the verdict routines.** Those fire on a GitHub event, one routine per
 repo, and speak about a single pull request. This one is on a clock, covers every repo at
@@ -44,7 +47,7 @@ and clicking the one match is the reliable way to add a connector.
 | Name | `Dependabot weekly digest` |
 | Instructions | the prompt below, pasted verbatim |
 | Model | `Opus 5` |
-| Repository | `khglynn/repo-standards` |
+| Repository | `khglynn/repo-standards-audit` (the private repo that holds `latest-digest.md`) |
 | Trigger | **Schedule**, weekly, **Monday**, **08:00**, timezone **America/Chicago** |
 | Connectors | **Slack** and **Github+**, and nothing else |
 | Auto-fix | off |
@@ -55,13 +58,13 @@ one again, and repeat until none are left — clicking all of them in one pass r
 re-render and leaves a random one behind. Then add Slack and GitHub back through
 "Add connector".
 
-**Why the repository is `repo-standards` and not one of the product repos.** The routine
-needs the checkout only to reach the `audit-output` branch, which lives here. Everything
+**Why the repository is `repo-standards-audit` and not this one.** The routine needs the
+checkout only to read `latest-digest.md`, which the weekly job commits there. Everything
 about the other repos is already inside that file.
 
 **Verify on the routine's page after saving:** the name, `Default · Opus 5`, the schedule
-line reading Monday 08:00 America/Chicago, `khglynn/repo-standards`, exactly two
-connectors (Slack, Github+), and the phrase "audit-output" somewhere in the instructions.
+line reading Monday 08:00 America/Chicago, `khglynn/repo-standards-audit`, exactly two
+connectors (Slack, Github+), and the phrase "latest-digest.md" somewhere in the instructions.
 Then press "Run now" once and read the run: it should show the file being read, or say
 plainly why it fell back.
 
@@ -78,13 +81,13 @@ Do this, in order:
 
 1. Read this week's audit. It was produced a few hours ago by a job on GitHub's own
    machines; this environment has no GitHub command-line tool and cannot run the audit
-   itself, so do not try. In the checked-out repository run
-   `git fetch --depth 1 origin audit-output && git show FETCH_HEAD:latest-digest.md`.
-   If that fails, ask the GitHub connector for the file `latest-digest.md` on the
-   `audit-output` branch of khglynn/repo-standards. The file's first line carries the date
-   it was produced; if that date is more than six days old, treat the file as missing.
-   Its text is already written for Kevin; use its numbers exactly as printed and do not
-   recompute them.
+   itself, so do not try. The file is `latest-digest.md` at the root of the checked-out
+   repository (khglynn/repo-standards-audit); read it. If the checkout is missing or the
+   file is not there, ask the GitHub connector for `latest-digest.md` on the main branch
+   of khglynn/repo-standards-audit. The file's first line carries the date it was
+   produced; if that date is more than six days old, treat the file as missing. Its text
+   is already written for Kevin; use its numbers exactly as printed and do not recompute
+   them.
 
    Two things it may say instead of a number, and both must survive into the message
    word for word rather than being tidied away: that build time was not checked this week
