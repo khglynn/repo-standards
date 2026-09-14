@@ -247,7 +247,13 @@ if [ -n "$EXTERNAL_CHECK" ]; then
   while IFS=$'\t' read -r pr_num head_sha pr_author; do
     [ -n "$head_sha" ] || continue
     heads_total=$((heads_total + 1))
-    case "$pr_author" in dependabot*) is_bot=yes; bot_seen=$((bot_seen + 1)) ;; *) is_bot=no ;; esac
+    # EXACT logins, not `dependabot*`. The repo has been here before: the shared workflow's
+    # "have I already approved?" test was a substring match until a review pointed out it
+    # would accept a human named `github-actions-fan` (2026-09-14). Same discipline.
+    case "$pr_author" in
+      "dependabot[bot]"|"dependabot-preview[bot]") is_bot=yes; bot_seen=$((bot_seen + 1)) ;;
+      *) is_bot=no ;;
+    esac
 
     # A HEAD THAT COULD NOT BE READ IS NOT A HEAD WITH NO CHECKS. A merged PR's branch is
     # often deleted, and swallowing an unreadable head makes it look exactly like a clean
@@ -323,6 +329,11 @@ if [ -n "$EXTERNAL_CHECK" ]; then
     else
       say "      (none at all — nothing has reported any check on a pull request here)"
     fi
+    if [ -n "$heads_unread$heads_partial" ]; then
+      say "   ⚠ and that list is INCOMPLETE — see the notes above. Some of this repo's"
+      say "     recent pull requests could not be read, so a check reported only on those"
+      say "     would be missing from it."
+    fi
     die "--external-check '$EXTERNAL_CHECK' is not one of them. A required check that
        nothing reports is a gate that can never go green — every Dependabot PR would
        queue for auto-merge and hang forever. Pick a name from the list above, exactly
@@ -331,14 +342,24 @@ if [ -n "$EXTERNAL_CHECK" ]; then
 
   if [ -n "$bot_proof" ]; then
     say "   external check '$EXTERNAL_CHECK' reports on Dependabot's own pull requests ✓ — $bot_proof"
+  elif [ "$bot_seen" -gt 0 ] && [ "${ALLOW_UNPROVEN_CHECK:-}" = "1" ]; then
+    say "   '$EXTERNAL_CHECK' was reported on $proof, but NOT on any of the $bot_seen"
+    say "   Dependabot pull request(s) in the sample — ACCEPTED ANYWAY (ALLOW_UNPROVEN_CHECK=1)."
+    say "   ⚠ if the check really does not fire on dependabot/* branches, every update PR"
+    say "     here will queue behind a gate that never reports. Watch the first one."
   elif [ "$bot_seen" -gt 0 ]; then
     say "   '$EXTERNAL_CHECK' was reported on $proof,"
     say "   but NOT on any of the $bot_seen Dependabot pull request(s) in the same sample."
+    # The escape hatch is named because this refusal CAN be wrong: a Dependabot pull request
+    # that predates the integration is ungated for a reason that no longer applies. That is
+    # the one case a person can see and the script cannot, so it gets an override rather
+    # than a wall — the same shape as ALLOW_FORK above.
     die "that is the failure this flag exists to prevent, seen directly: the check runs on
        people's branches and not on Dependabot's, so every update PR would queue behind a
        gate that never reports. Fix the integration to build Dependabot's branches (in
        Vercel: Git → ignored build step / branch settings), then re-run.
-       Nothing on $TARGET was changed."
+       If those Dependabot PRs simply predate the integration, re-run with
+       ALLOW_UNPROVEN_CHECK=1. Nothing on $TARGET was changed."
   else
     say "   external check '$EXTERNAL_CHECK' has really been reported here ✓ — $proof"
     say "   ⚠ but none of those $heads_total pull requests was Dependabot's, so nothing here"
