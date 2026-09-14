@@ -208,7 +208,7 @@ anything, and on a quiet week it is three lines rather than a report about nothi
 | `approve` | The repo setting "Allow GitHub Actions to create and approve pull requests". **With it off, the shared workflow's approval is refused** and every update pull request queues behind a review that can never arrive. It cost three list-maker pull requests on 2026-09-14; an enrolled repo without it is now drift, not a warning |
 | `required checks` | The check that has to be green before anything merges. No check means nothing auto-merges at all, on purpose |
 | `open bot PRs` | Dependabot pull requests sitting open right now, and the age of the oldest |
-| `mins (est)` | GitHub Actions minutes this billing month, **an estimate** — rebuilt from each job's start and finish, rounded up to the minute the way GitHub bills. Public repos are free and marked so. `⚠ capped` means the repo had more runs than were measured, so its number is low |
+| `mins (est)` | GitHub Actions minutes this billing month, **an estimate** — rebuilt from each job's start and finish, rounded up to the minute the way GitHub bills. Public repos are free and marked so. Dependabot's own update runs are left out, because GitHub does not bill those on standard runners; counting them had `ynai` reading 15 minutes for a month that cost nothing. `⚠ capped` means the repo had more runs than were measured, so its number is low |
 
 And under the table, two **warnings** — which are not drift, and nothing about them is
 broken:
