@@ -55,7 +55,30 @@ def counts(rows):
     return c
 
 
-def minutes_picture(rows, since):
+# `method` says how (or whether) the minutes were measured this run:
+#   jobs    — GitHub's per-job billing rule rebuilt from each job's start and finish
+#   timing  — the cheap wall-clock fallback, which reads about 15% low
+#   skipped — `--skip-actions`: no Actions calls were made at all
+#   none    — the Actions scan was attempted and returned nothing
+UNMEASURED = ("skipped", "none")
+
+
+def minutes_picture(rows, since, method="jobs"):
+    """The month's build-time picture, or an explicit "not measured" when there isn't one.
+
+    THE ZERO THAT WAS A LIE. This used to sum `minutes` across every row and hand back a
+    number no matter what — so `bin/audit --digest --skip-actions`, which makes no Actions
+    calls at all, printed "about 0 minutes of the free 3,000 … the month ends near 0,
+    inside the free pool" about a measurement it had never taken (found 2026-09-14 06:55).
+    That is the same shape as the two bugs above it: a confident sentence standing in for
+    an absent fact, in the one output a person reads without checking. A skipped or failed
+    measurement has to read as NOT MEASURED — never as zero, and never with a projection
+    attached, because a projection is a claim about a number that does not exist.
+
+    So `measured` is the first thing every caller asks, and when it is False there is no
+    figure to print: `private`, `public`, `daily` and `projected` are all None rather than
+    zeroes that format perfectly well.
+    """
     start = dt.date.fromisoformat(since)
     today = dt.date.today()
     days_in_month = calendar.monthrange(start.year, start.month)[1]
@@ -64,20 +87,42 @@ def minutes_picture(rows, since):
                                  tzinfo=dt.timezone.utc)).total_seconds() / 86400.0
     elapsed = max(elapsed, 0.5)
 
-    private = sum(r.get("minutes") or 0 for r in rows if r.get("visibility") == "PRIVATE")
-    public = sum(r.get("minutes") or 0 for r in rows if r.get("visibility") != "PRIVATE")
+    # A repo with no `minutes` key at all was never scanned. A repo with minutes == 0 that
+    # ran nothing this month is a real zero, and the two must not be confused.
+    measured_rows = [r for r in rows if r.get("minutes") is not None]
+    unmeasured = [r["name"] for r in rows if r.get("minutes") is None]
+    measured = bool(measured_rows) and method not in UNMEASURED
+
+    base = {"measured": measured, "method": method, "skipped": method == "skipped",
+            "days_in_month": days_in_month, "elapsed": elapsed, "today": today,
+            "unmeasured": unmeasured}
+    if not measured:
+        base.update({"private": None, "public": None, "daily": None, "projected": None,
+                     "runout": None, "capped": [], "nonlinux": [], "partial": []})
+        return base
+
+    private = sum(r.get("minutes") or 0 for r in measured_rows
+                  if r.get("visibility") == "PRIVATE")
+    public = sum(r.get("minutes") or 0 for r in measured_rows
+                 if r.get("visibility") != "PRIVATE")
     daily = private / elapsed
     projected = daily * days_in_month
     runout = None
     if daily > 0 and projected > ALLOWANCE:
         day_offset = ALLOWANCE / daily
         runout = dt.datetime(start.year, start.month, start.day) + dt.timedelta(days=day_offset)
-    capped = [r["name"] for r in rows if r.get("capped")]
-    nonlinux = sorted({x for r in rows for x in (r.get("runners") or []) if x != "UBUNTU"})
-    return {"private": private, "public": public, "daily": daily,
-            "projected": int(round(projected)), "runout": runout,
-            "days_in_month": days_in_month, "elapsed": elapsed,
-            "capped": capped, "nonlinux": nonlinux, "today": today}
+    capped = [r["name"] for r in measured_rows if r.get("capped")]
+    nonlinux = sorted({x for r in measured_rows
+                       for x in (r.get("runners") or []) if x != "UBUNTU"})
+    # A repo that ran builds this month but had none of them timed carries a 0 that is an
+    # absence, not a measurement — same trap one level down. So does one whose scan logged
+    # an error. Both make the total a floor rather than a figure.
+    partial = sorted({r["name"] for r in measured_rows
+                      if r.get("errors") or (r.get("runs") and not r.get("timed"))})
+    base.update({"private": private, "public": public, "daily": daily,
+                 "projected": int(round(projected)), "runout": runout,
+                 "capped": capped, "nonlinux": nonlinux, "partial": partial})
+    return base
 
 
 def warn_lines(rows):
@@ -90,7 +135,7 @@ def warn_lines(rows):
 # ------------------------------------------------------------------ the table
 def render_table(rows, owner, since, cap, out, method="jobs", note=""):
     c = counts(rows)
-    m = minutes_picture(rows, since)
+    m = minutes_picture(rows, since, method)
     print("# Repo standards audit — %s" % m["today"].isoformat(), file=out)
     print(file=out)
     summary = ("%d active repos under `%s`: **%d enrolled**, %d security-only, "
@@ -116,28 +161,52 @@ def render_table(rows, owner, since, cap, out, method="jobs", note=""):
                  r["prs"], mins, r["status"]), file=out)
     print(file=out)
 
-    print("**Actions minutes this billing month (since %s) — an ESTIMATE, not a bill.**" % since,
-          file=out)
-    print("Private repos: **%d of %d** free minutes. At %.0f/day the month projects to "
-          "**%d**%s." % (m["private"], ALLOWANCE, m["daily"], m["projected"],
-                         (", exhausting the pool around **%s**" % m["runout"].strftime("%-d %b"))
-                         if m["runout"] else ", inside the pool"), file=out)
-    print("Public repos: %d minutes, free and not counted." % m["public"], file=out)
-    if note:
-        print("⚠ %s." % note, file=out)
-    if method == "timing":
-        print("⚠ Measured the cheap way (wall-clock per run), which reads about 15%% low.", file=out)
-    if m["capped"]:
-        print("⚠ Run cap of %d hit in: %s — those repos' minutes are LOW by however much "
-              "the untimed runs cost." % (cap, ", ".join("`%s`" % x for x in m["capped"])), file=out)
-    if m["nonlinux"]:
-        print("Note: non-Linux runners seen (%s); their 2x (Windows) / 10x (macOS) multipliers "
-              "are applied. Larger runners bill per-minute rates this cannot see."
-              % ", ".join(m["nonlinux"]), file=out)
-    print("_Rebuilt from each job's start and finish, rounded up to the minute the way GitHub "
-          "bills, times the runner multiplier. The billing endpoints would settle it but need "
-          "token scopes this token does not have and should not be given for a read-only "
-          "monitor, so nothing here reads them._", file=out)
+    if not m["measured"]:
+        # No figure, no projection, no zero. See minutes_picture's docstring.
+        print("**Actions minutes this billing month — NOT MEASURED on this run.**", file=out)
+        if m["skipped"]:
+            print("`--skip-actions` was used, so no Actions calls were made: the `approve` "
+                  "column, the minutes and both warnings below are all absent rather than "
+                  "clean. Run `bin/audit` without it for the full picture.", file=out)
+        else:
+            print("The Actions scan returned nothing, so minutes, the `approve` column and "
+                  "both warnings are unknown for this run — not zero, not clean.", file=out)
+        if note:
+            print("⚠ %s." % note, file=out)
+    else:
+        print("**Actions minutes this billing month (since %s) — an ESTIMATE, not a bill.**" % since,
+              file=out)
+        print("Private repos: **%d of %d** free minutes. At %.0f/day the month projects to "
+              "**%d**%s." % (m["private"], ALLOWANCE, m["daily"], m["projected"],
+                             (", exhausting the pool around **%s**" % m["runout"].strftime("%-d %b"))
+                             if m["runout"] else ", inside the pool"), file=out)
+        print("Public repos: %d minutes, free and not counted." % m["public"], file=out)
+        if note:
+            print("⚠ %s." % note, file=out)
+        if method == "timing":
+            print("⚠ Measured the cheap way (wall-clock per run), which reads about 15%% low.",
+                  file=out)
+        if m["unmeasured"]:
+            print("⚠ %d of %d repos were not measured at all (%s), so the total above is a "
+                  "floor, not a figure." % (len(m["unmeasured"]), len(rows),
+                                            ", ".join("`%s`" % x for x in m["unmeasured"][:6])
+                                            + (" …" if len(m["unmeasured"]) > 6 else "")),
+                  file=out)
+        if m["partial"]:
+            print("⚠ Read only partly in: %s — their minutes are LOW by whatever could not "
+                  "be read." % ", ".join("`%s`" % x for x in m["partial"]), file=out)
+        if m["capped"]:
+            print("⚠ Run cap of %d hit in: %s — those repos' minutes are LOW by however much "
+                  "the untimed runs cost." % (cap, ", ".join("`%s`" % x for x in m["capped"])),
+                  file=out)
+        if m["nonlinux"]:
+            print("Note: non-Linux runners seen (%s); their 2x (Windows) / 10x (macOS) "
+                  "multipliers are applied. Larger runners bill per-minute rates this cannot "
+                  "see." % ", ".join(m["nonlinux"]), file=out)
+        print("_Rebuilt from each job's start and finish, rounded up to the minute the way "
+              "GitHub bills, times the runner multiplier. The billing endpoints would settle "
+              "it but need token scopes this token does not have and should not be given for "
+              "a read-only monitor, so nothing here reads them._", file=out)
     print(file=out)
 
     missing, double, unparsed = warn_lines(rows)
@@ -187,7 +256,7 @@ def _plural(n, one, many=None):
 
 def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     c = counts(rows)
-    m = minutes_picture(rows, since)
+    m = minutes_picture(rows, since, method)
     total_prs = sum(r.get("pr_count") or 0 for r in rows)
     ages = [r.get("pr_oldest_days") for r in rows if r.get("pr_oldest_days") is not None]
     oldest = max(ages) if ages else None
@@ -208,14 +277,25 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
         line += " No update pull requests are waiting."
     head.append(line)
 
-    budget = ("Build time on the private repos this month: about %d minutes of the free "
-              "3,000 (an estimate)." % m["private"])
-    if m["runout"]:
-        budget += (" At this rate the free minutes run out around %s."
-                   % m["runout"].strftime("%-d %b"))
+    # The build-time sentence, and the one rule it lives by: it may only state a figure
+    # this run actually measured. A skipped or failed measurement says so in the same
+    # breath, because "about 0 minutes … inside the free pool" is what an unmeasured month
+    # used to look like in Slack, and it reads exactly like good news (2026-09-14).
+    if not m["measured"]:
+        budget = ("Build time was not checked this week, so there is no figure and no "
+                  "run-out date — not a zero.")
     else:
-        budget += (" At this rate the month ends near %d, inside the free pool."
-                   % m["projected"])
+        budget = ("Build time on the private repos this month: about %d minutes of the free "
+                  "3,000 (an estimate)." % m["private"])
+        if m["unmeasured"] or m["partial"]:
+            budget += (" %d of the %d repos could not be measured, so the real figure is "
+                       "higher." % (len(m["unmeasured"]) + len(m["partial"]), len(rows)))
+        elif m["runout"]:
+            budget += (" At this rate the free minutes run out around %s."
+                       % m["runout"].strftime("%-d %b"))
+        else:
+            budget += (" At this rate the month ends near %d, inside the free pool."
+                       % m["projected"])
     head.append(budget)
 
     # ---- one line per repo that needs something
@@ -263,9 +343,17 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     if m["capped"]:
         tail.append("Note: %s had more runs this month than were measured, so the minutes "
                     "above are low." % ", ".join(m["capped"]))
-    if method == "timing" or note:
+    if m["measured"] and (method == "timing" or note):
         tail.append("Note: the build-time figure was measured the quick way this week and "
                     "reads low.")
+    if not m["measured"]:
+        # The other half of a skipped Actions pass, and the part that is easy to miss: the
+        # approval-permission drift rule reads the same scan, so a repo that is genuinely
+        # half set up counts as fine in the headline above. A silent week and an unchecked
+        # week look identical unless the message says which one this was.
+        tail.append("Note: the build-time and repository-permission checks were skipped "
+                    "this week, so a repo could be half set up in a way this message "
+                    "cannot see.")
 
     # ---- the one thing worth doing
     act = None
@@ -297,7 +385,9 @@ def main():
     ap.add_argument("--since", required=True)
     ap.add_argument("--cap", type=int, default=300)
     ap.add_argument("--method", default="jobs",
-                    help="how minutes were measured: jobs | timing | none")
+                    help="how minutes were measured: jobs | timing | skipped | none. "
+                         "skipped and none both mean NOT MEASURED — no figure is printed "
+                         "for either, and never a zero")
     ap.add_argument("--note", default="", help="a caveat to print alongside the minutes")
     args = ap.parse_args()
 
@@ -310,8 +400,10 @@ def main():
                    "summary": counts(rows),
                    "minutes_method": args.method,
                    "minutes_note": args.note or None,
+                   "minutes_measured": args.method not in UNMEASURED,
                    "minutes": {k: (v.isoformat() if hasattr(v, "isoformat") else v)
-                               for k, v in minutes_picture(rows, args.since).items()},
+                               for k, v in minutes_picture(rows, args.since,
+                                                           args.method).items()},
                    "repos": rows}, sys.stdout, indent=2, sort_keys=True)
         print()
     elif args.mode == "digest":

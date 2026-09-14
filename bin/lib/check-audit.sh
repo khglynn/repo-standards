@@ -78,4 +78,48 @@ has "had more runs this month than were measured"
 has "have no time limit"
 has "runs its tests twice"
 
+echo "--- 3. a run that did NOT measure build time must never report a number"
+# `bin/audit --digest --skip-actions` makes no Actions calls at all, and on 2026-09-14 it
+# printed "about 0 minutes of the free 3,000 … the month ends near 0, inside the free
+# pool" — a confident sentence about a measurement it never took, in the one output a
+# person reads. Zero and absent are different facts. The fixture is the real shape of that
+# run: every Actions-derived field absent rather than zero.
+UNMEAS=bin/lib/fixtures/audit/rows-unmeasured.jsonl
+for meth in skipped none; do
+  D=$(python3 bin/lib/render-audit.py --mode digest --owner khglynn --since 2026-09-01 \
+        --method "$meth" < "$UNMEAS")
+  if grep -qF -- "was not checked this week" <<< "$D"; then echo "ok: digest ($meth) says build time was not checked"
+  else echo "FAIL: digest ($meth) does not say build time went unmeasured"; echo "$D"; fail=1; fi
+  for lie in "minutes of the free" "inside the free pool" "run out around"; do
+    if grep -qF -- "$lie" <<< "$D"; then echo "FAIL: digest ($meth) still claims \"$lie\""; fail=1
+    else echo "ok: digest ($meth) makes no claim of \"$lie\""; fi
+  done
+  # The enrolment half is still real on such a run and must still be reported — but it
+  # reads 2 of 4, not the 1 of 4 above, because the approve-switch drift rule reads the
+  # same scan that was skipped. That is the trap: a skipped run reports FEWER problems,
+  # which is why the tail note below has to say the checks did not happen.
+  if grep -qF -- "2 of 4 repos keep themselves up to date" <<< "$D"; then echo "ok: digest ($meth) still reports enrolment"
+  else echo "FAIL: digest ($meth) lost the enrolment headline"; echo "$D"; fail=1; fi
+  if grep -qF -- "could be half set up in a way this message cannot see" <<< "$D"; then echo "ok: digest ($meth) warns that drift went unchecked"
+  else echo "FAIL: digest ($meth) does not warn that the drift check was skipped"; fail=1; fi
+
+  T=$(python3 bin/lib/render-audit.py --mode table --owner khglynn --since 2026-09-01 \
+        --method "$meth" < "$UNMEAS")
+  if grep -qF -- "NOT MEASURED on this run" <<< "$T"; then echo "ok: table ($meth) says not measured"
+  else echo "FAIL: table ($meth) does not say not measured"; fail=1; fi
+  if grep -qE 'Private repos: \*\*[0-9]' <<< "$T"; then echo "FAIL: table ($meth) still prints a private-minutes figure"; fail=1
+  else echo "ok: table ($meth) prints no private-minutes figure"; fi
+
+  J=$(python3 bin/lib/render-audit.py --mode json --owner khglynn --since 2026-09-01 \
+        --method "$meth" < "$UNMEAS")
+  say "json ($meth) minutes_measured is false" "$(jq -r '.minutes_measured' <<< "$J")" "false"
+  say "json ($meth) private minutes are null"  "$(jq -r '.minutes.private' <<< "$J")" "null"
+  say "json ($meth) projection is null"        "$(jq -r '.minutes.projected' <<< "$J")" "null"
+done
+
+# And the measured path must keep saying a real number, or the fix above has gone too far.
+say "a measured run still reports minutes" \
+    "$(python3 bin/lib/render-audit.py --mode json --owner khglynn --since 2026-09-01 \
+        --method jobs < "$FIX" | jq -r '.minutes.private')" "1000"
+
 exit "$fail"
