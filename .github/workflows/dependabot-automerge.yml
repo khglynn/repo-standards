@@ -394,9 +394,26 @@ jobs:
         env:
           SUMMARY: ${{ steps.classify.outputs.summary }}
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          gh pr review --approve "$PR_URL" || echo "note: approval skipped (already approved by this token)"
+          # Approve only if this token has not already approved THIS head. A dismissed or
+          # stale approval does not count. If the approve call itself fails, fail the run:
+          # the usual cause is the repo switch "Allow GitHub Actions to create and approve
+          # pull requests" being off (Settings → Actions → General), which enroll now sets —
+          # and on 2026-09-14 a masked failure here left three list-maker PRs queued for
+          # auto-merge with a review requirement that could never be met.
+          approved_here=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --jq \
+            "[.[] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and (.user.login | test(\"github-actions\")))] | length")
+          if [ "${approved_here:-0}" -gt 0 ]; then
+            echo "approval: already approved by github-actions on $HEAD_SHA"
+          else
+            if ! gh pr review --approve "$PR_URL"; then
+              echo "::error title=Cannot approve::gh pr review --approve failed. If the error says GitHub Actions is not permitted to approve pull requests, turn on 'Allow GitHub Actions to create and approve pull requests' under Settings → Actions → General (bin/enroll sets it), then re-run this workflow."
+              exit 1
+            fi
+            echo "approval: approved $HEAD_SHA"
+          fi
 
           # Since March 2026 GitHub can answer 422 here when the merge requirements are not
           # yet satisfiable — usually because the checks have not been *reported* yet on a
