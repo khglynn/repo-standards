@@ -26,6 +26,8 @@ import json
 import sys
 
 ALLOWANCE = 3000  # private-repo Actions minutes per month on this plan
+BODY_LINES = 5    # most repo lines the digest may print before collapsing the rest
+WORD_CAP = 150    # …and the whole message's ceiling, which the repo list gives way to
 
 
 def load(stream):
@@ -63,7 +65,7 @@ def counts(rows):
 UNMEASURED = ("skipped", "none")
 
 
-def minutes_picture(rows, since, method="jobs"):
+def minutes_picture(rows, since, method="jobs", today=None):
     """The month's build-time picture, or an explicit "not measured" when there isn't one.
 
     THE ZERO THAT WAS A LIE. This used to sum `minutes` across every row and hand back a
@@ -78,27 +80,61 @@ def minutes_picture(rows, since, method="jobs"):
     So `measured` is the first thing every caller asks, and when it is False there is no
     figure to print: `private`, `public`, `daily` and `projected` are all None rather than
     zeroes that format perfectly well.
+
+    AND `method` ALONE IS NOT ENOUGH TO ASK IT. The first version keyed `measured` on the
+    method, which left two other doors open to exactly the same confident zero, both found
+    by review on 2026-09-14 and both reproduced with this renderer:
+
+      * no private repo was visible at all (a repo-scoped token in a cloud routine sees
+        none of them) — `private` sums to 0 over an empty list and the sentence reads
+        "about 0 minutes of the free 3,000 … inside the free pool";
+      * every private repo's Actions scan failed — same sentence, followed by a
+        contradicting "4 of the 4 repos could not be measured" underneath it.
+
+    So the question is asked of the DATA: were any private repos measured, and did any
+    repo with billable builds actually get one of them timed. A month where the private
+    repos genuinely ran nothing billable stays a real zero — that is a measurement, not an
+    absence — and an owner with no private repos at all is not "unmeasured" either.
+
+    `today` is a parameter rather than a call to `dt.date.today()` so the fixtures can pin
+    it: the projection divides by days elapsed, so a fixture tuned to pass in mid-September
+    starts failing later in the month (check-audit.sh's own BIG case would have started
+    failing on 27 Sep). Elapsed days are whole days, which loses the part-day the old
+    version counted and therefore projects very slightly HIGH — the safe direction for a
+    number whose job is to warn early.
     """
     start = dt.date.fromisoformat(since)
-    today = dt.date.today()
+    today = today or dt.date.today()
     days_in_month = calendar.monthrange(start.year, start.month)[1]
-    now = dt.datetime.now(dt.timezone.utc)
-    elapsed = (now - dt.datetime(start.year, start.month, start.day,
-                                 tzinfo=dt.timezone.utc)).total_seconds() / 86400.0
-    elapsed = max(elapsed, 0.5)
+    elapsed = max(float((today - start).days), 0.5)
 
     # A repo with no `minutes` key at all was never scanned. A repo with minutes == 0 that
     # ran nothing this month is a real zero, and the two must not be confused.
     measured_rows = [r for r in rows if r.get("minutes") is not None]
     unmeasured = [r["name"] for r in rows if r.get("minutes") is None]
-    measured = bool(measured_rows) and method not in UNMEASURED
+
+    private_seen = [r for r in rows if r.get("visibility") == "PRIVATE"]
+    private_rows = [r for r in measured_rows if r.get("visibility") == "PRIVATE"]
+    billable = [r for r in private_rows
+                if (r.get("runs") or 0) - (r.get("free_runs") or 0) > 0]
+    unread = bool(billable) and not any(r.get("timed") for r in billable)
+
+    reason = None
+    if method in UNMEASURED:
+        reason = method
+    elif not measured_rows or (private_seen and not private_rows):
+        reason = "invisible"
+    elif unread:
+        reason = "unread"
+    measured = reason is None
 
     base = {"measured": measured, "method": method, "skipped": method == "skipped",
-            "days_in_month": days_in_month, "elapsed": elapsed, "today": today,
-            "unmeasured": unmeasured}
+            "reason": reason, "days_in_month": days_in_month, "elapsed": elapsed,
+            "today": today, "unmeasured": unmeasured}
     if not measured:
         base.update({"private": None, "public": None, "daily": None, "projected": None,
-                     "runout": None, "capped": [], "nonlinux": [], "partial": [],
+                     "runout": None, "over": False,
+                     "capped": [], "nonlinux": [], "selfhosted": [], "partial": [],
                      "free_runs": 0})
         return base
 
@@ -112,9 +148,26 @@ def minutes_picture(rows, since, method="jobs"):
     if daily > 0 and projected > ALLOWANCE:
         day_offset = ALLOWANCE / daily
         runout = dt.datetime(start.year, start.month, start.day) + dt.timedelta(days=day_offset)
+    # A run-out date already in the past is not a forecast, and it used to print in the
+    # future tense: 3,500 minutes read on 14 September announced "the free minutes run out
+    # around 12 Sep". The account was at 2,515 of 3,000 that day, so this was days away.
+    #
+    # One line of arithmetic settles when it can happen. The projected date is
+    # `start + ALLOWANCE/daily` and today is `start + elapsed`, with `daily = private /
+    # elapsed`, so the date is behind today exactly when `ALLOWANCE < private` — the
+    # allowance is already spent. There is therefore no case of "the date has passed but
+    # the pool is not gone", and one branch covers it. Do not re-add a second one for a
+    # past date; it cannot be reached, and an unreachable branch in the wording is a
+    # sentence nobody will ever proof-read.
+    over = private >= ALLOWANCE
     capped = [r["name"] for r in measured_rows if r.get("capped")]
+    # SELF is a self-hosted runner: real minutes, billed at nothing, and nothing to do
+    # with the 2x/10x multiplier note. It gets its own line rather than being filed under
+    # "non-Linux".
     nonlinux = sorted({x for r in measured_rows
-                       for x in (r.get("runners") or []) if x != "UBUNTU"})
+                       for x in (r.get("runners") or []) if x not in ("UBUNTU", "SELF")})
+    selfhosted = sorted({r["name"] for r in measured_rows
+                         if "SELF" in (r.get("runners") or [])})
     # A repo that ran BILLABLE builds this month but had none of them timed carries a 0
     # that is an absence, not a measurement — same trap one level down. So does one whose
     # scan logged an error. Both make the total a floor rather than a figure.
@@ -131,7 +184,9 @@ def minutes_picture(rows, since, method="jobs"):
     base.update({"free_runs": free_runs})
     base.update({"private": private, "public": public, "daily": daily,
                  "projected": int(round(projected)), "runout": runout,
-                 "capped": capped, "nonlinux": nonlinux, "partial": partial})
+                 "over": over,
+                 "capped": capped, "nonlinux": nonlinux, "selfhosted": selfhosted,
+                 "partial": partial})
     return base
 
 
@@ -161,9 +216,9 @@ def parsers_used(rows):
 
 
 # ------------------------------------------------------------------ the table
-def render_table(rows, owner, since, cap, out, method="jobs", note=""):
+def render_table(rows, owner, since, cap, out, method="jobs", note="", today=None):
     c = counts(rows)
-    m = minutes_picture(rows, since, method)
+    m = minutes_picture(rows, since, method, today)
     print("# Repo standards audit — %s" % m["today"].isoformat(), file=out)
     print(file=out)
     summary = ("%d active repos under `%s`: **%d enrolled**, %d security-only, "
@@ -192,10 +247,18 @@ def render_table(rows, owner, since, cap, out, method="jobs", note=""):
     if not m["measured"]:
         # No figure, no projection, no zero. See minutes_picture's docstring.
         print("**Actions minutes this billing month — NOT MEASURED on this run.**", file=out)
-        if m["skipped"]:
+        if m["reason"] == "skipped":
             print("`--skip-actions` was used, so no Actions calls were made: the `approve` "
                   "column, the minutes and both warnings below are all absent rather than "
                   "clean. Run `bin/audit` without it for the full picture.", file=out)
+        elif m["reason"] == "invisible":
+            print("No private repo's Actions usage could be read on this run — a token that "
+                  "cannot see them produces a 0 that looks exactly like a quiet month, so "
+                  "no figure is printed.", file=out)
+        elif m["reason"] == "unread":
+            print("Every private repo that ran billable builds this month had all of them "
+                  "go unread, so the only total available is a 0 that means \"not read\".",
+                  file=out)
         else:
             print("The Actions scan returned nothing, so minutes, the `approve` column and "
                   "both warnings are unknown for this run — not zero, not clean.", file=out)
@@ -204,10 +267,15 @@ def render_table(rows, owner, since, cap, out, method="jobs", note=""):
     else:
         print("**Actions minutes this billing month (since %s) — an ESTIMATE, not a bill.**" % since,
               file=out)
+        if m["over"]:
+            outlook = " — **already past the free 3,000**, so the rest of the month is billed"
+        elif m["runout"]:
+            outlook = ", exhausting the pool around **%s**" % m["runout"].strftime("%-d %b")
+        else:
+            outlook = ", inside the pool"
         print("Private repos: **%d of %d** free minutes. At %.0f/day the month projects to "
-              "**%d**%s." % (m["private"], ALLOWANCE, m["daily"], m["projected"],
-                             (", exhausting the pool around **%s**" % m["runout"].strftime("%-d %b"))
-                             if m["runout"] else ", inside the pool"), file=out)
+              "**%d**%s." % (m["private"], ALLOWANCE, m["daily"], m["projected"], outlook),
+              file=out)
         print("Public repos: %d minutes, free and not counted." % m["public"], file=out)
         if note:
             print("⚠ %s." % note, file=out)
@@ -227,6 +295,10 @@ def render_table(rows, owner, since, cap, out, method="jobs", note=""):
             print("⚠ Run cap of %d hit in: %s — those repos' minutes are LOW by however much "
                   "the untimed runs cost." % (cap, ", ".join("`%s`" % x for x in m["capped"])),
                   file=out)
+        if m["selfhosted"]:
+            print("Note: self-hosted runners seen (%s); GitHub bills none of their minutes, "
+                  "so they are counted as free here."
+                  % ", ".join("`%s`" % x for x in m["selfhosted"]), file=out)
         if m["nonlinux"]:
             print("Note: non-Linux runners seen (%s); their 2x (Windows) / 10x (macOS) "
                   "multipliers are applied. Larger runners bill per-minute rates this cannot "
@@ -301,9 +373,24 @@ def _plural(n, one, many=None):
     return one if n == 1 else (many or one + "s")
 
 
-def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
+def _words(parts):
+    return sum(len(ln.split()) for part in parts for ln in part)
+
+
+def _assemble(head, repo_lines, keep, collapsed, tail, act):
+    body = list(repo_lines[:keep])
+    rest = len(repo_lines) - keep
+    if rest > 0:
+        body.append("- and %d more %s attention."
+                    % (rest, "repo needs" if rest == 1 else "repos need"))
+    if collapsed:
+        body.append(collapsed)
+    return [head, body, tail, [act]]
+
+
+def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=None):
     c = counts(rows)
-    m = minutes_picture(rows, since, method)
+    m = minutes_picture(rows, since, method, today)
     total_prs = sum(r.get("pr_count") or 0 for r in rows)
     ages = [r.get("pr_oldest_days") for r in rows if r.get("pr_oldest_days") is not None]
     oldest = max(ages) if ages else None
@@ -315,13 +402,13 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
         line += "; %d %s half set up" % (c["drifting"], _plural(c["drifting"], "is", "are"))
     line += "."
     if total_prs and oldest is not None:
-        line += (" %d update %s waiting, the oldest %d %s old."
-                 % (total_prs, _plural(total_prs, "pull request"), oldest,
+        line += (" %d %s waiting, the oldest %d %s old."
+                 % (total_prs, _plural(total_prs, "update"), oldest,
                     _plural(oldest, "day")))
     elif total_prs:
-        line += " %d update %s waiting." % (total_prs, _plural(total_prs, "pull request"))
+        line += " %d %s waiting." % (total_prs, _plural(total_prs, "update"))
     else:
-        line += " No update pull requests are waiting."
+        line += " No updates are waiting."
     head.append(line)
 
     # The build-time sentence, and the one rule it lives by: it may only state a figure
@@ -332,22 +419,29 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
         budget = ("Build time was not checked this week, so there is no figure and no "
                   "run-out date — not a zero.")
     else:
-        budget = ("Build time on the private repos this month: about %d minutes of the free "
-                  "3,000 (an estimate)." % m["private"])
+        budget = ("Build time this month: about %d of the free 3,000 private-repo minutes "
+                  "(an estimate)." % m["private"])
         # The date comes first and is never suppressed. An incomplete measurement makes the
         # figure a FLOOR, which moves the run-out date earlier, not later — so dropping the
         # date because the reading was partial withholds the more urgent version of the
         # news. Say the date, then say the figure is a floor.
-        if m["runout"]:
-            budget += (" At this rate the free minutes run out around %s."
+        #
+        # And a date in the past is not a forecast: on 2026-09-14 a projection of 12 Sep
+        # printed as "the free minutes run out around 12 Sep", future tense, two days after
+        # the fact. Past and over-budget each get their own sentence.
+        if m["over"]:
+            budget += " That is past the free 3,000, so the rest of the month is billed."
+        elif m["runout"]:
+            budget += (" At this rate they run out around %s."
                        % m["runout"].strftime("%-d %b"))
         else:
             budget += (" At this rate the month ends near %d, inside the free pool."
                        % m["projected"])
         short = len(m["unmeasured"]) + len(m["partial"])
         if short:
-            budget += (" %d of the %d repos could not be measured, so the real figure is "
-                       "higher and that date could be sooner." % (short, len(rows)))
+            budget += (" %d of %d %s could not be measured, so the real figure is higher "
+                       "and that date could be sooner."
+                       % (short, len(rows), _plural(len(rows), "repo")))
     head.append(budget)
 
     # ---- one line per repo that needs something
@@ -366,35 +460,46 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
             continue
         bits = []
         if r.get("pr_count"):
-            bits.append("%d update %s waiting, oldest %d %s"
-                        % (r["pr_count"], _plural(r["pr_count"], "pull request"),
-                           r["pr_oldest_days"], _plural(r["pr_oldest_days"], "day")))
+            # "update pull requests waiting" in full, six times under a headline that just
+            # said it, is most of the reason the real message ran to 202 words against a
+            # 150-word cap. The headline carries the full phrase; these lines lean on it.
+            bits.append("%d waiting, oldest %d %s"
+                        % (r["pr_count"], r["pr_oldest_days"],
+                           _plural(r["pr_oldest_days"], "day")))
         if drift and not (collapse_unknown and r["status"].startswith("unknown")):
             bits.append(r["status"].split(":", 1)[-1].strip()
                         if ":" in r["status"] else r["status"])
         body.append("- %s — %s." % (r["name"], "; ".join(bits)))
+    repo_lines = body
+    collapsed = None
     if collapse_unknown:
-        body.append("- %d repos could not be read this week, so nothing is known about "
-                    "them — that is usually a GitHub rate limit, not a problem with the "
-                    "repos." % len(unknown))
+        collapsed = ("- %d repos could not be read this week, so nothing is known about "
+                     "them — that is usually a GitHub rate limit, not a problem with the "
+                     "repos." % len(unknown))
 
     # ---- one trailing warning line, only when there is something in it
     missing, double, unparsed = warn_lines(rows)
     tail = []
     if missing:
         jobs = sum(len(p) for _, p in missing)
-        tail.append("Also: %d build %s across %d %s have no time limit, so one stuck job "
-                    "could burn six hours of the free pool."
+        tail.append("Also: %d build %s in %d %s have no time limit; a hang costs six "
+                    "hours."
                     % (jobs, _plural(jobs, "job"), len(missing), _plural(len(missing), "repo")))
     if double:
         n = len(double)
-        tail.append("Also: %d %s %s tests twice for every change (once for the branch, once "
-                    "for the pull request), which may be on purpose."
+        tail.append("Also: %d %s %s tests twice per change, which may be deliberate."
                     % (n, _plural(n, "repo"),
                        "runs its" if n == 1 else "run their"))
+    if unparsed:
+        # Without this the digest is SILENT about a build file nobody could read, and
+        # silence in this message means "clean" — the rule the rest of this stage was
+        # built on. The table has always carried the line; the digest did not (2026-09-14).
+        nf = sum(len(w) for _, w in unparsed)
+        tail.append("Note: %d build %s could not be read, so the notes above do not cover "
+                    "them." % (nf, _plural(nf, "file")))
     if m["capped"]:
-        tail.append("Note: %s had more runs this month than were measured, so the minutes "
-                    "above are low." % ", ".join(m["capped"]))
+        tail.append("Note: %s ran more builds than were measured, so the minutes read "
+                    "low." % ", ".join(m["capped"]))
     if m["measured"] and (method == "timing" or note):
         tail.append("Note: the build-time figure was measured the quick way this week and "
                     "reads low.")
@@ -412,20 +517,50 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
 
     # ---- the one thing worth doing
     act = None
-    drifters = [r for r in rows if r["status"].startswith("drift")]
+    # Sorted the way the body is, not the way `gh repo list` happened to answer: the
+    # first drifter in API order can easily be the least urgent one while a worse repo
+    # goes unnamed.
+    drifters = sorted([r for r in rows if r["status"].startswith("drift")],
+                      key=lambda x: (-(x.get("pr_count") or 0), x["name"]))
     if drifters:
+        # The repo's own line above already carries the diagnosis in full. Repeating it
+        # here cost 22 words of a 150-word message and told the reader nothing twice, so
+        # this line does the other half of the job: what to do, and where.
         d = drifters[0]
-        act = ("To act: %s is half set up — %s." % (d["name"], d["status"].split(":", 1)[-1].strip()))
+        act = ("To act: finish setting up %s — its line above says what is missing."
+               % d["name"])
     elif total_prs and oldest is not None:
         who = sorted([r for r in rows if r.get("pr_count")],
                      key=lambda x: -(x.get("pr_oldest_days") or 0))[0]
-        act = ("To act: the oldest waiting update is in %s, %d %s old — open it and merge or "
-               "close it." % (who["name"], who["pr_oldest_days"],
-                              _plural(who["pr_oldest_days"], "day")))
+        act = ("To act: %s's oldest update is %d %s old — merge or close it."
+               % (who["name"], who["pr_oldest_days"],
+                  _plural(who["pr_oldest_days"], "day")))
+    # Every line above is written to a budget: the whole message has to stay under 150
+    # words (the brief's number, and the reason it is readable on a phone). The real
+    # 2026-09-14 run came out at 202 — six full "update pull requests waiting" phrases
+    # under a headline that had just said it, and two warning lines with a clause each
+    # that carried no news. check-audit.sh pins the total against an account-sized
+    # fixture, because the four-repo one would never have caught it.
     else:
         act = "To act: nothing. Everything enrolled is current."
 
-    for part in (head, body, tail, [act]):
+    # ---- fit the whole thing under the word cap, by giving up repo lines and nothing else
+    #
+    # The real 2026-09-14 message ran to 202 words against the brief's 150, and the
+    # obvious fix — a fixed cap of five repo lines — still landed at 154, because the
+    # length that varies is not only the repo list. A later note (an unreadable build
+    # file, say) would have walked straight back over the line, silently, in the one
+    # output nobody re-measures.
+    #
+    # So the cap is enforced rather than aimed at, and the thing that gives way is the
+    # repo list — the only part that is enumerable, is already sorted worst-first, and
+    # says out loud how many it left out. The notes never give way: each one exists
+    # because its absence would read as "nothing wrong here".
+    for keep in range(min(BODY_LINES, len(repo_lines)), -1, -1):
+        parts = _assemble(head, repo_lines, keep, collapsed, tail, act)
+        if _words(parts) <= WORD_CAP or keep == 0:
+            break
+    for part in parts:
         if not part:
             continue
         for ln in part:
@@ -444,8 +579,13 @@ def main():
                          "skipped and none both mean NOT MEASURED — no figure is printed "
                          "for either, and never a zero")
     ap.add_argument("--note", default="", help="a caveat to print alongside the minutes")
+    ap.add_argument("--today", default=None,
+                    help="pin the run date (YYYY-MM-DD) instead of using the clock. The "
+                         "projection divides by days elapsed, so fixtures tuned against "
+                         "the real date silently start failing later in the month")
     args = ap.parse_args()
 
+    today = dt.date.fromisoformat(args.today) if args.today else None
     rows = load(sys.stdin)
     if args.mode == "json":
         json.dump({"generated": dt.datetime.now(dt.timezone.utc)
@@ -458,15 +598,15 @@ def main():
                    "minutes_measured": args.method not in UNMEASURED,
                    "minutes": {k: (v.isoformat() if hasattr(v, "isoformat") else v)
                                for k, v in minutes_picture(rows, args.since,
-                                                           args.method).items()},
+                                                           args.method, today).items()},
                    "repos": rows}, sys.stdout, indent=2, sort_keys=True)
         print()
     elif args.mode == "digest":
         render_digest(rows, args.owner, args.since, args.cap, sys.stdout,
-                      args.method, args.note)
+                      args.method, args.note, today)
     else:
         render_table(rows, args.owner, args.since, args.cap, sys.stdout,
-                     args.method, args.note)
+                     args.method, args.note, today)
 
 
 if __name__ == "__main__":
