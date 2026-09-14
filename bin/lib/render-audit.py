@@ -189,8 +189,8 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     c = counts(rows)
     m = minutes_picture(rows, since)
     total_prs = sum(r.get("pr_count") or 0 for r in rows)
-    oldest = max([r.get("pr_oldest_days") for r in rows
-                  if r.get("pr_oldest_days") is not None] or [None])
+    ages = [r.get("pr_oldest_days") for r in rows if r.get("pr_oldest_days") is not None]
+    oldest = max(ages) if ages else None
 
     # ---- headline: what a person needs to know before deciding to read further.
     head = ["*Dependency check — %s*" % m["today"].strftime("%-d %b %Y"), ""]
@@ -198,10 +198,12 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     if c["drifting"]:
         line += "; %d %s half set up" % (c["drifting"], _plural(c["drifting"], "is", "are"))
     line += "."
-    if total_prs:
+    if total_prs and oldest is not None:
         line += (" %d update %s waiting, the oldest %d %s old."
                  % (total_prs, _plural(total_prs, "pull request"), oldest,
                     _plural(oldest, "day")))
+    elif total_prs:
+        line += " %d update %s waiting." % (total_prs, _plural(total_prs, "pull request"))
     else:
         line += " No update pull requests are waiting."
     head.append(line)
@@ -271,7 +273,7 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note=""):
     if drifters:
         d = drifters[0]
         act = ("To act: %s is half set up — %s." % (d["name"], d["status"].split(":", 1)[-1].strip()))
-    elif total_prs:
+    elif total_prs and oldest is not None:
         who = sorted([r for r in rows if r.get("pr_count")],
                      key=lambda x: -(x.get("pr_oldest_days") or 0))[0]
         act = ("To act: the oldest waiting update is in %s, %d %s old — open it and merge or "
