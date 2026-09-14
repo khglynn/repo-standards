@@ -988,8 +988,8 @@ rather than merely currently-true.
 
 Local CI first, run the way `ci.yml` runs it: `actionlint` clean, `shellcheck` clean over
 all six scripts, `python3 -m py_compile bin/lib/*.py`, `check-templates.py`,
-`check-classifier.sh`, `check-workflow-hygiene.sh` (now 23 assertions — every timeout
-fixture through both parsers) and `check-audit.sh` (now 8 sections, 78 assertions).
+`check-classifier.sh`, `check-workflow-hygiene.sh` (20 assertions — every timeout
+fixture through both parsers) and `check-audit.sh` (8 sections, 72 assertions).
 
 Then a cheap end-to-end pass and one full audit, both against khglynn:
 
