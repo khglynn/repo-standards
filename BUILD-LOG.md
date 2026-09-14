@@ -1057,3 +1057,187 @@ is the first single-pass figure with the Dependabot exclusion applied throughout
 - Codex second opinion on this follow-up: started after the commit (trailing review; the job cannot run until the secret exists).
 - **08:15 Codex on the follow-up (`cx-20260914-080434-78451-2639b8`): SHIP WITH CHANGES, one MUST.** The audit's output names private repos and their build usage, and `tee` plus `bin/audit`'s progress line would have printed it into this public repo's Actions log, then committed it to a public branch — a read-only token does nothing about what its results disclose. Fix applied 08:25: the job moved to a new private companion repo, `khglynn/repo-standards-audit` (private; one workflow that checks this repo out and runs `bin/audit --digest`, committing `latest-digest.md` to its own main; README there). `weekly-audit.yml` removed from here; the routine's repository switched to the private repo and its step 1 now reads the file from its own checkout. The two NICEs are in the private repo's workflow: `shell: bash` so a failing audit cannot hide behind a redirect, and the cost comment now says the token spends Kevin's shared 5,000-an-hour allowance rather than one of its own. Codex confirmed the rest: the orphan-branch mechanics (no longer used), the same-repo fetch from a scoped cloud credential, the six-day staleness test, the PAT permission list (nothing missing, nothing extra), and that ten minutes is ample for the automerge job.
 
+## 2026-09-14 afternoon — the third enrolment shape: security-only, on an external build check
+
+**Why.** `ynai` is private, Next.js on Vercel, has no CI workflow and no `dependabot.yml`, so
+only GitHub's account-wide *security* pull requests reach it — and the only check on its PRs
+is a Vercel commit status. Kevin's call this morning: those security bumps should merge when
+the Vercel build is green. `bin/enroll` could not express that repo at all. `--ci-check` is
+validated against workflow job ids (`pr-job-ids.py`), and there is no workflow to declare
+`Vercel`; and enroll always wrote a `dependabot.yml` when it found none, which would have
+switched routine version updates ON in a repo that deliberately has none. `bin/audit` would
+then have called the result `drift: merge rules but no dependabot.yml`. About 29 of Kevin's
+repos sit in that security-only state, several with a Vercel or Cloudflare build, so this is
+a shape the standard should carry rather than a one-off.
+
+**Verified first, before writing anything** (the numbers this work rests on):
+
+- `khglynn/ynai` — private, not a fork, default branch `main`, `allow_auto_merge` **false**,
+  one workflow (`.github/workflows/claude.yml`), no `dependabot.yml`, tree not truncated.
+- The five most recent pull requests (#16, #11, #15, #9, #14 — two of them Dependabot's)
+  **every one** carries a commit status with context exactly `Vercel`, state `success`.
+  Each also carries a check-run named `Vercel Preview Comments` from the `vercel` app,
+  which is a preview-comment bot and not a build signal — so the two really are distinct
+  strings and the tool has to show both and let a person choose.
+- The `Vercel` status's `creator` comes back `{login: null, type: null}`, so the app behind
+  it cannot be named from that field. That is one of the reasons the ruleset pins no
+  `integration_id`.
+
+**What shipped.** Two flags on `bin/enroll`:
+
+- `--security-only` — never writes `dependabot.yml`; says so in the PR body and again in the
+  end-of-run summary, because a decision about what will *not* arrive is otherwise described
+  only by omission. It refuses outright if the repo already has a `dependabot.yml`, since the
+  summary's promise would be false.
+- `--external-check <context>` — a required check no workflow declares. Validated against
+  history, the only evidence that exists for it: the five most recent pull requests (any
+  state — a repo whose Dependabot PRs all merged has no open ones to learn from), and for
+  each head commit both `commits/{sha}/status` and `commits/{sha}/check-runs`. It refuses
+  unless the context has really been reported on one of them, and names the PR that proved
+  it. Mutually exclusive with `--ci-check`.
+
+Two latent bugs fixed in passing, both of which the new flag would have walked into:
+
+- The ecosystem scan is skipped entirely under `--security-only`. Its two `die`s both say
+  "the dependabot.yml would be wrong" — about a file the run does not write — so an
+  unreadable or truncated file list would have refused an enrolment that cannot depend on
+  the answer.
+- `--help` printed a hard-coded line range (`sed -n '2,20p'`) and truncated mid-sentence the
+  moment this header grew. It prints the header comment block itself now, so it cannot drift.
+
+### The two refusals, proved
+
+```
+$ bin/enroll khglynn/ynai --ci-check checks --external-check Vercel --dry-run
+error: --ci-check and --external-check are mutually exclusive: the first is a job id from
+       this repo's own workflows, the second a context some other service reports. Pick
+       the one that will actually go green on a pull request here.
+```
+
+```
+$ bin/enroll khglynn/ynai --security-only --external-check Vercell --dry-run
+   …
+   verifying 'Vercell' against this repo's five most recent pull requests…
+   checks that HAVE been reported on those pull requests:
+      Vercel                                       (commit status)
+      Vercel Preview Comments                      (check run)
+error: --external-check 'Vercell' is not one of them. A required check that
+       nothing reports is a gate that can never go green — every Dependabot PR would
+       queue for auto-merge and hang forever. Pick a name from the list above, exactly
+       as it is spelled. Nothing on khglynn/ynai was changed.
+```
+
+One typo'd letter, and the tool prints the two real names rather than creating a gate that
+can never go green. That is the same failure `--ci-check`'s validation was added to prevent,
+reached through different evidence.
+
+### The dry run the brief asked for, verbatim
+
+**Not enrolled.** This was `--dry-run`; the real enrol is the lead's call after review.
+
+```
+$ bin/enroll khglynn/ynai --security-only --external-check Vercel --dry-run
+DRY RUN — nothing below is actually written.
+Enrolling khglynn/ynai
+   --security-only: no dependabot.yml will be written, so this repo gets GitHub's
+   account-wide SECURITY fixes and no routine version-update pull requests.
+   default branch: main   visibility: private
+
+── Labels
+   would ensure label: dependencies
+   would ensure label: major-review-needed
+   would ensure label: dependabot-needs-human
+   would ensure label: no-ci-gate
+   would ensure label: dependabot-opted-out
+
+── Ecosystems
+   not checked — --security-only writes no dependabot.yml, so nothing is composed
+   from the answer. Run without the flag to see what this repo would get.
+
+── Files
+   verifying 'Vercel' against this repo's five most recent pull requests…
+   external check 'Vercel' has really been reported here ✓ — PR #16 (as a commit status)
+   ⚠ it is reported by a third-party app, not by a file in this repo. If that
+     integration is ever removed or stops building this repo's branches, the gate
+     goes silent and update PRs will queue forever rather than fail loudly.
+   dependabot.yml: NOT written (--security-only) — no version-update PRs will be
+   opened here. GitHub's account-wide security fixes still arrive; they need no file.
+   automerge stub: new
+      ?? .github/workflows/dependabot-automerge.yml
+
+   would open a pull request on branch 'standards/enroll' containing:
+      ┄┄ new file: .github/workflows/dependabot-automerge.yml
+      + # Dependabot auto-merge — this repo's copy is a POINTER, not a policy.
+      + #
+      + # The actual merge rules live in one place for all of Kevin's repos:
+      + #   https://github.com/khglynn/repo-standards/blob/main/.github/workflows/dependabot-automerge.yml
+      + # Fixing a bug there fixes every repo at once. Copied here 2026-09-11 by `bin/enroll`.
+      + #
+      + # Install path in the repo being enrolled: .github/workflows/dependabot-automerge.yml
+      + #
+      + # Why `pull_request_target` and not `pull_request`: Dependabot's PRs run with a read-only
+      + # token and no access to secrets, so a `pull_request` workflow could not approve or merge
+      + # anything. `pull_request_target` runs in the BASE repo's context with write permission.
+      + # That is only safe because the called workflow never checks out the pull request's code —
+      + # do not add a checkout step to either file.
+      + 
+      + name: dependabot-automerge
+      + 
+      + on:
+      +   pull_request_target:
+      +     types: [opened, synchronize, reopened, ready_for_review]
+      + 
+      + permissions:
+      +   contents: write        # enable auto-merge, refresh a stale branch
+      +   pull-requests: write   # approve, label, comment
+      +   issues: write          # create the labels (labels are an Issues-API object)
+      + 
+      + jobs:
+      +   automerge:
+      +     uses: khglynn/repo-standards/.github/workflows/dependabot-automerge.yml@main
+      +     # ------------------------------------------------------------------------------
+      +     # THE EXCEPTION POINTS. Delete the `with:` block entirely to take every default.
+      +     # Uncomment only the line you actually want to differ in THIS repo, and say why.
+      +     #
+      +     # Anything you write here is SAFE from `bin/enroll`: once this file points at
+      +     # repo-standards, re-running enroll leaves it untouched rather than re-stamping the
+      +     # template over your exception (fixed 2026-09-11 — it used to silently revert it).
+      +     # ------------------------------------------------------------------------------
+      +     # with:
+      +     #   merge-patch: true              # x.y.Z bumps merge themselves. Default true.
+      +     #   merge-minor: false             # x.Y.z bumps wait for a human. Use in a repo where a minor has bitten you.
+      +     #   merge-method: merge            # squash (default) | merge | rebase
+      +     #   require-ci: true               # never auto-merge on a branch with no required check. Leave true.
+      +     #   stale-strategy: comment        # none (default) | comment — what to do with a PR that is behind main AND red
+      +     #   label-major: major-review-needed
+      +     #   label-unparsed: dependabot-needs-human
+      +     #   label-no-ci: no-ci-gate
+      +     #   label-opted-out: dependabot-opted-out
+
+── Repo setting: allow auto-merge
+   would turn it on (gh api -X PATCH repos/khglynn/ynai -F allow_auto_merge=true)
+
+── Repo setting: Actions may approve pull requests
+   would turn it on (gh api -X PUT repos/khglynn/ynai/actions/permissions/workflow -F can_approve_pull_request_reviews=true)
+
+── CI gate (ruleset 'standards-ci')
+   would CREATE ruleset 'standards-ci'
+   requiring check 'Vercel' on main, repository admins bypass always
+
+════════════════════════════════════════════════════════════════════
+ khglynn/ynai — dry run — nothing changed
+════════════════════════════════════════════════════════════════════
+ Ecosystems found: not checked (--security-only writes no dependabot.yml)
+ Files proposed: .github/workflows/dependabot-automerge.yml
+ Pull request: (dry run — not opened)
+ CI gate: 'Vercel' required on main — reported by another
+          service, not by a workflow in this repo (you can still push directly)
+
+ SECURITY FIXES ONLY. No dependabot.yml was written, so Dependabot will open no
+ routine version-update pull requests here. GitHub's account-wide security fixes
+ still arrive, and those are what will approve and merge themselves once
+ 'Vercel' is green. Nothing else merges by itself.
+
+ YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
+```
+
