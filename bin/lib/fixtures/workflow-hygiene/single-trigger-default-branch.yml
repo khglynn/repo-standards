@@ -1,0 +1,13 @@
+# push restricted to the default branch + pull_request is the CORRECT shape: a PR branch
+# commit fires once. Expect NO finding. (This repo's own ci.yml is this shape.)
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo hi

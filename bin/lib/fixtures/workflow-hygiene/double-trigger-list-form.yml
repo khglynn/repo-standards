@@ -1,0 +1,9 @@
+# The list form of `on:`, which carries no branch filter either. Expect a finding.
+name: CI
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo hi

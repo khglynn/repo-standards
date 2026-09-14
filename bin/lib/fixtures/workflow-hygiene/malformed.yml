@@ -1,0 +1,9 @@
+# Not valid YAML. Expect it in `unparsed`, and expect NO timeout/trigger findings
+# invented from it — an unreadable file must read as unknown, never as clean.
+name: Broken
+on:
+  pull_request:
+jobs:
+  checks:
+   - this: [is
+     not: valid

@@ -1,0 +1,14 @@
+# push on tags only + pull_request. A commit on a PR branch is not a tag push, so this
+# is not a double run. Expect NO finding — the naive "has push and pull_request" check
+# gets this one wrong.
+name: Release
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo hi

@@ -1,0 +1,10 @@
+# The ten-line stub every enrolled repo carries. A `uses:` job MAY NOT set
+# timeout-minutes — GitHub rejects the file — so this must produce no finding, or the
+# check would fire on every enrolled repo forever with no legal way to silence it.
+name: dependabot-automerge
+on:
+  pull_request_target:
+jobs:
+  automerge:
+    uses: khglynn/repo-standards/.github/workflows/dependabot-automerge.yml@main
+    secrets: inherit

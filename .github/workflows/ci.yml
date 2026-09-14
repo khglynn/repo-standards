@@ -45,7 +45,8 @@ jobs:
       - name: Check the scripts
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck bin/enroll bin/audit bin/classify-pr bin/lib/check-classifier.sh
+          shellcheck bin/enroll bin/audit bin/classify-pr bin/lib/check-classifier.sh \
+                     bin/lib/check-workflow-hygiene.sh
           python3 -m py_compile bin/lib/*.py
 
       # The one rule that exists in two places and cannot be deduplicated: the shared
@@ -57,6 +58,14 @@ jobs:
       # would have merged).
       - name: The classifier says the same thing in both places
         run: bin/lib/check-classifier.sh
+
+      # The two workflow-hygiene warnings `bin/audit` reports about OTHER people's repos:
+      # a job with no time limit (a hang inherits GitHub's 6-hour default and eats an
+      # eighth of the monthly private allowance) and the push+pull_request double run.
+      # These answers reach Kevin in a weekly Slack digest, where a parser that silently
+      # stops finding things looks exactly like a good week. Fixtures tell them apart.
+      - name: The workflow-hygiene warnings still fire (and still stay silent)
+        run: bin/lib/check-workflow-hygiene.sh
 
       # A fixture run of the ecosystem detector: proves it still says what we think it says,
       # independently of any live repo. If this ever disagrees, enroll is about to write the

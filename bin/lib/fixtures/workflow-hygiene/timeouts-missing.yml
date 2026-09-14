@@ -1,0 +1,14 @@
+# `db` has a limit, `unit` does not. Expect exactly one finding: timeouts-missing.yml:unit
+name: CI
+on:
+  pull_request:
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: echo db
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo unit

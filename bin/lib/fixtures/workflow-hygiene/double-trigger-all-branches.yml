@@ -1,0 +1,12 @@
+# push with no branch filter + pull_request: every commit on a PR branch runs twice.
+# Expect a double_trigger finding.
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo hi
