@@ -833,3 +833,216 @@ is green end to end — `actionlint`, `shellcheck` over all six scripts, `check-
 (now 5 sections), `check-workflow-hygiene.sh`, `check-classifier.sh`, `check-templates.py`,
 the ecosystem detector. GitHub API budget left at the end of the stage: about 2,400 of
 5,000.
+
+## 2026-09-14 07:20–08:0x CDT — the review stage: nine defects, and the two that were still reaching Slack
+
+The resumed stage's fix for the confident zero was real but partial. An adversarial review
+(one `--digest --skip-actions` run, no full audit) found the same sentence still reachable
+three other ways, a parser that finds nothing on ordinary workflow files, and a CI fixture
+due to start failing on 27 September. Every finding below was reproduced against the
+shipped code before it was changed, and again after.
+
+### 1. The confident zero had three more doors, not one
+
+`measured` was keyed on the *method*, so a run that skipped nothing could still print
+**"about 0 minutes of the free 3,000 (an estimate). At this rate the month ends near 0,
+inside the free pool"** whenever:
+
+- **no private repo was visible at all** — a repo-scoped token in the cloud routine sees
+  none of them, `private` sums to 0 over an empty list, and the sentence reads as a quiet
+  month;
+- **every private repo's Actions scan failed** — the same sentence, with a contradicting
+  "4 of the 4 repos could not be measured" underneath it. The first half still reads as
+  good news, which is the failure this stage existed to end.
+
+The question is now asked of the *data* rather than the flags: were any private repos
+measured, and did any repo with billable builds get one of them timed. Both answers carry
+a `reason` (`skipped`, `none`, `invisible`, `unread`) and the table says which. A month
+whose private repos genuinely ran nothing billable is still a real zero — that is a
+measurement, not an absence — and an owner with no private repos at all is not
+"unmeasured" either.
+
+**And the same sentence had a tense problem.** Spending past the allowance printed the
+run-out date in the future: 3,500 minutes read on 14 September announced "the free minutes
+run out around 12 Sep". One line of arithmetic settles when that can happen — the
+projected date is `start + ALLOWANCE/daily`, today is `start + elapsed`, and
+`daily = private/elapsed`, so the date is behind today *exactly* when the allowance is
+already spent. So there is no "the date has passed but the pool is not gone" case, one
+branch covers it, and `render-audit.py` carries the arithmetic so nobody re-adds a second
+one for a past date. (The review proposed two branches; the second is unreachable.)
+
+### 2. The regex parser found nothing on any normally-written workflow
+
+`workflow-hygiene.py`'s PyYAML-free fallback — **the path a cloud routine takes** — asked
+`^\s+uses:` at any indentation. A job written in the ordinary style:
+
+```yaml
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+```
+
+matched on its *step's* `uses:`, was read as a reusable-workflow caller, and was skipped in
+silence. The mirror bug let a *step-level* `timeout-minutes:` satisfy the job-level check
+it is not. Between them that is most real workflows: the weekly digest would have reported
+"no repos have this problem" forever. Both questions are now anchored to the job's own key
+column.
+
+Two fixtures reproduce it (`steps-with-uses.yml`, `step-level-timeout.yml` — proved against
+the old code, which returned `[]` for both), and **every** timeout fixture now runs through
+*both* parsers. Testing one engine per fixture is what let this through.
+
+### 3. Two more absent-versus-false bugs in `bin/audit`, both reported as drift
+
+The same shape this repo already documents twice, one call further on:
+
+- A 403, 5xx or rate-limited read of a repo's merge-rules workflow leaves `content` empty,
+  both `grep`s miss, and the row falls through to **"drift: still has its own private copy
+  of the merge rules"** — about a file it never read. The tree call having succeeded is
+  what makes it invisible.
+- `auto_merge="?"` on any failure of `GET repos/{r}`, tested with `!= "true"`, becomes
+  **"drift: repo setting 'allow auto-merge' is off"** about a setting nobody read. That one
+  only reaches repos that got everything else right, since a repo needs both the stub and
+  `dependabot.yml` to reach that line.
+
+Both now read `unknown: …`, which `counts()` already files as unreadable rather than clean.
+
+### 4. The digest promised under 150 words and was 202
+
+`routines/weekly-digest.md` said "Under 150 words in total" and, four lines earlier, "use
+its numbers exactly as printed and do not recompute them" — a routine obeying both had to
+silently drop repo lines, which is the one thing this message exists not to do. The real
+14 Sep output was 202 (`wc -w`), and nothing checked it: the only length assertion was on
+the headline.
+
+Fixed on both sides. The prompt now says *post what the audit printed, unchanged*, and
+keeps the writing rules for the hand-written fallback only. The renderer **enforces** the
+cap instead of aiming at it: it assembles the message, and while it is over 150 words the
+repo list gives way — five lines at most, and fewer if the notes need the room — saying out
+loud how many repos it left out. The notes never give way, because a note that vanishes
+reads exactly like a week with nothing to report. A fixed five-line cap was tried first and
+still landed at 154; the enforced version absorbs a later note (an unreadable build file,
+say) instead of walking back over the line in the one output nobody re-measures.
+
+Wording was tightened to buy the room honestly rather than by dropping facts: the per-repo
+lines lean on the headline's "12 updates waiting" instead of repeating "update pull
+requests waiting" six times, and "To act:" stopped restating a drifter's whole diagnosis
+one line after the body printed it.
+
+### 5. A CI fixture that was going to start failing on 27 September
+
+`check-audit.sh`'s BIG case pins 2,600 minutes against `--since 2026-09-01` and asserts a
+run-out date — but the projection divides by *real* elapsed days, so `2600/elapsed × 30 >
+3000` only holds while fewer than 26 days have elapsed. Moving `--since` back to 1 July
+makes the same row print "the month ends near 1067, inside the free pool" and both
+assertions fail. `render-audit.py` now takes `--today`, and every assertion in
+`check-audit.sh` pins `--today 2026-09-14`, which also makes sections 2 and 5 deterministic
+rather than merely currently-true.
+
+### 6. Smaller things, all taken
+
+- **An unreadable build file reached the table and not the digest.** Silence in the digest
+  means clean, which is the rule the rest of this stage was built on. It now gets a note.
+- **"To act:" named `drifters[0]`** — `gh repo list` order — so it could name an arbitrary
+  drifter while a worse one went unmentioned. Sorted the way the body is.
+- **The preflight refused below 200 calls whatever the flags said**, while explaining that
+  "this audit needs about 1,600". So `--skip-actions` and `--cap`, the two escapes the
+  README recommends for a short budget, were blocked by a threshold set for a run nobody
+  asked for. It now costs out the run in front of it (`--need`) and names both cheaper
+  commands in the refusal.
+- **Once the hourly budget is gone, the scan stopped issuing ~1,500 requests that cannot
+  succeed** — each one was a real call that 403'd and spent the next hour's budget.
+- **`capped` fired on a repo with exactly `cap` completed runs and nothing left over** — a
+  complete, correct reading labelled "⚠ capped" in the table and called out in the digest
+  as a figure to distrust. It now means what it says: builds went unmeasured.
+- **Self-hosted runners billed at the Linux rate.** GitHub bills none of their minutes, so
+  counting them inflates the one number this tool exists to warn about, on exactly the
+  repos that moved work off GitHub's runners to stop paying for it. `SELF, 0`, with its own
+  note rather than being filed under "non-Linux".
+- **`_is_free_dependabot_run` had no test** — the predicate that moved the account's
+  headline figure by 35 minutes and can silently zero real billed minutes if GitHub's
+  `event`/`path` shape drifts. Three run shapes and the five runner labels are now pinned.
+- **Jargon:** "runs" → "builds" in the digest, and "1 of the 1 repos could not be measured"
+  is pluralised.
+
+### What was declined, and why
+
+- **`.github/workflows/dependabot-automerge.yml:96` still has no `timeout-minutes`.** The
+  audit's own first warning, on the one job in the account that most wants a ceiling — it
+  runs with write permission inside every enrolled repo. The brief forbids editing that
+  file and `templates/caller-stub.yml` tonight, so it stays recorded and untouched for the
+  third stage running. One line whenever that lock lifts.
+- **A caller workflow under some other filename still reads as drift** (review item 12).
+  The fix offered was to search every `.github/workflows/*.yml` in every repo and read the
+  matches — a call per file across forty repos, for a case that has never occurred, on the
+  tool whose cost is already the thing being managed. The two filenames *are* the standard:
+  `bin/enroll` writes one and this repo carries the other. The comment that claimed the
+  code checked "ANY of its workflows" now says what the code actually does, and says why.
+- **The review's second wording branch for a run-out date already in the past** — proved
+  unreachable by the arithmetic above, so one branch ships rather than two, with the proof
+  in the file so it does not get re-added.
+
+### The verification run
+
+Local CI first, run the way `ci.yml` runs it: `actionlint` clean, `shellcheck` clean over
+all six scripts, `python3 -m py_compile bin/lib/*.py`, `check-templates.py`,
+`check-classifier.sh`, `check-workflow-hygiene.sh` (now 23 assertions — every timeout
+fixture through both parsers) and `check-audit.sh` (now 8 sections, 78 assertions).
+
+Then a cheap end-to-end pass and one full audit, both against khglynn:
+
+1. **`bin/audit --digest --skip-actions`, 07:44 CDT, 83 s, ~200 calls.** Ran before
+   spending anything real, so a bash mistake would surface on a 200-call run rather than a
+   1,600-call one. 129 words, the not-measured sentence intact, no repo reading `unknown`.
+2. **One full `bin/audit --json`, 07:53–07:56 CDT, 3 min 21 s, about 1,400 calls** — run
+   as `--json` so the digest and the table both render from a single spend. Waited seven
+   minutes for the hourly reset first rather than starting it on 2,256 remaining, since
+   the budget is shared with every other stage tonight; it started on 4,997 and ended on
+   3,595. **40 repos: 5 enrolled, 29 security-only, 6 forks, 0 drifting, 0 unreadable.**
+
+Its `--digest`, exactly as printed — **this is the full run, post-fix**:
+
+```
+*Dependency check — 14 Sep 2026*
+
+5 of 40 repos keep themselves up to date. 12 updates waiting, the oldest 26 days old.
+Build time this month: about 2453 of the free 3,000 private-repo minutes (an estimate). At this rate they run out around 16 Sep.
+
+- ynai — 4 waiting, oldest 4 days.
+- recordOS — 3 waiting, oldest 2 days.
+- eachie — 2 waiting, oldest 26 days.
+- ai-orchestrator — 1 waiting, oldest 2 days.
+- okta-mcp-server — 1 waiting, oldest 2 days.
+- and 1 more repo needs attention.
+
+Also: 27 build jobs in 11 repos have no time limit; a hang costs six hours.
+Also: 4 repos run their tests twice per change, which may be deliberate.
+Note: eachie ran more builds than were measured, so the minutes read low.
+
+To act: eachie's oldest update is 26 days old — merge or close it.
+```
+
+**149 words**, against the 150 the prompt and README promise, with the cap enforced rather
+than hoped for. Private total **2,453 of 3,000**, run-out 16 Sep, `eachie` still capped at
+300 of its 453 runs, 110 of Dependabot's own runs excluded across the account, and nothing
+`partial` — every repo with billable builds had them read.
+
+The 2,453 is not comparable to the resumed stage's 2,515 line for line: that number was a
+full run's public rows plus a private-only re-measure taken four minutes later, and this
+is the first single-pass figure with the Dependabot exclusion applied throughout. The
+3,000-minute warning survives both, which is the part that matters.
+
+### Still unverified after this stage
+
+- **No figure here has been checked against a GitHub invoice.** Unchanged: the billing
+  endpoints need a classic token with the `user` scope and are deliberately not called.
+- **`eachie` is capped**, so its figure is low by whatever its 153 unmeasured runs cost.
+- **The weekly routine has still never been created**, and no digest has ever been posted
+  to Slack by it. Every one so far has been read in a terminal.
+- **The new `unknown:` verdicts have not fired on live data** — no repo's settings or
+  merge-rules workflow failed to read on either run today. They are pinned by the logic
+  they replace, not by a live occurrence.
+- **The larger-runner Dependabot exception** and the self-hosted case are both reasoned
+  and tested, not observed: nothing in the account runs on either.
