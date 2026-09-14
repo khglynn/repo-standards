@@ -5,6 +5,15 @@
 **Why the label, not "opened":** the shared workflow classifies every Dependabot PR within seconds of it opening. Patch and minor bumps merge themselves once CI is green and never need a human. Firing on the label means the routine only ever runs on the exceptions, so it never spends a run (Max: 15 a day) on something that was about to merge itself, and never posts a verdict on a PR that then auto-merges.
 **Connectors:** Slack only. Everything else removed from the routine.
 **Repos:** one routine per enrolled repo. A routine takes exactly one GitHub trigger and a trigger names exactly one repository (checked in the form 2026-09-13), so each enrolled repo gets its own copy of this routine with only that repo attached; that also keeps each run cloning one repo. Names: `Dependabot verdict · <repo>`.
+
+| Repo | Routine id | Created |
+|---|---|---|
+| eachie | `trig_019EgJ3ZffYbVgTGLYkzDcj3` (named "Dependabot verdict") | 2026-09-11 |
+| festival-navigator | `trig_01Q8SKMN4TZGLLoKXViLQBwK` | 2026-09-13 |
+| kevinhg-com | `trig_01YX6RSVZ63xfPyMiqy4J2Ur` | 2026-09-13 |
+| list-maker | `trig_01KJQ1Lz1eaPsaVL4WsAfng5` | 2026-09-13 |
+
+All four carry the same prompt (below), Opus 5, Slack as the only connector, trigger `pull_request.labeled` filtered to author `dependabot[bot]` and labels `major-review-needed, dependabot-needs-human, no-ci-gate`. Edit them through the playwright-2 profile; there is no duplicate button, so a fifth repo means the form again (about a dozen clicks; the recipe is in this session's BUILD-LOG entry for 2026-09-13).
 **Model:** Opus 5.
 
 **Prompt rewritten 2026-09-13 21:58 CT** after Kevin read the first automatic verdict (eachie #143) and said it was too long and too jargony. The new shape leads with verdict and risk, allows one plain sentence of why, bans acronyms and file/job names, and caps the whole message at 100 words. Refined the same night: "Why" split into "What changed" and "Why that's safe", one sentence each, because the first cut answered only the second.
