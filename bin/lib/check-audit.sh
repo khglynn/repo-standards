@@ -492,7 +492,22 @@ for m in table digest; do
     echo "FAIL: the $m claims a security-only enrolment where there is none"; fail=1
   else echo "ok: the $m says nothing about security-only when no repo is"; fi
 done
-# …and the whole message still fits, with the extra words in the headline.
+# …and the whole message still fits, with the extra words in the headline. Twice: on the
+# three-row fixture, and at ACCOUNT SIZE, which is where the cap actually bites. The cap
+# loop gives up repo lines until the message fits, but it stops at zero repo lines — so a
+# headline plus notes that alone exceed 150 words would run over in silence, and this
+# parenthetical made that margin five words narrower.
 cap_words "with a security-only enrolment" "$SD"
+WIDE_SEC=$(python3 -c 'import json
+rows = [json.loads(l) for l in open("bin/lib/fixtures/audit/rows-wide.jsonl") if l.strip()]
+n = 0
+for r in rows:
+    if r["status"] == "enrolled" and n < 3:
+        r["status"] = "enrolled (security fixes only)"; r["dependabot"] = "no"; n += 1
+print("\n".join(json.dumps(r) for r in rows))' | render --mode digest)
+cap_words "account-sized with three security-only enrolments" "$WIDE_SEC"
+if grep -qF -- "(3 for security fixes only)" <<< "$WIDE_SEC"; then
+  echo "ok: the parenthetical survives the account-sized trim"
+else echo "FAIL: the parenthetical was trimmed away at account size"; echo "$WIDE_SEC"; fail=1; fi
 
 exit "$fail"
