@@ -141,13 +141,15 @@ bin/audit
 Read-only, writes nothing. About two and a half minutes across 40 repos (measured
 2026-09-14) — most of that is measuring Actions minutes, which costs roughly 1,600 API
 calls, a third of GitHub's hourly allowance. `bin/audit --skip-actions` does the
-enrolment half in about 40 seconds and spends almost nothing — and every output then
-says the build-time and permission checks were **not measured**, rather than reporting
-them as zero and clean. (It printed "about 0 minutes of the free 3,000 … inside the free
-pool" for exactly one morning, 2026-09-14.) If the hourly budget is
-already gone the audit says so and refuses to start, rather than printing a full table
-in which every repo reads "could not be read". It prints a markdown table
-with one row per repo and one **status** word at the end:
+enrolment half in about 40 seconds and spends almost nothing, and `--cap 30` samples the
+minutes instead of measuring every build — every output then says the build-time and
+permission checks were **not measured**, rather than reporting them as zero and clean.
+(It printed "about 0 minutes of the free 3,000 … inside the free pool" for exactly one
+morning, 2026-09-14; three more routes to that same sentence were closed later the same
+day.) If the hourly budget is too low for the run you asked for, the audit refuses to
+start and names the two cheaper commands, rather than printing a full table in which
+every repo reads "could not be read". It prints a markdown table with one row per repo
+and one **status** word at the end:
 
 - `enrolled` — updates land by themselves here
 - `security-only` — protected against known vulnerabilities, not kept current. A fine
@@ -157,6 +159,8 @@ with one row per repo and one **status** word at the end:
   counted as drift. `enroll` refuses them outright (`ALLOW_FORK=1` overrides, if you ever
   genuinely own a fork's config)
 - `drift: <reason>` — half-enrolled, and the reason says which half
+- `unknown: <what>` — a call failed, so that repo's answer is missing rather than clean.
+  A read that did not happen is never reported as a setting that is switched off
 
 That status column is the drift check. Run it monthly, or when something feels stale.
 
@@ -186,13 +190,19 @@ builds failing on the 27th. The number is an estimate and says so; see the audit
 footnote for how close it is and why.
 
 **And when it doesn't know, it says so.** A week where the build-time measurement was
-skipped or could not finish reads "Build time was not checked this week, so there is no
-figure and no run-out date — not a zero", and adds that a repo could be half set up in a
-way the message cannot see. That sentence is the whole point of the digest: a number you
-can act on, or an admission — never a confident zero standing in for a measurement nobody
-took.
+skipped, could not finish, could see no private repo, or read none of their builds, says
+so in place of the figure — "Build time was not checked this week, so there is no figure
+and no run-out date — not a zero" — and adds that a repo could be half set up in a way the
+message cannot see. A build file nobody could read gets its own note for the same reason.
+That is the whole point of the digest: a number you can act on, or an admission — never a
+confident zero standing in for a measurement nobody took.
 
 It closes with one line beginning "To act:" — the single most useful thing to do that week.
+
+**It is always under 150 words**, because a message you skim is a message you read. When
+there is more to say than that, the repo list is what gives way, and it says how many
+repos it left out; the notes never do, since a note that vanishes reads exactly like a
+week in which there was nothing to report.
 
 Two things it deliberately does **not** do: it never merges, closes or comments on
 anything, and on a quiet week it is three lines rather than a report about nothing.
@@ -208,7 +218,7 @@ anything, and on a quiet week it is three lines rather than a report about nothi
 | `approve` | The repo setting "Allow GitHub Actions to create and approve pull requests". **With it off, the shared workflow's approval is refused** and every update pull request queues behind a review that can never arrive. It cost three list-maker pull requests on 2026-09-14; an enrolled repo without it is now drift, not a warning |
 | `required checks` | The check that has to be green before anything merges. No check means nothing auto-merges at all, on purpose |
 | `open bot PRs` | Dependabot pull requests sitting open right now, and the age of the oldest |
-| `mins (est)` | GitHub Actions minutes this billing month, **an estimate** — rebuilt from each job's start and finish, rounded up to the minute the way GitHub bills. Public repos are free and marked so. Dependabot's own update runs are left out, because GitHub does not bill those on standard runners; counting them had `ynai` reading 15 minutes for a month that cost nothing. `⚠ capped` means the repo had more runs than were measured, so its number is low |
+| `mins (est)` | GitHub Actions minutes this billing month, **an estimate** — rebuilt from each job's start and finish, rounded up to the minute the way GitHub bills. Public repos are free and marked so. Dependabot's own update runs are left out, because GitHub does not bill those on standard runners; counting them had `ynai` reading 15 minutes for a month that cost nothing. `⚠ capped` means the repo had more builds than were measured, so its number is low. Self-hosted runners count as free, because GitHub bills none of their minutes |
 
 And under the table, two **warnings** — which are not drift, and nothing about them is
 broken:
