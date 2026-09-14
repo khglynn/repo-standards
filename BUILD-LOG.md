@@ -1606,3 +1606,126 @@ Enrolling khglynn/ynai
 
  YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
 ```
+
+### Round three: the bug I wrote one commit earlier
+
+A third pass (`cx-20260914-161931`) on the newest and least-reviewed code only. Four
+findings, and the first is the one that matters — it was mine, from the commit that had just
+fixed the pagination gap.
+
+**An HTTP error became a required status check.** On a real error `gh api --jq` cannot apply
+its filter, so it writes the **raw error body to stdout** and exits 1 — measured:
+`{"message":"Not Found","documentation_url":…,"status":"404"}`, all on one line. `bin/audit`
+piped that straight into the new raw-text join, which turned it into a context; a context is
+non-empty; non-empty skipped the classic-protection fallback — and a repo with **no gate at
+all** read `enrolled`. The previous jq-over-JSON form was accidentally immune, because that
+filter simply yielded nothing on an error body; the faster paginated form is not. The result
+is used only when gh reports success now, which is what `bin/enroll` already did.
+
+That one is worth sitting with. It was introduced *by a fix*, in a commit whose entire
+subject was truncation safety, and it turned the audit's most load-bearing column into a
+confident lie in exactly the direction that hides work — a repo with nothing protecting it
+reading as enrolled. Two rounds of review had already passed over this file.
+
+**A partial read became evidence of absence.** A Dependabot pull request counted as "read"
+the moment its check-runs call succeeded, so one whose STATUS list failed and whose
+check-runs carried nothing was recorded as "does not have the check" — and that alone
+refuses an enrolment. A hit is conclusive on its own, since positive evidence needs only the
+surface it appeared on; concluding ABSENCE needs both surfaces read, because the check may
+live on the one that failed.
+
+**The invariant assertion was half blind.** `bot_proof` was printed into the evidence matrix
+as its literal value — `PR #14`, two whitespace fields — so awk's columns shifted and "a
+readable bot PR missing the check never yields a quiet acceptance" only ever examined the
+empty-proof rows. Flipping every proven-bot refusal in the fixture left it passing. It prints
+`set` / `none` now, and that mutation goes red.
+
+**The fixture was not a superset of reachable inputs.** enroll samples five pull requests, so
+its counters reach 5 while the matrix stopped at 2, and `allow` only tried `1` and empty — so
+a regression affecting `bot_missing > 1`, or one that started treating `"true"` as an
+override, would have passed the pinned matrix unchanged. 216 rows → **1,152**, with
+near-miss override values included because the rule wants exactly `"1"`.
+
+**And the counting mistake, twice.** A commit message said "82 assertions" when it was 72,
+and a later one said 135 when it was 131 — both guesses, in a repo whose entire argument is
+that a number nobody can check is worse than no number. The suite prints its own total now
+(`check-audit: 131 assertions, 0 failures.`), counted where the assertions are emitted rather
+than kept in step by hand. The round-three commit message still carries the wrong 135; it is
+pushed, and rewriting published history to fix a count is a worse trade than this note.
+
+**Method that kept working:** every one of these was reproduced before it was fixed — a stub
+`gh` that emits an error body and exits 1, the failure injected into a throwaway copy of
+`enroll`, the fixture mutated to check the checker. Three rounds of review found 17 real
+defects across roughly 500 lines. None of them was found by reading alone.
+
+### Final state
+
+- **131 assertions, 0 failures**; full CI suite green locally and on GitHub.
+- Two pure functions extracted from inline if/elif chains that had each gone wrong by
+  ordering: `bin/lib/verdict.sh` (the audit's status word) and `bin/lib/check-evidence.sh`
+  (what the `--external-check` history proved), with **1,440** and **1,152** input
+  combinations pinned as checked-in fixtures.
+- `ynai` is ready to enrol and **has not been enrolled** — that is the lead's call.
+
+```
+$ bin/enroll khglynn/ynai --security-only --external-check Vercel --dry-run
+DRY RUN — nothing below is actually written.
+Enrolling khglynn/ynai
+   --security-only: no dependabot.yml will be written, so this repo gets GitHub's
+   account-wide SECURITY fixes and no routine version-update pull requests.
+   default branch: main   visibility: private
+
+── Checks
+   verifying 'Vercel' against this repo's five most recent pull requests…
+   external check 'Vercel' reports on Dependabot's own pull requests ✓ — PR #15 by dependabot[bot] (as a commit status)
+   ⚠ it is reported by a third-party app, not by a file in this repo. If that
+     integration is ever removed or stops building this repo's branches, the gate
+     goes silent and update PRs will queue forever rather than fail loudly.
+
+── Labels
+   would ensure label: dependencies
+   would ensure label: major-review-needed
+   would ensure label: dependabot-needs-human
+   would ensure label: no-ci-gate
+   would ensure label: dependabot-opted-out
+
+── Ecosystems
+   not checked — --security-only writes no dependabot.yml, so nothing is composed
+   from the answer. Run without the flag to see what this repo would get.
+
+── Files
+   dependabot.yml: NOT written (--security-only) — no version-update PRs will be
+   opened here. GitHub's account-wide security fixes still arrive; they need no file.
+   automerge stub: new
+      ?? .github/workflows/dependabot-automerge.yml
+
+   would open a pull request on branch 'standards/enroll' containing:
+      ┄┄ new file: .github/workflows/dependabot-automerge.yml
+      [templates/caller-stub.yml verbatim — elided here]
+
+── Repo setting: allow auto-merge
+   would turn it on (gh api -X PATCH repos/khglynn/ynai -F allow_auto_merge=true)
+
+── Repo setting: Actions may approve pull requests
+   would turn it on (gh api -X PUT repos/khglynn/ynai/actions/permissions/workflow -F can_approve_pull_request_reviews=true)
+
+── CI gate (ruleset 'standards-ci')
+   would CREATE ruleset 'standards-ci'
+   requiring check 'Vercel' on main, repository admins bypass always
+
+════════════════════════════════════════════════════════════════════
+ khglynn/ynai — dry run — nothing changed
+════════════════════════════════════════════════════════════════════
+ Ecosystems found: not checked (--security-only writes no dependabot.yml)
+ Files proposed: .github/workflows/dependabot-automerge.yml
+ Pull request: (dry run — not opened)
+ CI gate: 'Vercel' required on main — reported by another service,
+          not by a workflow here (you can still push directly)
+
+ SECURITY FIXES ONLY. No dependabot.yml was written, so Dependabot will open no
+ routine version-update pull requests here. GitHub's account-wide security fixes
+ still arrive, and those are what will approve and merge themselves once
+ 'Vercel' is green. Nothing else merges by itself.
+
+ YOUR MOVE: nothing — this was a dry run. Re-run without --dry-run to do it.
+```

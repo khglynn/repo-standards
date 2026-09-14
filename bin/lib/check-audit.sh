@@ -28,7 +28,14 @@ cd "$HERE"
 fail=0
 TMPWORK=$(mktemp -d); TMPDIFF="$TMPWORK/diff"; trap 'rm -rf "$TMPWORK"' EXIT
 
-say() { if [ "$2" = "$3" ]; then echo "ok: $1"; else echo "FAIL: $1 — got '$2', wanted '$3'"; fail=1; fi; }
+ASSERTIONS=0
+FAILURES=0
+# Every assertion in this file announces itself with a line starting "ok:" or "FAIL:".
+# `pass`/`nope` are the two places that bookkeeping happens, so the printed total is
+# the real one and not a second thing to keep in step.
+pass() { ASSERTIONS=$((ASSERTIONS + 1)); echo "ok: $*"; }
+nope() { ASSERTIONS=$((ASSERTIONS + 1)); FAILURES=$((FAILURES + 1)); fail=1; echo "FAIL: $*"; }
+say() { if [ "$2" = "$3" ]; then pass "$1"; else nope "$1 — got '$2', wanted '$3'"; fi; }
 
 # One place to spell the pinned date and the renderer's path.
 render() { python3 bin/lib/render-audit.py --owner khglynn --since 2026-09-01 \
@@ -36,7 +43,7 @@ render() { python3 bin/lib/render-audit.py --owner khglynn --since 2026-09-01 \
 
 echo "--- 1. the tree-readability predicate, taken straight out of bin/audit"
 JQ=$(grep '^TREE_STATE_JQ=' bin/audit | sed -e "s/^TREE_STATE_JQ='//" -e "s/'$//")
-if [ -z "$JQ" ]; then echo "FAIL: could not find TREE_STATE_JQ in bin/audit"; exit 1; fi
+if [ -z "$JQ" ]; then nope "could not find TREE_STATE_JQ in bin/audit"; exit 1; fi
 say "a complete tree reads 'false'"  "$(echo '{"truncated":false,"tree":[]}' | jq -r "$JQ")" "false"
 say "a truncated tree reads 'true'"  "$(echo '{"truncated":true,"tree":[]}'  | jq -r "$JQ")" "true"
 say "an error body reads 'err'"      "$(echo '{"message":"Not Found"}'       | jq -r "$JQ")" "err"
@@ -47,7 +54,7 @@ echo "--- 1b. the approve-switch predicate, same trap, also taken out of bin/aud
 # for — into "?", so the column would have read unknown on exactly the repos it exists
 # to catch. Any jq default over a field that can be `false` needs this shape.
 AJQ=$(grep '^APPROVE_JQ=' bin/audit | sed -e "s/^APPROVE_JQ='//" -e "s/'$//")
-if [ -z "$AJQ" ]; then echo "FAIL: could not find APPROVE_JQ in bin/audit"; exit 1; fi
+if [ -z "$AJQ" ]; then nope "could not find APPROVE_JQ in bin/audit"; exit 1; fi
 say "switch off reads 'false'"    "$(echo '{"approve":false}' | jq -r "$AJQ")" "false"
 say "switch on reads 'true'"      "$(echo '{"approve":true}'  | jq -r "$AJQ")" "true"
 say "unreadable reads '?'"        "$(echo '{"approve":null}'  | jq -r "$AJQ")" "?"
@@ -59,12 +66,12 @@ DIGEST=$(render --mode digest < "$FIX")
 
 # `--` matters: several of these start with a hyphen, which grep would read as a flag.
 has() {
-  if grep -qF -- "$1" <<< "$DIGEST"; then echo "ok: digest says \"$1\""
-  else echo "FAIL: digest is missing \"$1\""; echo "$DIGEST"; fail=1; fi
+  if grep -qF -- "$1" <<< "$DIGEST"; then pass "digest says \"$1\""
+  else nope "digest is missing \"$1\""; echo "$DIGEST"; fail=1; fi
 }
 hasnt() {
-  if grep -qF -- "$1" <<< "$DIGEST"; then echo "FAIL: digest still contains \"$1\""; fail=1
-  else echo "ok: digest has no \"$1\""; fi
+  if grep -qF -- "$1" <<< "$DIGEST"; then nope "digest still contains \"$1\""; fail=1
+  else pass "digest has no \"$1\""; fi
 }
 has "1 of 4 repos keep themselves up to date"      # patchwork is a fork, ynai security-only
 has "6 updates waiting, the oldest 26 days old"
@@ -76,13 +83,13 @@ has "To act:"
 hasnt "- patchwork"                                # a fork with nothing waiting: silent
 
 # Angle brackets become link markup in Slack. This is a rule about the channel, not taste.
-if grep -qE '<[^ ]' <<< "$DIGEST"; then echo "FAIL: digest contains angle brackets"; fail=1
-else echo "ok: no angle brackets"; fi
+if grep -qE '<[^ ]' <<< "$DIGEST"; then nope "digest contains angle brackets"; fail=1
+else pass "no angle brackets"; fi
 
 # The headline is everything before the first repo line, and it has to stay glanceable.
 words=$(sed -n '/^- /q;p' <<< "$DIGEST" | wc -w | tr -d ' ')
-if [ "$words" -lt 120 ]; then echo "ok: headline is $words words (cap 120)"
-else echo "FAIL: headline is $words words, cap is 120"; fail=1; fi
+if [ "$words" -lt 120 ]; then pass "headline is $words words (cap 120)"
+else nope "headline is $words words, cap is 120"; fail=1; fi
 
 # And the WHOLE message against the brief's 150, which nothing checked until now: the
 # real 2026-09-14 digest was 202 words while the routine prompt and the README both
@@ -92,8 +99,8 @@ else echo "FAIL: headline is $words words, cap is 120"; fail=1; fi
 cap_words() {
   local label="$1" text="$2" n
   n=$(wc -w <<< "$text" | tr -d ' ')
-  if [ "$n" -lt 150 ]; then echo "ok: $label digest is $n words (cap 150)"
-  else echo "FAIL: $label digest is $n words, cap is 150"; echo "$text"; fail=1; fi
+  if [ "$n" -lt 150 ]; then pass "$label digest is $n words (cap 150)"
+  else nope "$label digest is $n words, cap is 150"; echo "$text"; fail=1; fi
 }
 WIDE=bin/lib/fixtures/audit/rows-wide.jsonl
 WIDE_DIGEST=$(render --mode digest < "$WIDE")
@@ -103,8 +110,8 @@ cap_words "account-sized" "$WIDE_DIGEST"
 # The repo list is the part that gives way, and it has to say how many it left out rather
 # than dropping them in silence. (Six repos have updates waiting in that fixture.)
 if grep -qE '^- and [0-9]+ more repos? needs? attention\.$' <<< "$WIDE_DIGEST"; then
-  echo "ok: the collapsed repo lines are counted out loud"
-else echo "FAIL: the account-sized digest dropped repo lines silently"; echo "$WIDE_DIGEST"; fail=1; fi
+  pass "the collapsed repo lines are counted out loud"
+else nope "the account-sized digest dropped repo lines silently"; echo "$WIDE_DIGEST"; fail=1; fi
 
 # …and adding one more note must compress the repo list further rather than run over.
 WIDE_PLUS=$(python3 -c 'import json
@@ -113,8 +120,8 @@ rows[0]["unparsed"] = ["ci.yml", "release.yml"]
 print("\n".join(json.dumps(r) for r in rows))' | render --mode digest)
 cap_words "account-sized plus an unreadable build file" "$WIDE_PLUS"
 if grep -qF -- "could not be read, so the notes above do not cover them" <<< "$WIDE_PLUS"; then
-  echo "ok: an unreadable build file reaches the digest, not just the table"
-else echo "FAIL: the digest is silent about a build file nobody could read"; echo "$WIDE_PLUS"; fail=1; fi
+  pass "an unreadable build file reaches the digest, not just the table"
+else nope "the digest is silent about a build file nobody could read"; echo "$WIDE_PLUS"; fail=1; fi
 
 # The capped-run caveat has to survive, or the minutes silently read low.
 has "ran more builds than were measured"
@@ -131,26 +138,26 @@ echo "--- 3. a run that did NOT measure build time must never report a number"
 UNMEAS=bin/lib/fixtures/audit/rows-unmeasured.jsonl
 for meth in skipped none; do
   D=$(render --mode digest --method "$meth" < "$UNMEAS")
-  if grep -qF -- "was not checked this week" <<< "$D"; then echo "ok: digest ($meth) says build time was not checked"
-  else echo "FAIL: digest ($meth) does not say build time went unmeasured"; echo "$D"; fail=1; fi
+  if grep -qF -- "was not checked this week" <<< "$D"; then pass "digest ($meth) says build time was not checked"
+  else nope "digest ($meth) does not say build time went unmeasured"; echo "$D"; fail=1; fi
   for lie in "minutes of the free" "inside the free pool" "run out around"; do
-    if grep -qF -- "$lie" <<< "$D"; then echo "FAIL: digest ($meth) still claims \"$lie\""; fail=1
-    else echo "ok: digest ($meth) makes no claim of \"$lie\""; fi
+    if grep -qF -- "$lie" <<< "$D"; then nope "digest ($meth) still claims \"$lie\""; fail=1
+    else pass "digest ($meth) makes no claim of \"$lie\""; fi
   done
   # The enrolment half is still real on such a run and must still be reported — but it
   # reads 2 of 4, not the 1 of 4 above, because the approve-switch drift rule reads the
   # same scan that was skipped. That is the trap: a skipped run reports FEWER problems,
   # which is why the tail note below has to say the checks did not happen.
-  if grep -qF -- "2 of 4 repos keep themselves up to date" <<< "$D"; then echo "ok: digest ($meth) still reports enrolment"
-  else echo "FAIL: digest ($meth) lost the enrolment headline"; echo "$D"; fail=1; fi
-  if grep -qF -- "could be half set up in a way this message cannot see" <<< "$D"; then echo "ok: digest ($meth) warns that drift went unchecked"
-  else echo "FAIL: digest ($meth) does not warn that the drift check was skipped"; fail=1; fi
+  if grep -qF -- "2 of 4 repos keep themselves up to date" <<< "$D"; then pass "digest ($meth) still reports enrolment"
+  else nope "digest ($meth) lost the enrolment headline"; echo "$D"; fail=1; fi
+  if grep -qF -- "could be half set up in a way this message cannot see" <<< "$D"; then pass "digest ($meth) warns that drift went unchecked"
+  else nope "digest ($meth) does not warn that the drift check was skipped"; fail=1; fi
 
   T=$(render --mode table --method "$meth" < "$UNMEAS")
-  if grep -qF -- "NOT MEASURED on this run" <<< "$T"; then echo "ok: table ($meth) says not measured"
-  else echo "FAIL: table ($meth) does not say not measured"; fail=1; fi
-  if grep -qE 'Private repos: \*\*[0-9]' <<< "$T"; then echo "FAIL: table ($meth) still prints a private-minutes figure"; fail=1
-  else echo "ok: table ($meth) prints no private-minutes figure"; fi
+  if grep -qF -- "NOT MEASURED on this run" <<< "$T"; then pass "table ($meth) says not measured"
+  else nope "table ($meth) does not say not measured"; fail=1; fi
+  if grep -qE 'Private repos: \*\*[0-9]' <<< "$T"; then nope "table ($meth) still prints a private-minutes figure"; fail=1
+  else pass "table ($meth) prints no private-minutes figure"; fi
 
   J=$(render --mode json --method "$meth" < "$UNMEAS")
   say "json ($meth) minutes_measured is false" "$(jq -r '.minutes_measured' <<< "$J")" "false"
@@ -172,17 +179,17 @@ for line in open("bin/lib/fixtures/audit/rows.jsonl"):
     row["double_trigger"] = []
     print(json.dumps(row))')
 RT=$(render --mode table <<< "$REGEX_ROWS")
-if grep -qF -- "regex fallback" <<< "$RT"; then echo "ok: table names the regex fallback"
-else echo "FAIL: table does not say the regex fallback ran"; fail=1; fi
-if grep -qF -- "means not checked, not none" <<< "$RT"; then echo "ok: table says its silence is not 'none'"
-else echo "FAIL: table lets the regex fallback's empty list read as clean"; fail=1; fi
+if grep -qF -- "regex fallback" <<< "$RT"; then pass "table names the regex fallback"
+else nope "table does not say the regex fallback ran"; fail=1; fi
+if grep -qF -- "means not checked, not none" <<< "$RT"; then pass "table says its silence is not 'none'"
+else nope "table lets the regex fallback's empty list read as clean"; fail=1; fi
 RD=$(render --mode digest <<< "$REGEX_ROWS")
-if grep -qF -- "could not run this week" <<< "$RD"; then echo "ok: digest says the repeated-run check did not run"
-else echo "FAIL: digest is silent about the unchecked double trigger"; fail=1; fi
+if grep -qF -- "could not run this week" <<< "$RD"; then pass "digest says the repeated-run check did not run"
+else nope "digest is silent about the unchecked double trigger"; fail=1; fi
 # And the normal path names PyYAML rather than saying nothing at all.
 if grep -qF -- "parsed with PyYAML" <<< "$(render --mode table < "$FIX")"; then
-  echo "ok: table names PyYAML on the normal path"
-else echo "FAIL: table does not name the parser on the normal path"; fail=1; fi
+  pass "table names PyYAML on the normal path"
+else nope "table does not name the parser on the normal path"; fail=1; fi
 
 echo "--- 5. excluded-and-free is not the same as unread, and a floor still gets a date"
 # Dependabot's own update runs are excluded from the minutes (GitHub does not bill them).
@@ -210,10 +217,10 @@ say "billable runs with nothing timed IS 'partial'" \
 BIG=$(jq -c '.runs = 5 | .free_runs = 0 | .timed = 2 | .minutes = 2600
              | .errors = ["job timing unreadable (HTTP 403)"]' <<< "$FREEONLY")
 BD=$(render --mode digest <<< "$BIG")
-if grep -qF -- "run out around" <<< "$BD"; then echo "ok: a partial read still names the run-out date"
-else echo "FAIL: the run-out date vanished on a partial read"; echo "$BD"; fail=1; fi
-if grep -qF -- "that date could be sooner" <<< "$BD"; then echo "ok: and says the date could be sooner"
-else echo "FAIL: partial read does not say the date could be sooner"; fail=1; fi
+if grep -qF -- "run out around" <<< "$BD"; then pass "a partial read still names the run-out date"
+else nope "the run-out date vanished on a partial read"; echo "$BD"; fail=1; fi
+if grep -qF -- "that date could be sooner" <<< "$BD"; then pass "and says the date could be sooner"
+else nope "partial read does not say the date could be sooner"; fail=1; fi
 
 # And the measured path must keep saying a real number, or the fix above has gone too far.
 say "a measured run still reports minutes" \
@@ -234,15 +241,15 @@ say "…and names why" \
     "$(render --mode json <<< "$INVIS" | jq -r '.minutes.reason')" "invisible"
 ID=$(render --mode digest <<< "$INVIS")
 if grep -qF -- "No private repository's build time could be read this week" <<< "$ID"; then
-  echo "ok: the digest says which kind of missing this was"
-else echo "FAIL: the digest does not distinguish unreadable from unchecked"; echo "$ID"; fail=1; fi
+  pass "the digest says which kind of missing this was"
+else nope "the digest does not distinguish unreadable from unchecked"; echo "$ID"; fail=1; fi
 # …and does NOT claim the permission check was skipped, because it was not.
 if grep -qF -- "repository-permission checks were skipped" <<< "$ID"; then
-  echo "FAIL: an unreadable-minutes run claims the permission check was skipped too"; fail=1
-else echo "ok: the permission check is not claimed skipped when it ran"; fi
+  nope "an unreadable-minutes run claims the permission check was skipped too"; fail=1
+else pass "the permission check is not claimed skipped when it ran"; fi
 for lie in "minutes of the free" "inside the free pool" "private-repo minutes"; do
-  if grep -qF -- "$lie" <<< "$ID"; then echo "FAIL: invisible-private digest claims \"$lie\""; fail=1
-  else echo "ok: invisible-private digest makes no claim of \"$lie\""; fi
+  if grep -qF -- "$lie" <<< "$ID"; then nope "invisible-private digest claims \"$lie\""; fail=1
+  else pass "invisible-private digest makes no claim of \"$lie\""; fi
 done
 
 # (b) Every private repo with billable builds had all of them go unread — a 403 on each
@@ -266,19 +273,19 @@ echo "--- 7. spending past the free 3,000 is said plainly, never as a forecast"
 # why), so the one thing to prove is that the over-budget case never prints a date.
 OVER=$(jq -c '.runs = 40 | .free_runs = 0 | .timed = 40 | .minutes = 3400' <<< "$FREEONLY")
 OD=$(render --mode digest <<< "$OVER")
-if grep -qF -- "past the free 3,000" <<< "$OD"; then echo "ok: over the allowance says so plainly"
-else echo "FAIL: over the allowance is not stated"; echo "$OD"; fail=1; fi
+if grep -qF -- "past the free 3,000" <<< "$OD"; then pass "over the allowance says so plainly"
+else nope "over the allowance is not stated"; echo "$OD"; fail=1; fi
 if grep -qE 'run out around|ends near' <<< "$OD"; then
-  echo "FAIL: over the allowance still prints a forecast"; echo "$OD"; fail=1
-else echo "ok: no forecast once the pool is spent"; fi
+  nope "over the allowance still prints a forecast"; echo "$OD"; fail=1
+else pass "no forecast once the pool is spent"; fi
 OT=$(render --mode table <<< "$OVER")
-if grep -qF -- "already past the free 3,000" <<< "$OT"; then echo "ok: the table says it too"
-else echo "FAIL: the table still projects past a spent pool"; echo "$OT"; fail=1; fi
+if grep -qF -- "already past the free 3,000" <<< "$OT"; then pass "the table says it too"
+else nope "the table still projects past a spent pool"; echo "$OT"; fail=1; fi
 # …and a run comfortably inside it still gets its projection.
 IN=$(jq -c '.runs = 40 | .free_runs = 0 | .timed = 40 | .minutes = 400' <<< "$FREEONLY")
 if grep -qF -- "inside the free pool" <<< "$(render --mode digest <<< "$IN")"; then
-  echo "ok: a quiet month still reads as inside the pool"
-else echo "FAIL: a quiet month lost its projection"; fail=1; fi
+  pass "a quiet month still reads as inside the pool"
+else nope "a quiet month lost its projection"; fail=1; fi
 
 echo "--- 8. the one predicate that decides whether a build is billed at all"
 # `_is_free_dependabot_run` moved the account's headline figure (2,550 → 2,515) and had no
@@ -432,9 +439,9 @@ v "the standards repo is not demoted by a missing gate" \
 # then commit it; a regenerated fixture nobody read is the same as no fixture at all.
 MATRIX=bin/lib/fixtures/audit/verdict-matrix.txt
 if diff -u "$MATRIX" <(bin/lib/verdict-matrix.sh) > "$TMPDIFF"; then
-  echo "ok: all $(grep -cv '^#' "$MATRIX") input combinations map to their pinned status word"
+  pass "all $(grep -cv '^#' "$MATRIX") input combinations map to their pinned status word"
 else
-  echo "FAIL: the verdict rule's input -> output mapping changed"
+  nope "the verdict rule's input -> output mapping changed"
   head -40 "$TMPDIFF" | sed 's/^/     /'
   echo "     (if the change is intended: bin/lib/verdict-matrix.sh > $MATRIX, read the diff, commit it)"
   fail=1
@@ -448,9 +455,9 @@ fi
 alphabet=$(grep -v '^#' "$MATRIX" | sed -n 's/.* -> //p' | sort -u | wc -l | tr -d ' ')
 say "the rule produces exactly 14 distinct status words" "$alphabet" "14"
 if grep -qF "merge rules but no dependabot.yml" "$MATRIX"; then
-  echo "FAIL: the retired 'merge rules but no dependabot.yml' verdict is reachable again"; fail=1
+  nope "the retired 'merge rules but no dependabot.yml' verdict is reachable again"; fail=1
 else
-  echo "ok: the retired no-dependabot.yml verdict is unreachable, not merely unused"
+  pass "the retired no-dependabot.yml verdict is unreachable, not merely unused"
 fi
 
 echo "--- 9b. the --external-check evidence rule, pinned the same way"
@@ -474,9 +481,9 @@ e "an override does not invent bot evidence"    accept-no-bot         ""      0 
 
 EMATRIX=bin/lib/fixtures/audit/evidence-matrix.txt
 if diff -u "$EMATRIX" <(bin/lib/evidence-matrix.sh) > "$TMPDIFF"; then
-  echo "ok: all $(grep -cv '^#' "$EMATRIX") evidence combinations map to their pinned verdict"
+  pass "all $(grep -cv '^#' "$EMATRIX") evidence combinations map to their pinned verdict"
 else
-  echo "FAIL: the evidence rule's input -> output mapping changed"
+  nope "the evidence rule's input -> output mapping changed"
   head -30 "$TMPDIFF" | sed 's/^/     /'
   echo "     (if intended: bin/lib/evidence-matrix.sh > $EMATRIX, read the diff, commit it)"
   fail=1
@@ -485,9 +492,9 @@ fi
 # carry the check can only ever end in refusal or a deliberate override. Never a quiet yes.
 bad=$(grep -v '^#' "$EMATRIX" | awk '$2 > 0 && $3 == "no"' | grep -vE '\-> (refuse-newest|accept-override)$' || true)
 if [ -z "$bad" ]; then
-  echo "ok: a readable bot PR missing the check never yields a quiet acceptance"
+  pass "a readable bot PR missing the check never yields a quiet acceptance"
 else
-  echo "FAIL: some combination accepts despite the newest bot PR missing the check"
+  nope "some combination accepts despite the newest bot PR missing the check"
   printf '%s\n' "$bad" | sed 's/^/     /'; fail=1
 fi
 
@@ -520,17 +527,17 @@ say "a failed gh call yields no required check" "$guarded" ""
 # whose negative case was never demonstrated is an assertion that might always pass.
 unguarded=$(PATH="$STUB:$PATH" bash -c "gh api whatever --jq '.[]' 2>/dev/null | $JOIN" 2>/dev/null || true)
 if [ -n "$unguarded" ]; then
-  echo "ok: …and the unguarded shape really would have invented one ($(printf '%.32s' "$unguarded")…)"
+  pass "…and the unguarded shape really would have invented one ($(printf '%.32s' "$unguarded")…)"
 else
-  echo "FAIL: the stub did not reproduce the bug, so the test above proves nothing"; fail=1
+  nope "the stub did not reproduce the bug, so the test above proves nothing"; fail=1
 fi
 
 # …and the shape itself cannot come back. A `gh api` piped STRAIGHT into the raw-text join
 # is the bug, in either script.
 if grep -nE 'gh api[^|]*\|[^|]*jq -Rrs' bin/audit bin/enroll; then
-  echo "FAIL: a gh api call pipes directly into the raw-text join again"; fail=1
+  nope "a gh api call pipes directly into the raw-text join again"; fail=1
 else
-  echo "ok: neither script pipes gh api straight into the raw-text join"
+  pass "neither script pipes gh api straight into the raw-text join"
 fi
 
 echo "--- 10. the security-only enrolment through all three renderings"
@@ -550,14 +557,14 @@ THREE=$(printf '%s\n%s\n%s\n' "$(jq -c . <<< "$SEC")" "$FULL" "$HALF")
 
 ST=$(render --mode table <<< "$THREE")
 if grep -qF -- "**2 enrolled** (1 for security fixes only), 0 security-only" <<< "$ST"; then
-  echo "ok: the table counts it as enrolled and says which kind"
-else echo "FAIL: the table's summary hides the security-only enrolment"; echo "$ST"; fail=1; fi
+  pass "the table counts it as enrolled and says which kind"
+else nope "the table's summary hides the security-only enrolment"; echo "$ST"; fail=1; fi
 if grep -qF -- "| enrolled (security fixes only) |" <<< "$ST"; then
-  echo "ok: the row carries the status word"
-else echo "FAIL: the table row lost the status word"; fail=1; fi
+  pass "the row carries the status word"
+else nope "the table row lost the status word"; fail=1; fi
 if grep -qF -- "no routine version_" <<< "$ST"; then
-  echo "ok: the table legend explains the new word"
-else echo "FAIL: the table legend does not explain the new status"; fail=1; fi
+  pass "the table legend explains the new word"
+else nope "the table legend does not explain the new status"; fail=1; fi
 
 SJ=$(render --mode json <<< "$THREE")
 say "json: two enrolled"                  "$(jq -r '.summary.enrolled' <<< "$SJ")" "2"
@@ -567,18 +574,18 @@ say "json: one drifting"                  "$(jq -r '.summary.drifting' <<< "$SJ"
 
 SD=$(render --mode digest <<< "$THREE")
 if grep -qF -- "2 of 3 repos keep themselves up to date (1 for security fixes only)" <<< "$SD"; then
-  echo "ok: the digest headline says it plainly"
-else echo "FAIL: the digest headline overstates or loses the count"; echo "$SD"; fail=1; fi
+  pass "the digest headline says it plainly"
+else nope "the digest headline overstates or loses the count"; echo "$SD"; fail=1; fi
 if grep -qF -- "- wkt — no required check" <<< "$SD"; then
-  echo "ok: the half-set-up one still gets its own line"
-else echo "FAIL: the drifting repo lost its digest line"; echo "$SD"; fail=1; fi
+  pass "the half-set-up one still gets its own line"
+else nope "the drifting repo lost its digest line"; echo "$SD"; fail=1; fi
 # A repo that IS fully enrolled must not be quietly described as security-only, so the
 # parenthetical has to be absent when nothing earns it.
 NOSEC=$(printf '%s\n%s\n' "$FULL" "$HALF")
 for m in table digest; do
   if grep -qF -- "for security fixes only" <<< "$(render --mode "$m" <<< "$NOSEC")"; then
-    echo "FAIL: the $m claims a security-only enrolment where there is none"; fail=1
-  else echo "ok: the $m says nothing about security-only when no repo is"; fi
+    nope "the $m claims a security-only enrolment where there is none"; fail=1
+  else pass "the $m says nothing about security-only when no repo is"; fi
 done
 # …and the whole message still fits, with the extra words in the headline. Twice: on the
 # three-row fixture, and at ACCOUNT SIZE, which is where the cap actually bites. The cap
@@ -595,7 +602,16 @@ for r in rows:
 print("\n".join(json.dumps(r) for r in rows))' | render --mode digest)
 cap_words "account-sized with three security-only enrolments" "$WIDE_SEC"
 if grep -qF -- "(3 for security fixes only)" <<< "$WIDE_SEC"; then
-  echo "ok: the parenthetical survives the account-sized trim"
-else echo "FAIL: the parenthetical was trimmed away at account size"; echo "$WIDE_SEC"; fail=1; fi
+  pass "the parenthetical survives the account-sized trim"
+else nope "the parenthetical was trimmed away at account size"; echo "$WIDE_SEC"; fail=1; fi
 
+# Say how many assertions ran. Twice today a commit message and a build-log line quoted a
+# count that was a guess and wrong (82 for 72, 135 for 131) — a number nobody can check is
+# exactly what this suite exists to object to, so the suite states its own.
+echo
+if [ "$fail" = "0" ]; then
+  echo "check-audit: $ASSERTIONS assertions, 0 failures."
+else
+  echo "check-audit: $ASSERTIONS assertions, $FAILURES FAILED."
+fi
 exit "$fail"
