@@ -1271,7 +1271,8 @@ strings, sourced by `bin/audit` and by the self-check.
 
 ### Fixture results
 
-`bin/lib/check-audit.sh` gained two sections and now runs 82 assertions, all green:
+`bin/lib/check-audit.sh` gained two sections: **72 assertions before, 108 after**, all
+green (counted by running both, not estimated — the first draft of this line said 82).
 
 - **Section 9 — the status word itself.** Every pre-existing branch pinned by name (that is
   what proves the extraction was verbatim), then the new shape from eight angles: enrolled
