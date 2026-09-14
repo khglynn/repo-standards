@@ -7,30 +7,40 @@
 **Repos:** one routine per enrolled repo. A routine takes exactly one GitHub trigger and a trigger names exactly one repository (checked in the form 2026-09-13), so each enrolled repo gets its own copy of this routine with only that repo attached; that also keeps each run cloning one repo. Names: `Dependabot verdict · <repo>`.
 **Model:** Opus 5.
 
+**Prompt rewritten 2026-09-13 21:58 CT** after Kevin read the first automatic verdict (eachie #143) and said it was too long and too jargony. The new shape leads with verdict and risk, allows one plain sentence of why, bans acronyms and file/job names, and caps the whole message at 90 words.
+
 **First automatic run (2026-09-13 21:38 CT):** relabelling eachie #143 fired the routine by itself within a minute of the GitHub App being linked to the personal login (see BUILD-LOG, 2026-09-13); the verdict on pnpm/action-setup 4 → 5 landed in #dependabot at 21:39:55 CT in the agreed shape.
 
 **First run (manual, 2026-09-11 22:00Z):** posted https://trimmedia.slack.com/archives/C0C1114321Z/p1789164059996589 on eachie #162 (vite 7 → 8): identified the PR by itself, found vite is dev-only (vitest + Storybook), read the v8 migration notes, ran the Storybook build under vite 8 because CI never does, recommended Merge. Prompt fixed the same evening so the last line is a plain URL (angle-bracket placeholders had become Slack link markup).
 
 ## Prompt (paste verbatim)
 
-A Dependabot pull request in this repository was just labelled for human review. Your job is to give Kevin, a technical non-developer, enough context and a recommendation to decide in Slack, the way a good colleague would in a working session. Never post "this exists, do it?".
+A Dependabot pull request in this repository was just labelled for human review. Kevin, who owns this repo, is a product person, not a developer. He asked for messages he can understand without knowing what CI, a runner, a lockfile or a build tool is. Your job is to do the reading and hand him a decision he can make in ten seconds, the way a trusted colleague would in a working session.
 
 Do this, in order:
 1. Identify the PR from the trigger payload (repository, number, title, label). Read the PR diff and Dependabot's description.
-2. For each dependency in the PR: say in one plain sentence what this library does in THIS app (grep the code for its imports and the call sites; name the files). If it is unused, say so.
-3. Read the library's release notes or changelog for the versions being crossed (Dependabot links them; otherwise fetch from the package's repository). Pull out only what could affect this app: breaking changes, removed APIs, changed defaults, new minimum Node or Python versions, and any security fix.
-4. Check CI on the PR: which checks passed, failed, or never ran. If a check failed, read the log and say in one line why.
-5. Decide: Merge / Merge after a small fix / Hold / Drop. Give the risk in one line and the reason.
-6. Post ONE message to the Slack channel #dependabot (channel id C0C1114321Z) in this exact shape, in plain English, no jargon without a gloss, no headings:
+2. Find out what this package actually does for THIS app (grep for its imports and where it is used). Decide whether it touches what users see, what runs on the server, or only the tooling that builds and tests the app.
+3. Read the release notes for the versions being crossed and pull out only what could affect this app.
+4. Check the PR's tests: passed, failed (and in one plain sentence why), or none ran.
+5. Decide: Merge, Merge after a fix, Hold, or Drop.
+6. Post ONE message to the Slack channel #dependabot (channel id C0C1114321Z), in exactly this shape and nothing more:
 
-   REPO #NUMBER: PACKAGE OLD → NEW (LABEL)
-   What it does here: one or two sentences, name the files
-   What changed: two to four short lines, only what matters to this app
-   Tests: passed / failed because … / no CI in this repo
-   Recommendation: Merge, Merge after a fix, Hold, or Drop — one-line reason
-   Do it: the single next action, always as a reply IN THIS THREAD that names the PR, for example "Reply here: @Claude merge eachie #162", or "Reply here: @Claude fix what breaks in eachie #162 and open a PR", or "Reply here: @Claude close eachie #162, we don't use it". Naming the repo and number matters: a reply without them makes the Slack app guess from older messages.
-   The PR's URL, plain, on its own last line. Write URLs as plain text only; never wrap anything in angle brackets, because Slack turns <…> into link markup.
+   Line 1: "<repo> #<number>: <package> <old> → <new>"
+   Line 2: "Verdict: <Merge | Merge after a fix | Hold | Drop>. Risk: <low | medium | high>."
+   Line 3: "Why: <ONE sentence, under 25 words, that a non-developer understands. Say what the package is for in the app and what changed, in everyday words.>"
+   Line 4: "Tests: <passed | failed: one plain phrase | none ran>."
+   Line 5: "To act: reply here with @Claude merge <repo> #<number>" (or, for Hold/Drop/fix, the one reply that does the right thing, in the same form).
+   Line 6: the PR URL, plain, on its own line.
 
-7. Do not merge, close, comment on, or push to the PR. Do not post anything else to Slack. If you cannot read the PR or the changelog, post the message anyway with "could not read (the thing)" in the relevant line rather than guessing.
+   Writing rules for the message: plain English only; no acronyms (write "the automatic tests", not "CI"; "the tool that installs packages", not "package manager"); no file paths, job names, branch names, version constraints or runner details; no hedging clauses; no line longer than one sentence. If a term has no everyday equivalent, leave it out rather than explain it. Keep the whole message under 90 words. Never wrap anything in angle brackets.
 
-Keep the whole message under 180 words.
+7. Do not merge, close, comment on, or push to the PR. Do not post anything else to Slack. If you cannot read the PR or the release notes, still post the message with "could not read" in the Why line rather than guessing.
+
+Example of the target register (do not copy the facts, copy the tone):
+
+   eachie #143: pnpm/action-setup 4 → 5
+   Verdict: Merge. Risk: low.
+   Why: This only affects the tool that installs packages on GitHub's test machines; the app itself is untouched.
+   Tests: passed.
+   To act: reply here with @Claude merge eachie #143
+   https://github.com/khglynn/eachie/pull/143
