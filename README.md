@@ -138,7 +138,12 @@ end; the audit will flag it as `drift: still has its own private copy of the mer
 bin/audit
 ```
 
-Read-only, writes nothing, takes about 90 seconds across 39 repos (measured 2026-09-11). It prints a markdown table
+Read-only, writes nothing. About two and a half minutes across 40 repos (measured
+2026-09-14) — most of that is measuring Actions minutes, which costs roughly 1,600 API
+calls, a third of GitHub's hourly allowance. `bin/audit --skip-actions` does the
+enrolment half in about 40 seconds and spends almost nothing. If the hourly budget is
+already gone the audit says so and refuses to start, rather than printing a full table
+in which every repo reads "could not be read". It prints a markdown table
 with one row per repo and one **status** word at the end:
 
 - `enrolled` — updates land by themselves here
@@ -180,7 +185,7 @@ footnote for how close it is and why.
 It closes with one line beginning "To act:" — the single most useful thing to do that week.
 
 Two things it deliberately does **not** do: it never merges, closes or comments on
-anything, and it never sends a message when nothing is wrong beyond the one-line summary.
+anything, and on a quiet week it is three lines rather than a report about nothing.
 
 ### The columns, one line each
 
