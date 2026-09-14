@@ -168,7 +168,15 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   approve=$(jq -r "$APPROVE_JQ" <<< "$scan")
 
   # --- the repo's own settings
-  auto_merge=$(gh api "repos/$R" --jq '.allow_auto_merge' 2>/dev/null || echo "?")
+  # GraphQL, not the REST repository object: REST only includes `allow_auto_merge` for a
+  # caller with push access, and the weekly audit runs on a READ-ONLY fine-grained token,
+  # for which the field is simply absent. The first run on that token (2026-09-14 18:20)
+  # read every enrolled repo as "auto-merge is off" and told Kevin to finish setting up a
+  # repo that was finished. GraphQL's `autoMergeAllowed` answers the same question for a
+  # read-only caller. "?" (unknown, reported as such) only on a real failure.
+  auto_merge=$(gh api graphql -f query="{ repository(owner: \"${R%%/*}\", name: \"${R#*/}\") { autoMergeAllowed } }" \
+    --jq '.data.repository.autoMergeAllowed' 2>/dev/null || echo "?")
+  case "$auto_merge" in true|false) : ;; *) auto_merge="?" ;; esac
 
   # --- the file list (one call), which answers three questions at once
   # A failed or TRUNCATED listing would otherwise look identical to "this repo has no
