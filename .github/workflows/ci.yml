@@ -22,6 +22,10 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # Found by this repo's own `bin/audit` on the day the check shipped (2026-09-14): a
+    # job with no limit inherits GitHub's six-hour default, which is an eighth of the
+    # monthly private allowance for one hang. This job takes about a minute.
+    timeout-minutes: 10
     steps:
       # Both actions are pinned to a commit SHA, for the same reason the shared workflow
       # pins fetch-metadata: a tag can be moved to new code by whoever controls the repo,
@@ -46,7 +50,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           shellcheck bin/enroll bin/audit bin/classify-pr bin/lib/check-classifier.sh \
-                     bin/lib/check-workflow-hygiene.sh
+                     bin/lib/check-workflow-hygiene.sh bin/lib/check-audit.sh
           python3 -m py_compile bin/lib/*.py
 
       # The one rule that exists in two places and cannot be deduplicated: the shared
@@ -66,6 +70,13 @@ jobs:
       # stops finding things looks exactly like a good week. Fixtures tell them apart.
       - name: The workflow-hygiene warnings still fire (and still stay silent)
         run: bin/lib/check-workflow-hygiene.sh
+
+      # The two places bin/audit can lie quietly: the tree-readability predicate (whose
+      # previous form marked every repo unreadable for three days while printing a
+      # confident table) and the weekly digest's wording, which is the only output a
+      # person reads.
+      - name: The audit still tells the truth about a readable tree, and the digest reads right
+        run: bin/lib/check-audit.sh
 
       # A fixture run of the ecosystem detector: proves it still says what we think it says,
       # independently of any live repo. If this ever disagrees, enroll is about to write the
