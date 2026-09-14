@@ -152,6 +152,59 @@ with one row per repo and one **status** word at the end:
 
 That status column is the drift check. Run it monthly, or when something feels stale.
 
+### What the weekly digest tells you
+
+```bash
+bin/audit --digest
+```
+
+The same facts as the table, written for a person rather than a spreadsheet. This is what
+lands in `#dependabot` every Monday morning (the routine that posts it is described in
+[`routines/weekly-digest.md`](routines/weekly-digest.md)). It answers three questions and
+nothing else:
+
+**Is anything waiting for you?** How many repos keep themselves up to date, how many update
+pull requests are sitting open, and how old the oldest one is — then one line per repo that
+has something waiting.
+
+**Has anything quietly fallen out of the standard?** Any repo that is half set up gets its
+own line saying which half is missing. A week where nothing drifted has no such lines at
+all, which is the point.
+
+**Is the free build-time allowance about to run out?** Every private repo shares a pool of
+3,000 GitHub Actions minutes a month. The digest says roughly how many are gone and, at the
+current rate, the date they run out — so the answer arrives a week early rather than as
+builds failing on the 27th. The number is an estimate and says so; see the audit's own
+footnote for how close it is and why.
+
+It closes with one line beginning "To act:" — the single most useful thing to do that week.
+
+Two things it deliberately does **not** do: it never merges, closes or comments on
+anything, and it never sends a message when nothing is wrong beyond the one-line summary.
+
+### The columns, one line each
+
+| Column | What it means |
+|---|---|
+| `manifest` | This repo has something Dependabot could keep current — an app dependency file, or just GitHub Actions workflows (an action is a dependency too, and nobody updates those by hand) |
+| `dependabot.yml` | The per-repo file that asks for "there's a newer version" pull requests |
+| `stub` | `yes` = points at the shared merge rules here. `source` = this repo IS the rules. `inline` = a stale private copy, which is the drift this system exists to end |
+| `auto-merge` | The repo setting that lets a pull request merge itself once its checks pass |
+| `approve` | The repo setting "Allow GitHub Actions to create and approve pull requests". **With it off, the shared workflow's approval is refused** and every update pull request queues behind a review that can never arrive. It cost three list-maker pull requests on 2026-09-14; an enrolled repo without it is now drift, not a warning |
+| `required checks` | The check that has to be green before anything merges. No check means nothing auto-merges at all, on purpose |
+| `open bot PRs` | Dependabot pull requests sitting open right now, and the age of the oldest |
+| `mins (est)` | GitHub Actions minutes this billing month, **an estimate** — rebuilt from each job's start and finish, rounded up to the minute the way GitHub bills. Public repos are free and marked so. `⚠ capped` means the repo had more runs than were measured, so its number is low |
+
+And under the table, two **warnings** — which are not drift, and nothing about them is
+broken:
+
+- **A job with no time limit.** If it hangs it inherits GitHub's six-hour default, so one
+  stuck job can eat an eighth of the month's allowance while looking exactly like a job
+  that is still working. One line of YAML fixes it.
+- **A workflow that runs on both a branch push and the pull request.** Every commit on a
+  pull-request branch then runs it twice, for twice the minutes. Reported rather than
+  flagged, because some repos want a branch gate before a pull request exists.
+
 To ask about one specific pull request instead of the whole account:
 
 ```bash
@@ -266,7 +319,9 @@ endpoint is readable without admin.
 | `bin/enroll` | Enroll one repo. Idempotent. Opens a PR, never pushes to `main` |
 | `bin/audit` | Read-only status of every repo |
 | `bin/classify-pr` | Read-only. "What would the workflow do with this PR?" — answers it without waiting for a run |
-| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, and the two self-checks CI runs |
+| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, the Actions scanner and workflow-hygiene parser behind the audit's newer columns, and the four self-checks CI runs |
+| `bin/lib/fixtures/` | Worked examples the self-checks assert against — each file says at the top what it is supposed to prove |
+| `routines/` | The prompts for the scheduled Claude routines that post to `#dependabot`: a per-pull-request verdict, and the weekly digest |
 | `BUILD-LOG.md` | What was built and what was found, as it happened |
 
 **There are no secrets in this repo and there never will be.** It is public on purpose: a
