@@ -30,6 +30,17 @@ say "a truncated tree reads 'true'"  "$(echo '{"truncated":true,"tree":[]}'  | j
 say "an error body reads 'err'"      "$(echo '{"message":"Not Found"}'       | jq -r "$JQ")" "err"
 say "a non-object reads 'err'"       "$(echo '[]'                            | jq -r "$JQ")" "err"
 
+echo "--- 1b. the approve-switch predicate, same trap, also taken out of bin/audit"
+# `.approve // "?"` turned a legitimate **false** — the one value the drift rule looks
+# for — into "?", so the column would have read unknown on exactly the repos it exists
+# to catch. Any jq default over a field that can be `false` needs this shape.
+AJQ=$(grep '^APPROVE_JQ=' bin/audit | sed -e "s/^APPROVE_JQ='//" -e "s/'$//")
+if [ -z "$AJQ" ]; then echo "FAIL: could not find APPROVE_JQ in bin/audit"; exit 1; fi
+say "switch off reads 'false'"    "$(echo '{"approve":false}' | jq -r "$AJQ")" "false"
+say "switch on reads 'true'"      "$(echo '{"approve":true}'  | jq -r "$AJQ")" "true"
+say "unreadable reads '?'"        "$(echo '{"approve":null}'  | jq -r "$AJQ")" "?"
+say "absent reads '?'"            "$(echo '{}'                | jq -r "$AJQ")" "?"
+
 echo "--- 2. the digest"
 FIX=bin/lib/fixtures/audit/rows.jsonl
 DIGEST=$(python3 bin/lib/render-audit.py --mode digest --owner khglynn --since 2026-09-01 < "$FIX")

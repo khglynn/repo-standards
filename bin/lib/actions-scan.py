@@ -228,13 +228,14 @@ def scan_repo_phase1(client, name, default_branch, owner, since, cap):
         page += 1
         if page > 20:  # 2,000 runs in a month from one repo: stop and say so
             break
-    total = None
+    # `runs` is every run this month; `run_ids` is only the COMPLETED ones, which are the
+    # only ones with a final cost. So `runs > len(run_ids)` is the normal state whenever
+    # something is mid-flight and must not be read as "the cap was hit" — capped means
+    # exactly one thing: there were more completed runs than we agreed to measure.
     data, _ = client.get("repos/%s/actions/runs?created=%%3E%%3D%s&per_page=1" % (repo, since))
-    if isinstance(data, dict):
-        total = data.get("total_count")
-    if total is not None and total > len(out["run_ids"]):
-        out["runs"] = total
-        out["capped"] = True
+    if isinstance(data, dict) and data.get("total_count") is not None:
+        out["runs"] = data["total_count"]
+    out["capped"] = len(out["run_ids"]) >= cap
 
     # --- (c)+(d) the workflow files
     data, err = client.get("repos/%s/contents/.github/workflows" % repo)

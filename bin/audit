@@ -71,6 +71,13 @@ SINCE="$(date +%Y-%m-01)"
 # that test can extract and run the real thing rather than a retyped copy of it.
 TREE_STATE_JQ='if type=="object" and has("truncated") then (.truncated|tostring) else "err" end'
 
+# Same trap, same shape, and it bit again inside the hour: the approve switch is a
+# BOOLEAN, and `.approve // "?"` turns a perfectly good **false** into "?" — which is the
+# one value the drift rule below is looking for. The column would have read "?" and the
+# drift would never have fired, on exactly the repos the column was added to catch.
+# Any jq default over a field that can legitimately be `false` has to be written this way.
+APPROVE_JQ='if has("approve") and .approve != null then (.approve|tostring) else "?" end'
+
 # Preflight. An exhausted API budget does not make this tool fail — it makes it print a
 # full, confident, entirely empty report, every repo reading "could not read this repo's
 # file list". That happened on 2026-09-14. One call spent here is worth fifteen hundred
@@ -126,7 +133,7 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   printf '  %-55s\r' "$R" >&2
 
   scan=$(jq -c --arg n "$name" '.repos[$n] // {}' "$TMP/scan.json")
-  approve=$(jq -r '.approve // "?" | tostring' <<< "$scan")
+  approve=$(jq -r "$APPROVE_JQ" <<< "$scan")
 
   # --- the repo's own settings
   auto_merge=$(gh api "repos/$R" --jq '.allow_auto_merge' 2>/dev/null || echo "?")
@@ -235,7 +242,8 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
     '{name:$name, visibility:$visibility, pushed:$pushed, manifest:$manifest,
       dependabot:$dependabot, stub:$stub, auto_merge:$auto_merge, checks:$checks,
       prs:$prs, pr_count:$pr_count, pr_oldest_days:$pr_oldest_days,
-      approve:($scan.approve // null), approve_cell:$approve_cell,
+      approve:(if ($scan|has("approve")) then $scan.approve else null end),
+      approve_cell:$approve_cell,
       minutes:($scan.minutes // null), runs:($scan.runs // null),
       timed:($scan.timed // null), capped:($scan.capped // false),
       runners:($scan.runners // []),
