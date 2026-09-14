@@ -403,13 +403,25 @@ jobs:
           # pull requests" being off (Settings → Actions → General), which enroll now sets —
           # and on 2026-09-14 a masked failure here left three list-maker PRs queued for
           # auto-merge with a review requirement that could never be met.
-          approved_here=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --jq \
-            "[.[] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and (.user.login | test(\"github-actions\")))] | length")
+          # The event's head can be stale by the time we get here (a push during the run).
+          # Never approve a head we did not classify: re-read the live head and stop if it moved;
+          # the new push's own run will classify and approve that head.
+          live_head=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')
+          if [ "$live_head" != "$HEAD_SHA" ]; then
+            echo "::warning title=Head moved::classified $HEAD_SHA but the PR now points at $live_head; leaving this head to its own run"
+            exit 0
+          fi
+          # Count only this bot's APPROVED reviews on this exact head, across every page
+          # (--paginate --slurp merges pages into one array-of-arrays; .[][] flattens it).
+          approved_here=$(gh api --paginate --slurp "repos/$REPO/pulls/$PR_NUMBER/reviews" --jq \
+            "[.[][] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and .user.login == \"github-actions[bot]\" and .user.type == \"Bot\")] | length")
           if [ "${approved_here:-0}" -gt 0 ]; then
-            echo "approval: already approved by github-actions on $HEAD_SHA"
+            echo "approval: already approved by github-actions[bot] on $HEAD_SHA"
           else
-            if ! gh pr review --approve "$PR_URL"; then
-              echo "::error title=Cannot approve::gh pr review --approve failed. If the error says GitHub Actions is not permitted to approve pull requests, turn on 'Allow GitHub Actions to create and approve pull requests' under Settings → Actions → General (bin/enroll sets it), then re-run this workflow."
+            # POST the review with commit_id pinned, so the approval is bound to the classified
+            # head rather than to whatever the PR points at when the request lands.
+            if ! gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" -f event=APPROVE -f commit_id="$HEAD_SHA" --silent; then
+              echo "::error title=Cannot approve::creating the review failed. If the error says GitHub Actions is not permitted to approve pull requests, turn on 'Allow GitHub Actions to create and approve pull requests' under Settings → Actions → General (bin/enroll sets it), then re-run this workflow."
               exit 1
             fi
             echo "approval: approved $HEAD_SHA"
