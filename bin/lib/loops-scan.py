@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Open loops for `bin/audit`: the GitHub loose ends nothing else is watching.
 
-    printf 'eachie\\tmain\\tPRIVATE\\tfalse\\n' | bin/lib/loops-scan.py --owner khglynn
+    printf 'some-repo\\tmain\\tPRIVATE\\tfalse\\n' | bin/lib/loops-scan.py --owner khglynn
 
 Reads a TSV of `name<TAB>default_branch<TAB>visibility<TAB>is_fork` on stdin and prints one
 JSON object: the raw facts it read, the open loops derived from them, and — for every kind

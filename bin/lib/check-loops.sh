@@ -284,9 +284,9 @@ say "json: not checked"       "$(jq '.open_loops.checked' <<< "$JN")" "false"
 say "json: loops null, not []" "$(jq '.open_loops.loops' <<< "$JN")" "null"
 
 # The stub rollout column: a stub without `checks: read` is named in the table.
-BLIND=$(jq -c 'if .name=="eachie" then .stub_watch=false else . end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
+BLIND=$(jq -c 'if .name=="patchwork" then .stub_watch=false else . end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
 has "table names a stub that cannot see a failed test" "$BLIND" "**Stubs that cannot see a failed test**"
-has "…and which repo" "$BLIND" "\`eachie\`"
+has "…and which repo" "$BLIND" "\`patchwork\`"
 hasnt "…and says nothing when every stub can" "$(render --mode table --loops "$FX/none.json" <<< "$QUIET")" "Stubs that cannot see"
 
 echo "--- 4. the workflow's watch rule, taken straight out of the shared workflow"
