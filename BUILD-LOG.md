@@ -1843,3 +1843,34 @@ post, no stub rewritten in any other repo, no routine edited.
   gains Dependabot alerts: read.
 - That a `dependabot-ci-failed` label fires a verdict routine once its filter includes it (the
   same mechanism already fires for the workflow's other labels).
+
+### Same day, later — the watch ships OFF by default (the coordinator's call)
+
+Merging this must be purely additive: the audit and digest land, and every enrolled repo's
+Dependabot run behaves exactly as before. Reasons: private Actions minutes were already past
+the 3,000 allowance that month; the digest's open loops already list red queued updates
+(both of today's) every Monday; and turning the watch on needs two other steps (the stub
+permission lines and the routine label filter) that should not be preconditions for merging
+the audit. So:
+- `watch-minutes` defaults to **0**. Step 7 is skipped unless a stub sets it.
+- The job ceiling is `${{ inputs.watch-minutes > 0 && 25 || 10 }}` — still 10 minutes for
+  every repo that has not opted in. (Expressions have no arithmetic; `+ 10` fails actionlint.)
+- The `dependabot-ci-failed` label is created only where the watch is on, so an off run
+  creates exactly the labels it did before.
+- The stub template grants the same three scopes as before; `checks: read` and
+  `statuses: read` ship commented out next to `watch-minutes`, as the recipe. The self-stub
+  drops them too. `check-templates.py` allows exactly the three scopes.
+- The audit's stub column is now `off` / `on` / `blind`; only `blind` (watch on, reads
+  missing) is named in the table.
+- To turn it on in one repo: uncomment the two read lines, set `watch-minutes: 10`, and add
+  `dependabot-ci-failed` to that repo's verdict routine filter. README spells it out.
+- The only behaviour change left in an off repo: step 6's advisory "stale and red" LOG line
+  now matches required-check names exactly (a comma in a name used to split it) and counts
+  cancelled/stale/startup-failure as red, like the rest. With the default
+  `stale-strategy: none` that is a log line and nothing else.
+- `check-loops.sh`: 132 assertions, including that the default is 0, the ceiling expression,
+  the gated label, and the three-scope template.
+
+Revised unverified list for the watch: it has never run live and will not until a repo opts
+in; whether the workflow token reads a PUBLIC repo's check runs without `checks: read` also
+waits for that. Everything else in the list above stands.

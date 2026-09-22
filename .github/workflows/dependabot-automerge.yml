@@ -32,15 +32,18 @@
 # the PR behind a check that will never report again. Anything that needs CI to re-run
 # has to come from Dependabot's own push. See step 6.
 #
-# AND THE GAP THAT RULE LEFT (closed 2026-09-22, step 7): this workflow runs when the PR
-# opens, seconds before its tests finish. When a patch/minor update then went RED, nothing
-# ever ran again: auto-merge stayed queued forever, no label was applied, so no verdict
-# reached Slack — one grouped update sat that way for six days, invisible. Step 7 now waits
-# (a bounded number of minutes) for the required checks and labels a failure
+# AND THE GAP THAT RULE LEFT (step 7, added 2026-09-22, OFF BY DEFAULT): this workflow
+# runs when the PR opens, seconds before its tests finish. When a patch/minor update then
+# went RED, nothing ever ran again: auto-merge stayed queued forever, no label was applied,
+# so no verdict reached Slack — one grouped update sat that way for six days, invisible.
+# Step 7 can wait (a bounded number of minutes) for the required checks and label a failure
 # `dependabot-ci-failed`, which the verdict routines pick up like the other labels. It has
 # to happen inside THIS run: GitHub never starts a workflow for a check that GitHub Actions
 # itself reported (the `check_run`/`check_suite` recursion rule), so there is no later
-# event to hang it on.
+# event to hang it on. It ships switched off — `watch-minutes: 0` — because waiting costs
+# private runner minutes and the account was already past its allowance that month, and
+# because the weekly audit's open loops list red queued updates anyway. A repo opts in
+# from its stub; see the `watch-minutes` input below for the three steps.
 
 name: dependabot-automerge (reusable)
 
@@ -105,11 +108,14 @@ on:
         default: dependabot-ci-failed
       watch-minutes:
         description: >-
-          After queueing auto-merge, how long to wait for the required checks so a failure
-          can be labelled (0 turns the watch off, 15 at most). Waiting costs runner minutes
-          on a private repo: about two extra per update PR at the measured check times.
+          OFF BY DEFAULT (0). After queueing auto-merge, how long to wait for the required
+          checks so a failure can be labelled `label-ci-failed` (15 at most). Waiting costs
+          runner minutes on a private repo: about two extra per update PR at the check
+          times measured 2026-09-22. To turn it on in one repo: add `checks: read` and
+          `statuses: read` to that repo's stub permissions, set this in its `with:` block
+          (10 is plenty), and add dependabot-ci-failed to its verdict routine's label filter.
         type: number
-        default: 10
+        default: 0
 
 # NO `permissions:` BLOCK HERE, ON PURPOSE (2026-09-22). A called workflow may only narrow
 # what its caller granted — and asking for one scope the caller did NOT grant is not a
@@ -119,9 +125,10 @@ on:
 # here would have broken every one of those repos at once. So the caller decides, and this
 # job runs with exactly what the stub grants:
 #   contents: write, pull-requests: write, issues: write   — every stub (approve, merge, label)
-#   checks: read, statuses: read                           — stubs stamped from 2026-09-22 on
-# With an older stub, step 7 cannot read the checks on a private repo; it says so in the
-# log and changes nothing. Add the two lines to that repo's stub to turn it on.
+#   checks: read, statuses: read                           — only a stub that turns step 7 on
+# With the watch on and those two missing, step 7 cannot read the checks on a private repo;
+# it says so in the log and changes nothing. With the watch off (the default) this job
+# runs with the same three scopes, and does the same things, as before 2026-09-22.
 
 jobs:
   automerge:
@@ -133,9 +140,10 @@ jobs:
     # private allowance for one stuck run, in every enrolled repo at once. This job makes
     # a handful of API calls and never waits on anything; ten minutes is generous. Found by
     # this repo's own bin/audit the day the timeout check shipped (2026-09-14).
-    # Raised to 25 on 2026-09-22: step 7 now waits up to `watch-minutes` (15 at most) for
-    # the required checks. Everything else still takes well under two minutes.
-    timeout-minutes: 25
+    # Since 2026-09-22 the ceiling follows step 7: still 10 for every repo that has not
+    # turned the watch on (the default), 25 for one that has (`watch-minutes` is 15 at
+    # most). Expressions have no arithmetic, hence the `&& ||` choice between the two.
+    timeout-minutes: ${{ inputs.watch-minutes > 0 && 25 || 10 }}
     # One run per pull request. A Dependabot PR can fire `synchronize` several times in a
     # row (each rebase is a new push); queuing them serially avoids two runs racing to
     # enable auto-merge on the same PR. NOTE: GitHub keeps at most ONE pending run per
@@ -218,8 +226,14 @@ jobs:
           create "$LABEL_UNPARSED"  "b60205" "Auto-merge could not classify this update (or the run broke)"
           create "$LABEL_NO_CI"     "fbca04" "No required status check on the base branch, so nothing was auto-merged"
           create "$LABEL_OPTED_OUT" "c5def5" "Classified fine, but this repo opted out of auto-merging that tier"
-          create "$LABEL_CI_FAILED" "e99695" "Queued to merge, but a required check failed — it will not merge until fixed"
-          echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT, $LABEL_CI_FAILED"
+          # Only where the watch is on: with it off (the default) this step creates exactly
+          # the labels it created before 2026-09-22, so a repo sees no new label it cannot get.
+          if [ "$IN_WATCH_MINUTES" -gt 0 ]; then
+            create "$LABEL_CI_FAILED" "e99695" "Queued to merge, but a required check failed — it will not merge until fixed"
+            echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT, $LABEL_CI_FAILED"
+          else
+            echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT"
+          fi
 
       # ---------------------------------------------------------------------------------
       # 2. Read what Dependabot is actually proposing.
@@ -585,7 +599,11 @@ jobs:
           fi
 
       # ---------------------------------------------------------------------------------
-      # 7. Watch the required checks, and label the PR if one FAILS.
+      # 7. Watch the required checks, and label the PR if one FAILS. OFF BY DEFAULT.
+      #
+      # Runs only where a repo's stub sets `watch-minutes` above 0 (see that input for the
+      # three steps that turn it on). Everywhere else this step is skipped and the run is
+      # exactly what it was before 2026-09-22.
       #
       # Auto-merge is already queued (step 5), so a green result needs nothing from us and
       # a red one would otherwise sit queued forever with nobody told. This polls the PR's
@@ -742,7 +760,7 @@ jobs:
             moved) echo "the PR's head moved during the watch — its own run will watch the new head" ;;
             gone)  echo "the PR is no longer open (merged or closed) — nothing to watch" ;;
             *)
-              echo "::warning title=Checks unreadable::Could not read this PR's check results. On a private repo that usually means this repo's automerge stub predates 2026-09-22: add 'checks: read' and 'statuses: read' to its permissions block."
+              echo "::warning title=Checks unreadable::Could not read this PR's check results. On a private repo that usually means this repo's automerge stub turns the watch on without granting 'checks: read' and 'statuses: read' in its permissions block."
               ;;
           esac
           exit 0

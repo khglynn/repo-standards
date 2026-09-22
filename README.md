@@ -2,7 +2,7 @@
 
 **One place that decides how dependency updates work across all of Kevin's repos.**
 
-Last verified: 2026-09-22 (open loops and the failed-test watch added that day).
+Last verified: 2026-09-22 (open loops added that day, and a failed-test watch that ships switched off).
 
 ---
 
@@ -45,7 +45,7 @@ Each repo keeps a ten-line file that points at it. Fix a rule here, every repo g
 | Major bump (`1.2.3 → 2.0.0`) | Labelled `major-review-needed`, waits for you |
 | A mix it can't classify | Labelled `dependabot-needs-human`, waits for you |
 | Anything, in a repo with no CI | Labelled `no-ci-gate`, waits for you, with a comment saying why |
-| A patch or minor whose tests then **fail** | Stays queued, and is labelled `dependabot-ci-failed` so the verdict routine tells you (since 2026-09-22) |
+| A patch or minor whose tests then **fail** | Stays queued. Listed in the Monday digest's open loops; labelled `dependabot-ci-failed` at once only in a repo that has turned the watch on (off by default, since 2026-09-22) |
 
 Two deliberate details behind that table:
 
@@ -59,12 +59,26 @@ instead.
 **A queued update whose tests go red is said out loud.** The workflow runs when the pull
 request opens, seconds before its tests finish, so until 2026-09-22 a patch or minor update
 that then went red simply sat there: auto-merge queued, GitHub waiting forever, no label, no
-message. One grouped update did that for six days. Now the workflow waits for the required
-checks (ten minutes at most by default) and labels a failure `dependabot-ci-failed`; a
-later push that is not seen failing takes the label off. (A failed job re-run to green
-without a push starts no run, so there the label stays until removed by hand.) On a private repo the wait costs runner
-time — about two extra minutes per update pull request at the check times measured that day —
-and `watch-minutes: 0` in a repo's stub turns it off.
+message. One grouped update did that for six days. Now the Monday digest lists every such
+update under its open loops. For a same-day message there is also a **failed-test watch,
+OFF by default**: the workflow waits for the required checks and labels a failure
+`dependabot-ci-failed`, which a verdict routine then posts about. It ships off because the
+wait costs private runner time — about two extra minutes per update pull request at the
+check times measured that day, in a month the account was already past its allowance — and
+because the digest already catches these weekly. With it off, the shared workflow does
+exactly what it did before 2026-09-22.
+
+To turn it on in one repo, all three:
+1. in that repo's `.github/workflows/dependabot-automerge.yml`, uncomment `checks: read`
+   and `statuses: read` under `permissions:` (on a private repo the watch cannot see a
+   result without them);
+2. in the same file's `with:` block, set `watch-minutes: 10` (15 at most);
+3. add `dependabot-ci-failed` to that repo's verdict routine's "Labels is one of" filter
+   (see `routines/dependabot-verdict.md`).
+
+A later push that is not seen failing takes the label off. (A failed job re-run to green
+without a push starts no run, so there the label stays until removed by hand.) The audit
+table names any stub that turns the watch on without the two read lines.
 
 **A grouped PR has to be clean all the way through.** Dependabot's own metadata action
 publishes a convenient single "update type" for a PR — but that value is the *maximum*
@@ -478,12 +492,13 @@ endpoint is readable without admin.
 A called workflow can only narrow what its caller granted, and asking for a scope the caller
 did not grant is not a narrowing — the run fails to start ("the nested job is requesting
 'checks: read', but is only allowed 'checks: none'"). The failed-test watch needs
-`checks: read` and `statuses: read`, which no stub enrolled before that day grants, so
-declaring them in the shared file would have stopped every enrolled repo at once. The shared
-file now declares nothing and inherits the stub's grant exactly. Stubs stamped from
-`templates/caller-stub.yml` from that day carry the two read lines; an older stub keeps
-working as before and its watch says in the log that it cannot see the checks. `enroll`
-never rewrites an existing stub, so the audit table names each stub still missing them.
+`checks: read` and `statuses: read`, which no enrolled stub grants, so declaring them in the
+shared file would have stopped every enrolled repo at once. The shared file now declares
+nothing and inherits the stub's grant exactly — which, for every stub as it stands, is the
+same three scopes it always ran with. `templates/caller-stub.yml` carries the two read lines
+commented out, next to `watch-minutes`, for a repo that turns the watch on. Because the
+shared file no longer caps anything, the template check allows exactly those three scopes,
+and the audit table names a stub that grants more.
 
 **2026-09-22 — the failed-test watch waits inside the run, because nothing later can start
 one.** A `check_run` or `check_suite` event is never delivered to a workflow for a check
@@ -491,13 +506,16 @@ GitHub Actions itself created (GitHub Docs, *Events that trigger workflows*), an
 enrolled gate but one is an Actions job. `workflow_run` would need each repo's workflow
 names written into its stub, and `status` would start a run for every commit status on every
 branch. Waiting a bounded few minutes in the run that queued the merge costs the check's own
-duration in runner time and needs only the two permission lines.
+duration in runner time and needs only the two permission lines. Shipped OFF by default the
+same day (the coordinator's call): merging it changes nothing until a repo opts in, and the
+job's ceiling stays 10 minutes there.
 
-**⚠ Still unverified (2026-09-22): the watch has never run live.** It only runs from `main`,
-so its first real test is the first patch or minor update after this merges. Its decision
-rule was run against real pull requests (a red queued update reads `failed:<check>`, a green
-one `passed`, a moved head `moved`); what has not been seen is the workflow's own token
-reading checks with the new stub grant, or the label reaching a verdict routine.
+**⚠ Still unverified (2026-09-22): the watch has never run live.** It is off by default and
+only runs from `main`, so its first real test is the first patch or minor update in a repo
+that turns it on. Its decision rule was run against real pull requests (a red queued update
+reads `failed:<check>`, a green one `passed`, a moved head `moved`); what has not been seen
+is the workflow's own token reading checks with the two read lines granted, or the label
+reaching a verdict routine.
 
 ---
 

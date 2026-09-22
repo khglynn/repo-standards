@@ -19,12 +19,8 @@ permissions:
   contents: write        # enable auto-merge
   pull-requests: write   # approve, label, comment
   issues: write          # create the labels (labels are an Issues-API object)
-  checks: read           # read the tests' results, to label an update whose tests failed
-  statuses: read         # …and the commit statuses some gates report as (Vercel)
   # The shared workflow runs with exactly what this block grants — it declares none of its
-  # own, because a called workflow that asks for a scope its caller withheld fails to start.
-  # The two `read` lines were added 2026-09-22; a stub without them still works, it just
-  # cannot see a failed test to label it (the weekly audit still lists those).
+  # own. The failed-test watch is off here (as by default), so no read scopes are needed.
 
 jobs:
   automerge:

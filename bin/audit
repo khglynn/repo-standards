@@ -234,9 +234,9 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   # tool cannot recognise. Reading every workflow in every repo to be sure would cost a
   # call per file across the account for a case that has never occurred.
   has_stub=no
-  # Whether the stub lets the shared workflow READ test results (`checks: read`), which its
-  # failed-test watch needs on a private repo. Stubs stamped before 2026-09-22 do not, and
-  # enroll never rewrites an existing stub, so this column is how that rollout is tracked.
+  # The failed-test watch (off by default since 2026-09-22): "off", "on", or "blind" — turned
+  # on in the stub's `with:` block but without the `checks: read` + `statuses: read` it needs
+  # to see anything on a private repo. Only "blind" is a problem, and the table names it.
   stub_watch=null
   # Whether the stub grants more than the shared workflow uses. Since 2026-09-22 the shared
   # workflow declares no permissions and runs on exactly the stub's grant, so a hand-edited
@@ -255,12 +255,14 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
       # Both reads (or broader) must be granted; checks without statuses still leaves a
       # Vercel-style gate unreadable. A stub with no top-level permissions block at all
       # hands the job the repo's default token, which may be anything — "broad".
-      if grep -qE '^permissions:[[:space:]]*(read|write)-all' <<< "$content" \
+      if ! grep -qE '^[[:space:]]+watch-minutes:[[:space:]]*0*[1-9]' <<< "$content"; then
+        stub_watch='"off"'
+      elif grep -qE '^permissions:[[:space:]]*(read|write)-all' <<< "$content" \
          || { grep -qE '^[[:space:]]+checks:[[:space:]]*(read|write)' <<< "$content" \
               && grep -qE '^[[:space:]]+statuses:[[:space:]]*(read|write)' <<< "$content"; }; then
-        stub_watch=true
+        stub_watch='"on"'
       else
-        stub_watch=false
+        stub_watch='"blind"'
       fi
       if ! grep -qE '^permissions:' <<< "$content" || grep -qE '^permissions:[[:space:]]*write-all' <<< "$content" \
          || grep -qE '^[[:space:]]+(actions|deployments|packages|pages|security-events|id-token|repository-projects|discussions|attestations|models):[[:space:]]*write' <<< "$content"; then

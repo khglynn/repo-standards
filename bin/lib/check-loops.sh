@@ -430,11 +430,12 @@ JN=$(render --mode json <<< "$QUIET")
 say "json: not checked"       "$(jq '.open_loops.checked' <<< "$JN")" "false"
 say "json: loops null, not []" "$(jq '.open_loops.loops' <<< "$JN")" "null"
 
-# The stub rollout column: a stub without `checks: read` is named in the table.
-BLIND=$(jq -c 'if .name=="patchwork" then .stub_watch=false else . end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
-has "table names a stub that cannot see a failed test" "$BLIND" "**Stubs that cannot see a failed test**"
-has "…and which repo" "$BLIND" "\`patchwork\`"
-hasnt "…and says nothing when every stub can" "$(render --mode table --loops "$FX/none.json" <<< "$QUIET")" "Stubs that cannot see"
+# The watch column: a stub that turns the watch ON without the two reads is named; one
+# that leaves it off (the default) is not a problem and is never mentioned.
+BLIND=$(jq -c 'if .name=="patchwork" then .stub_watch="blind" else .stub_watch="off" end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
+has "table names a stub whose watch is on but blind" "$BLIND" "**Failed-test watch turned on but blind:** \`patchwork\`"
+hasnt "…and says nothing about stubs that leave it off" \
+    "$(jq -c '.stub_watch="off"' <<< "$QUIET" | render --mode table --loops "$FX/none.json")" "watch turned on"
 BROAD=$(jq -c 'if .name=="patchwork" then .stub_broad=true else . end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
 has "table names a stub that grants more than the workflow uses" "$BROAD" "**Stubs that grant more than the workflow uses:** \`patchwork\`"
 
@@ -496,8 +497,25 @@ say "step 6 counts exactly HARD + SOFT as red" "$STEP6" "$(printf '%s %s' "$(lis
 if grep -qE '^[[:space:]]*permissions:' "$WF"; then
   nope "the shared workflow declares permissions again — every older stub would fail to start"
 else pass "the shared workflow inherits its permissions from the stub"; fi
-say "the stub template grants what the watch reads" \
-    "$(python3 -c 'import yaml;p=yaml.safe_load(open("templates/caller-stub.yml"))["permissions"];print(p.get("checks"),p.get("statuses"))')" "read read"
+# OFF BY DEFAULT (2026-09-22): merging the shared workflow must change nothing in a repo
+# that has not opted in. The default is 0, the job's ceiling is still 10 minutes there, the
+# new label is only created where the watch is on, and the template grants no new scope.
+say "the watch is off by default" \
+    "$(python3 -c 'import yaml;d=yaml.safe_load(open(".github/workflows/dependabot-automerge.yml"));print((d.get("on") or d.get(True))["workflow_call"]["inputs"]["watch-minutes"]["default"])')" "0"
+# shellcheck disable=SC2016  # the ${{ }} and $IN_WATCH_MINUTES below are literal workflow text
+say "…the job ceiling is 10 when it is off and 25 when it is on" \
+    "$(grep -E '^[[:space:]]+timeout-minutes:' "$WF" | sed 's/^[[:space:]]*//')" \
+    'timeout-minutes: ${{ inputs.watch-minutes > 0 && 25 || 10 }}'
+# shellcheck disable=SC2016  # literal workflow text, not shell expansions
+if grep -qE 'if \[ "\$IN_WATCH_MINUTES" -gt 0 \]; then' "$WF" \
+   && [ "$(grep -c 'create "$LABEL_CI_FAILED"' "$WF")" = "1" ]; then
+  pass "…the new label is created only where the watch is on"
+else nope "the dependabot-ci-failed label is created even with the watch off"; fi
+say "…and the stub template grants only the three scopes it always did" \
+    "$(python3 -c 'import yaml;print(" ".join(sorted(yaml.safe_load(open("templates/caller-stub.yml"))["permissions"])))')" \
+    "contents issues pull-requests"
+say "…while keeping the recipe to turn the watch on, commented out" \
+    "$(grep -cE '^[[:space:]]+# (checks|statuses): read' templates/caller-stub.yml)" "2"
 
 echo
 if [ "$fail" = "0" ]; then echo "check-loops: $ASSERTIONS assertions, 0 failures."

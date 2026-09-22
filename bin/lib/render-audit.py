@@ -345,13 +345,14 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
               "to the five in `templates/caller-stub.yml`." % ", ".join("`%s`" % n for n in broad),
               file=out)
         print(file=out)
-    blind = [r["name"] for r in rows if r.get("stub_watch") is False]
+    blind = [r["name"] for r in rows if r.get("stub_watch") == "blind"]
     if blind:
-        print("**Stubs that cannot see a failed test** (no `checks: read`, stamped before "
-              "2026-09-22): %s. A Dependabot update whose tests fail there is not labelled; "
-              "the open-loops list below still catches it weekly. Fix: add `checks: read` and "
-              "`statuses: read` to that repo's `.github/workflows/dependabot-automerge.yml`, as "
-              "in `templates/caller-stub.yml`." % ", ".join("`%s`" % n for n in blind), file=out)
+        print("**Failed-test watch turned on but blind:** %s. The stub sets `watch-minutes` "
+              "but does not grant `checks: read` and `statuses: read`, so on a private repo "
+              "the watch cannot see a result and labels nothing (the open-loops list below "
+              "still catches a red update weekly). Fix: uncomment those two lines in that "
+              "repo's `.github/workflows/dependabot-automerge.yml`, as `templates/caller-stub.yml` "
+              "shows." % ", ".join("`%s`" % n for n in blind), file=out)
         print(file=out)
 
     missing, double, unparsed = warn_lines(rows)

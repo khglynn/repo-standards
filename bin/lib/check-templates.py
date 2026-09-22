@@ -34,15 +34,15 @@ def check_caller_stub() -> None:
     perms = doc.get("permissions", {})
     for needed in ("contents", "pull-requests", "issues"):
         check(perms.get(needed) == "write", f"caller-stub.yml: needs `{needed}: write`")
-    # The shared workflow declares no permissions of its own (2026-09-22) and inherits these;
-    # without the two reads its check watch is blind on a private repo.
-    for needed in ("checks", "statuses"):
-        check(perms.get(needed) == "read", f"caller-stub.yml: needs `{needed}: read`")
-    # …and NOTHING beyond these five. Before that date the shared workflow capped whatever a
-    # stub granted at three scopes; now the stub's grant IS the job's token, so an extra
-    # scope here is an extra scope in every enrolled repo.
-    extra = sorted(set(perms) - {"contents", "pull-requests", "issues", "checks", "statuses"})
-    check(not extra, f"caller-stub.yml: grants more than the workflow uses: {extra}")
+    # …and NOTHING beyond those three. The shared workflow declares no permissions of its own
+    # (2026-09-22), so the stub's grant IS the job's token: an extra scope here is an extra
+    # scope in every repo enrolled from this template. The failed-test watch's two reads
+    # ship commented out, like the watch itself.
+    extra = sorted(set(perms) - {"contents", "pull-requests", "issues"})
+    check(not extra, f"caller-stub.yml: grants more than the default workflow uses: {extra}")
+    text = path.read_text()
+    for recipe in ("# checks: read", "# statuses: read", "watch-minutes:"):
+        check(recipe in text, f"caller-stub.yml: lost the commented recipe line `{recipe}`")
     uses = doc.get("jobs", {}).get("automerge", {}).get("uses", "")
     check("khglynn/repo-standards/.github/workflows/dependabot-automerge.yml" in uses,
           "caller-stub.yml: no longer points at the shared workflow")

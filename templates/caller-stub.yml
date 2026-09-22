@@ -22,12 +22,10 @@ permissions:
   contents: write        # enable auto-merge
   pull-requests: write   # approve, label, comment
   issues: write          # create the labels (labels are an Issues-API object)
-  checks: read           # read the tests' results, to label an update whose tests failed
-  statuses: read         # …and the commit statuses some gates report as (Vercel)
+  # checks: read         # } uncomment BOTH only to turn on the failed-test watch
+  # statuses: read       # } (`watch-minutes` below); it cannot see test results without them
   # The shared workflow runs with exactly what this block grants — it declares none of its
   # own, because a called workflow that asks for a scope its caller withheld fails to start.
-  # The two `read` lines were added 2026-09-22; a stub without them still works, it just
-  # cannot see a failed test to label it (the weekly audit still lists those).
 
 jobs:
   automerge:
@@ -46,7 +44,9 @@ jobs:
     #   merge-method: merge            # squash (default) | merge | rebase
     #   require-ci: true               # never auto-merge on a branch with no required check. Leave true.
     #   stale-strategy: comment        # none (default) | comment — what to do with a PR that is behind main AND red
-    #   watch-minutes: 0               # 10 (default) | 0-15 — how long to wait for the tests so a failure gets labelled
+    #   watch-minutes: 10              # 0 (default, off) | 1-15 — wait for the tests and label a failure dependabot-ci-failed.
+    #                                  # Turning it on takes three things: this line, the two permission lines above, and
+    #                                  # dependabot-ci-failed in this repo's verdict routine label filter. Costs ~2 private minutes per update PR.
     #   label-major: major-review-needed
     #   label-unparsed: dependabot-needs-human
     #   label-no-ci: no-ci-gate
