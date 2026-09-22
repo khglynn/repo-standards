@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # audit — one read-only picture of where every repo stands.
 #
-#   bin/audit [--owner khglynn] [--json | --digest] [--cap 300] [--skip-actions]
+#   bin/audit [--owner khglynn] [--json | --digest] [--cap 300] [--skip-actions] [--skip-loops]
+#                 [--word-cap 150]
 #
 #   (no flag)       the markdown table: one row per repo, one status word at the end
 #   --digest        the weekly Slack block, in plain English, for a person
@@ -10,6 +11,16 @@
 #   --skip-actions  no Actions calls at all: no approve column, no minutes, no warnings.
 #                   Much faster when all you want is the enrolment picture. Every output
 #                   then says those things were NOT MEASURED rather than reporting zero.
+#   --word-cap N    the digest's ceiling in words (default 150). The two lists give way
+#                   to it; the notes never do.
+#   --skip-loops    no open-loops scan (bin/lib/loops-scan.py). Every output then says the
+#                   open loops were NOT CHECKED, rather than showing an empty list.
+#
+# OPEN LOOPS (added 2026-09-22): open pull requests older than a week in any repo and the
+# one reason each is stuck; Dependabot updates queued to merge behind a failed check; branch
+# rules that still demand an approving review; security fixes that are switched on and never
+# run. About 250 more API calls. See bin/lib/loops-scan.py for what each one means and what
+# the weekly run's read-only token cannot see.
 #
 # Reads nothing but the GitHub API and writes nothing anywhere. Safe to run any time,
 # from any machine. Written 2026-09-11; Actions columns and the digest added 2026-09-14
@@ -49,6 +60,8 @@ OWNER="khglynn"
 MODE="table"
 CAP=300
 SKIP_ACTIONS=no
+SKIP_LOOPS=no
+WORD_CAP=150
 STD_PATH="khglynn/repo-standards/.github/workflows/dependabot-automerge.yml"
 
 while [ $# -gt 0 ]; do
@@ -58,6 +71,8 @@ while [ $# -gt 0 ]; do
     --digest) MODE="digest"; shift ;;
     --cap) CAP="${2:-300}"; shift 2 ;;
     --skip-actions) SKIP_ACTIONS=yes; shift ;;
+    --skip-loops) SKIP_LOOPS=yes; shift ;;
+    --word-cap) WORD_CAP="${2:-150}"; shift 2 ;;
     # The header block itself, not a hard-coded line range: bin/enroll's identical range
     # silently truncated its help mid-sentence the moment its header grew (2026-09-14).
     -h|--help) awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "${BASH_SOURCE[0]}"; exit 0 ;;
@@ -113,6 +128,10 @@ else
   NEED=$(( 200 + CAP * 5 ))     # 5 is a generous busy-repo count; 300 → the familiar 1,600
   if [ "$NEED" -gt 1600 ]; then NEED=1600; fi
 fi
+# The open-loops scan, measured 2026-09-22 against this account: about 250 calls (one rules
+# read and up to three security reads per repo, plus the checks of the pull requests that
+# could be loops). 300 leaves room for a busier week.
+if [ "$SKIP_LOOPS" = "no" ]; then NEED=$(( NEED + 300 )); fi
 if pf=$(python3 "$HERE/bin/lib/actions-scan.py" --owner "$OWNER" --preflight --need "$NEED" 2>/dev/null); then
   :
 else
@@ -121,8 +140,8 @@ else
       read -r _ left when <<< "$pf"
       echo "GitHub's hourly API budget is too low (${left:-0} calls left). This run needs" >&2
       echo "about $NEED. Come back after ${when:-the reset}, or spend less now:" >&2
-      echo "  bin/audit --skip-actions   the enrolment half only, about 200 calls" >&2
-      echo "  bin/audit --cap 30         a sampled minutes estimate, about 350" >&2
+      echo "  bin/audit --skip-actions --skip-loops   the enrolment half only, about 200 calls" >&2
+      echo "  bin/audit --cap 30 --skip-loops         a sampled minutes estimate, about 350" >&2
       exit 2 ;;
   esac
 fi
@@ -298,6 +317,26 @@ done <<< "$repos"
 
 printf '                                             \r' >&2
 
+# --- the open loops. After the repo loop rather than inside it: they need every repo's
+# rules and the account's open pull requests at once, and the scanner does both
+# concurrently. A failed scan is NOT an empty list — the renderer is told "skipped" or
+# handed a file whose own `measured` block says what went unread.
+loops_arg="skipped"
+if [ "$SKIP_LOOPS" = "no" ]; then
+  echo "Looking for open loops (stale pull requests, review rules, silent security fixes)…" >&2
+  # A plain string, not an array: an empty array under `set -u` is an "unbound variable"
+  # on the bash 3.2 macOS still ships as /bin/bash.
+  no_actions=""
+  if [ "$SKIP_ACTIONS" = "yes" ]; then no_actions="--no-actions"; fi
+  if printf '%s\n' "$repos" | awk -F'\t' 'NF{print $1"\t"$4"\t"$2"\t"$5}' \
+       | python3 "$HERE/bin/lib/loops-scan.py" --owner "$OWNER" ${no_actions:+"$no_actions"} \
+       > "$TMP/loops.json"; then
+    loops_arg="$TMP/loops.json"
+  else
+    echo "open-loops scan failed; the output will say they were not checked" >&2
+  fi
+fi
+
 # How the minutes were measured — and, when they were not, WHICH kind of not. The
 # renderer refuses to print a figure for "skipped" or "none", because the alternative is
 # what `--digest --skip-actions` printed on 2026-09-14: "about 0 minutes of the free 3,000
@@ -311,4 +350,5 @@ fi
 note=$(jq -r '.note // ""' "$TMP/scan.json")
 
 python3 "$HERE/bin/lib/render-audit.py" --mode "$MODE" --owner "$OWNER" \
-        --since "$SINCE" --cap "$CAP" --method "$method" --note "$note" < "$TMP/rows.jsonl"
+        --since "$SINCE" --cap "$CAP" --method "$method" --note "$note" \
+        --loops "$loops_arg" --word-cap "$WORD_CAP" < "$TMP/rows.jsonl"

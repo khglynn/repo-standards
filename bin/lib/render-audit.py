@@ -233,7 +233,8 @@ def parsers_used(rows):
 
 
 # ------------------------------------------------------------------ the table
-def render_table(rows, owner, since, cap, out, method="jobs", note="", today=None):
+def render_table(rows, owner, since, cap, out, method="jobs", note="", today=None,
+                 loops=None):
     c = counts(rows)
     m = minutes_picture(rows, since, method, today)
     print("# Repo standards audit — %s" % m["today"].isoformat(), file=out)
@@ -365,6 +366,8 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
               % (used["pyyaml"], "repo" if used["pyyaml"] == 1 else "repos"), file=out)
         print(file=out)
 
+    render_loops_table(loops if loops is not None else {"state": "absent"}, out)
+
     errs = [(r["name"], r["errors"]) for r in rows if r.get("errors")]
     if errs:
         print("**Could not read:**", file=out)
@@ -394,6 +397,267 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
           "<check>`._" % owner, file=out)
 
 
+# ------------------------------------------------------------------ open loops
+# The loose ends bin/lib/loops-scan.py finds (2026-09-22): pull requests older than a week
+# and why each is stuck, Dependabot updates queued to merge behind a failed check, branch
+# rules that still demand an approving review, and security fixes that are switched on and
+# never run. The scanner decides WHAT is a loop; this file decides only how it reads.
+LOOP_LINES = 5   # most numbered loop lines the digest prints before "and N more"
+
+# One phrase per reason a pull request is not merging. Plain words: the digest is read by
+# someone who should not need to know what a status check or a ruleset is.
+PR_STATE = {
+    "ready": "ready to merge",
+    "conflicting": "has a merge conflict",
+    "checks-failing": "its tests fail",
+    "changes-requested": "changes were requested",
+    "review-required": "waiting on a review the rules require",
+    "checks-pending": "its tests are still running",
+    "check-missing": "a required check never reported",
+    "behind": "needs updating from its base branch",
+    "draft": "still a draft",
+    "blocked": "blocked by a repo rule",
+    "blocked-unread": "blocked, and why could not be read",
+    "unknown": "GitHub has not worked out whether it can merge",
+}
+
+
+def load_loops(path):
+    """The scanner's output, or a marker saying why there is none.
+
+    `None` for the path (the renderer called without `--loops`) and the literal word
+    `skipped` (bin/audit --skip-loops) both mean NOT CHECKED. So does a file that cannot
+    be read. None of the three may render as an empty list, because an empty list is
+    what a week with no loose ends looks like.
+    """
+    if not path:
+        return {"state": "absent"}
+    if path == "skipped":
+        return {"state": "skipped"}
+    try:
+        with open(path) as fh:
+            doc = json.load(fh)
+    except Exception as exc:
+        return {"state": "unreadable", "why": str(exc)}
+    doc["state"] = "ok"
+    return doc
+
+
+def _age_words(days):
+    if days is None:
+        return "age unknown"
+    if days == 0:
+        return "today"
+    return "%d %s" % (days, _plural(days, "day"))
+
+
+def _names(names, keep=3):
+    """"a, b and c", or "a, b, c and 4 more" past `keep` — the count is always said."""
+    names = list(names)
+    if not names:
+        return ""
+    if len(names) > keep:
+        return ", ".join(names[:keep]) + " and %d more" % (len(names) - keep)
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+# One line per REASON a group of pull requests is stuck, because the reason is what Kevin
+# acts on ("close the ones that are ready", "fix the red ones"), and a numbered line per
+# decision is what he can answer from his phone. Listing pull requests one per line fit two
+# of the 29 real loops into the 150 words on 2026-09-22; one line per reason fit all of them.
+PR_GROUP = {
+    "queued-red": "Tests fail, so these queued updates never merge",
+    "checks-failing": "Tests failing",
+    "conflicting": "Merge conflicts",
+    "review-required": "Waiting on a review the rules require",
+    "changes-requested": "Changes requested",
+    "check-missing": "A required check never reported",
+    "checks-pending": "Tests still running",
+    "behind": "Need updating from their base branch",
+    "draft": "Drafts left open",
+    "ready": "Ready to merge but still open",
+    "blocked": "Blocked by a repo rule",
+    "blocked-unread": "Blocked, and why could not be read",
+    "unknown": "GitHub has not worked out whether they can merge",
+}
+
+
+def loop_items(doc):
+    """The digest's numbered items: one per reason, oldest first.
+
+    * Pull requests are grouped by the one reason each is stuck, members oldest first, and
+      the group carries its oldest member's age.
+    * Every branch rule still demanding a review is ONE line naming the repos. The pull
+      requests it strands are counted in that line rather than listed again as "waiting on
+      a review" — the rule is the loop; they are its symptoms.
+    * Every repo whose security fixes never run is ONE line, biggest first.
+
+    Groups are ordered by the age of the oldest thing in them. Each item is returned as
+    text; `_names` says how many members it left out, so nothing is cut in silence.
+    """
+    loops = doc.get("loops") or []
+    approvals = [lp for lp in loops if lp["kind"] == "approvals"]
+    ruled = {lp["repo"] for lp in approvals}
+    silent = [lp for lp in loops if lp["kind"] == "silent-security"]
+    groups = {}
+    for lp in loops:
+        if lp["kind"] != "pr":
+            continue
+        if lp["state"] == "review-required" and lp["repo"] in ruled:
+            continue  # counted in the rules line below
+        key = "queued-red" if (lp["state"] == "checks-failing" and lp.get("queued")) else lp["state"]
+        groups.setdefault(key, []).append(lp)
+    items = []
+    for key, members in groups.items():
+        members.sort(key=lambda x: (-(x.get("age_days") or 0), x["repo"], x["number"]))
+        oldest = members[0].get("age_days")
+        label = PR_GROUP.get(key, key)
+        tag = ("oldest %s" if len(members) > 1 else "%s") % _age_words(oldest)
+        if oldest == 0:
+            tag = "opened today"
+        items.append((oldest or 0, "%s (%s): %s." % (
+            label, tag, _names(["%s #%d" % (m["repo"], m["number"]) for m in members], 2))))
+    if approvals:
+        held = sum(len(lp.get("stranded") or []) for lp in approvals)
+        names = [lp["repo"] for lp in sorted(approvals, key=lambda x: (-len(x.get("stranded") or []), x["repo"]))]
+        text = "Rules still require an approving review in %d %s" % (
+            len(approvals), _plural(len(approvals), "repo"))
+        if held:
+            text += ", holding up %d pull %s" % (held, _plural(held, "request"))
+        text += ": %s." % _names(names, 2)
+        items.append((max(lp.get("age_days") or 0 for lp in approvals), text))
+    if silent:
+        fixable = sum(lp.get("fixable") or 0 for lp in silent)
+        critical = sum(lp.get("critical") or 0 for lp in silent)
+        never = all(not lp.get("last_run") for lp in silent)
+        names = [lp["repo"] for lp in sorted(silent, key=lambda x: (-(x.get("fixable") or 0), x["repo"]))]
+        text = "Security fixes on but %s in %d %s, %d fixable %s" % (
+            "never run" if never else "not run in %d days" % doc.get("silent_days", 14),
+            len(silent), _plural(len(silent), "repo"), fixable, _plural(fixable, "alert"))
+        if critical:
+            text += " (%d critical)" % critical
+        text += ": %s." % _names(names, 2)
+        items.append((max(lp.get("age_days") or 0 for lp in silent), text))
+    items.sort(key=lambda x: (-x[0], x[1]))
+    return [t for _, t in items]
+
+
+def loop_notes(doc):
+    """What the loops block could NOT see, one short line each. These never give way to
+    the word cap: a missing note reads exactly like a week with nothing to report.
+
+    Short on purpose. Every word here comes out of the same 150 as the lists, and the
+    first wording of the not-checked note (17 words) pushed two repo lines out of a
+    fixture digest on its own. "Not checked" and "could not be read" carry the meaning;
+    the rest was padding.
+    """
+    st = doc.get("state")
+    if st != "ok":
+        return ["Note: open loops were not checked this week."]
+    m = doc.get("measured") or {}
+    notes = []
+    if not m.get("prs"):
+        notes.append("Note: open pull requests could not be read, so loops may be missing.")
+    unread = len(m.get("checks_unread") or [])
+    if unread:
+        notes.append("Note: tests on %d pull %s could not be read."
+                     % (unread, _plural(unread, "request")))
+    rules = len(m.get("rules_unread") or [])
+    if rules:
+        notes.append("Note: review rules could not be read in %d %s."
+                     % (rules, _plural(rules, "repo")))
+    sec = len(m.get("security_unread") or [])
+    if sec:
+        notes.append("Note: security fixes could not be checked in %d %s."
+                     % (sec, _plural(sec, "repo")))
+    return notes
+
+
+def loop_act(doc):
+    """The "To act:" line when an open loop is the most useful thing to do this week.
+
+    MOST USEFUL, not oldest — the list above is oldest first (so its order is predictable
+    week to week), and on a busy week the word cap can fold the most urgent loop into
+    "and N more". This line is where urgency wins: security fixes that never run on
+    critical alerts, then an update queued to merge behind failing tests (it will sit
+    there forever), then a review rule stranding work, then the oldest pull request.
+    """
+    if doc.get("state") != "ok":
+        return None
+    loops = doc.get("loops") or []
+    if not loops:
+        return None
+
+    def rank(lp):
+        if lp["kind"] == "silent-security":
+            return (0 if lp.get("critical") else 3, -(lp.get("fixable") or 0))
+        if lp["kind"] == "pr" and lp.get("queued") and lp["state"] == "checks-failing":
+            return (1, -(lp.get("age_days") or 0))
+        if lp["kind"] == "approvals":
+            return (2 if lp.get("stranded") else 4, -len(lp.get("stranded") or []))
+        return (5, -(lp.get("age_days") or 0))
+
+    lp = sorted(loops, key=lambda x: (rank(x), x["repo"], x.get("number") or 0))[0]
+    if lp["kind"] == "silent-security":
+        crit = " (%d critical)" % lp["critical"] if lp.get("critical") else ""
+        return ("To act: find out why security fixes never run in %s — %d fixable alerts%s."
+                % (lp["repo"], lp.get("fixable") or 0, crit))
+    if lp["kind"] == "approvals":
+        return ("To act: set required approving reviews to zero in %s's branch rules." % lp["repo"])
+    verb = {"ready": "merge or close it",
+            "checks-failing": "fix its tests or close it",
+            "conflicting": "resolve the conflict or close it",
+            "draft": "finish it or close it"}.get(lp["state"], "move it along or close it")
+    return "To act: %s #%d has been open %s — %s." % (
+        lp["repo"], lp["number"], _age_words(lp.get("age_days")), verb)
+
+
+def render_loops_table(doc, out):
+    st = doc.get("state")
+    if st != "ok":
+        print("**Open loops — NOT CHECKED on this run** (%s). An empty list here would mean "
+              "nothing." % {"absent": "no scan was passed in", "skipped": "`--skip-loops`",
+                            "unreadable": "the scan file could not be read"}.get(st, st),
+              file=out)
+        print(file=out)
+        return
+    loops = doc.get("loops") or []
+    print("**Open loops — %d, oldest first** (pull requests older than %d days, red queued "
+          "Dependabot updates, review rules, silent security fixes)."
+          % (len(loops), doc.get("stale_days", 7)), file=out)
+    for lp in loops:
+        if lp["kind"] == "pr":
+            state = PR_STATE.get(lp["state"], lp["state"])
+            extra = ""
+            if lp.get("failing"):
+                extra = " (failing: %s)" % ", ".join("`%s`" % f for f in lp["failing"])
+            if lp.get("queued"):
+                extra += " — auto-merge is queued and will wait forever"
+            print("- `%s` #%d%s, %s: %s%s. %s" % (
+                lp["repo"], lp["number"], " (Dependabot)" if lp.get("bot") else "",
+                _age_words(lp.get("age_days")), state, extra, lp.get("url") or ""), file=out)
+        elif lp["kind"] == "approvals":
+            held = lp.get("stranded") or []
+            print("- `%s`: the default branch's %s requires %d approving review%s%s." % (
+                lp["repo"], "ruleset" if lp.get("source") == "ruleset" else "branch protection",
+                lp["approvals"], "" if lp["approvals"] == 1 else "s",
+                (", holding up %s" % ", ".join("#%d" % n for n in held)) if held else ""), file=out)
+        else:
+            print("- `%s`: security fixes on, %d fixable alerts (%s critical, %s high; %s in "
+                  "runtime code), no Dependabot run in %d days (last: %s) and no Dependabot "
+                  "pull request open." % (
+                      lp["repo"], lp.get("fixable") or 0, lp.get("critical"), lp.get("high"),
+                      lp.get("fixable_runtime"), doc.get("silent_days", 14),
+                      lp.get("last_run") or "never"), file=out)
+    for note in loop_notes(doc):
+        print("⚠ " + note[len("Note: "):], file=out)
+    for err in doc.get("errors") or []:
+        print("⚠ %s." % err, file=out)
+    print(file=out)
+
+
 # ------------------------------------------------------------------ the digest
 def _plural(n, one, many=None):
     return one if n == 1 else (many or one + "s")
@@ -403,19 +667,30 @@ def _words(parts):
     return sum(len(ln.split()) for part in parts for ln in part)
 
 
-def _assemble(head, repo_lines, keep, collapsed, tail, act):
+def _assemble(head, repo_lines, keep, collapsed, tail, act, loop_lines=(), lkeep=0):
     body = list(repo_lines[:keep])
     rest = len(repo_lines) - keep
     if rest > 0:
-        body.append("- and %d more %s attention."
-                    % (rest, "repo needs" if rest == 1 else "repos need"))
+        # "and N more" only when something came before it; on its own it reads like a
+        # line lost its first half.
+        body.append("- %s%d %s attention." % ("and " if keep else "", rest,
+                                                "more " * bool(keep) + ("repo needs" if rest == 1 else "repos need")))
     if collapsed:
         body.append(collapsed)
-    return [head, body, tail, [act]]
+    block = []
+    if loop_lines:
+        block.append("Open loops, oldest first:")
+        block.extend("%d. %s" % (i + 1, t) for i, t in enumerate(loop_lines[:lkeep]))
+        lrest = len(loop_lines) - lkeep
+        if lrest > 0:
+            block.append("And %d more open %s." % (lrest, _plural(lrest, "loop")))
+    return [head, body, block, tail, [act]]
 
 
-def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=None):
+def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=None,
+                  loops=None, word_cap=WORD_CAP):
     c = counts(rows)
+    loops = loops if loops is not None else {"state": "absent"}
     m = minutes_picture(rows, since, method, today)
     total_prs = sum(r.get("pr_count") or 0 for r in rows)
     ages = [r.get("pr_oldest_days") for r in rows if r.get("pr_oldest_days") is not None]
@@ -562,6 +837,11 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
                     "this week, so a repo could be half set up in a way this message "
                     "cannot see.")
 
+    # The open-loops block's own "could not see" notes. They sit with the others, and like
+    # the others they never give way to the word cap (2026-09-22).
+    tail.extend(loop_notes(loops))
+    loop_lines = loop_items(loops) if loops.get("state") == "ok" else []
+
     # ---- the one thing worth doing
     act = None
     # Sorted the way the body is, not the way `gh repo list` happened to answer: the
@@ -576,9 +856,18 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
         d = drifters[0]
         act = ("To act: finish setting up %s — its line above says what is missing."
                % d["name"])
+    elif loop_lines and loop_act(loops):
+        # The oldest open loop outranks the oldest update: every update older than a week
+        # is itself in the loop list, and the loop list also knows WHY it is stuck.
+        act = loop_act(loops)
     elif total_prs and oldest is not None:
+        # Ties go to the repo with the most waiting, which is also the order the lines
+        # above are printed in. Sorting on age alone let API order break a three-way tie
+        # at 10 days, and the 2026-09-21 digest told Kevin to act on a repo it had folded
+        # into "and 5 more" (found in the 2026-09-22 sweep).
         who = sorted([r for r in rows if r.get("pr_count")],
-                     key=lambda x: -(x.get("pr_oldest_days") or 0))[0]
+                     key=lambda x: (-(x.get("pr_oldest_days") or 0),
+                                    -(x.get("pr_count") or 0), x["name"]))[0]
         act = ("To act: %s's oldest update is %d %s old — merge or close it."
                % (who["name"], who["pr_oldest_days"],
                   _plural(who["pr_oldest_days"], "day")))
@@ -603,10 +892,27 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     # repo list — the only part that is enumerable, is already sorted worst-first, and
     # says out loud how many it left out. The notes never give way: each one exists
     # because its absence would read as "nothing wrong here".
-    for keep in range(min(BODY_LINES, len(repo_lines)), -1, -1):
-        parts = _assemble(head, repo_lines, keep, collapsed, tail, act)
-        if _words(parts) <= WORD_CAP or keep == 0:
+    #
+    # Since 2026-09-22 there are two such lists — the repos, and the numbered open loops —
+    # and the REPO list gives way first. Its lines are counts ("5 waiting, oldest 6 days")
+    # that the headline already totals, and every update older than a week reappears in
+    # the loops with the reason it is stuck; the loops are the week's decisions. Both lists
+    # say how many they left out, and the "To act:" line is chosen by urgency rather than
+    # position, so the most urgent loop is named even when the list is cut to one line.
+    keep = min(BODY_LINES, len(repo_lines))
+    lkeep = min(LOOP_LINES, len(loop_lines))
+    while True:
+        parts = _assemble(head, repo_lines, keep, collapsed, tail, act,
+                          loop_lines, lkeep)
+        # `<`, not `<=`: the README, the routine prompt and check-audit.sh all promise
+        # UNDER the cap, and the old `<=` let a message of exactly 150 words through
+        # (found when the loop notes first pushed a fixture to 150, 2026-09-22).
+        if _words(parts) < word_cap or (keep == 0 and lkeep == 0):
             break
+        if keep > 0:
+            keep -= 1
+        else:
+            lkeep -= 1
     for part in parts:
         if not part:
             continue
@@ -626,6 +932,12 @@ def main():
                          "skipped and none both mean NOT MEASURED — no figure is printed "
                          "for either, and never a zero")
     ap.add_argument("--note", default="", help="a caveat to print alongside the minutes")
+    ap.add_argument("--word-cap", type=int, default=WORD_CAP,
+                    help="the digest's ceiling in words (default %d). Only the two lists "
+                         "give way to it; the notes never do" % WORD_CAP)
+    ap.add_argument("--loops", default=None,
+                    help="bin/lib/loops-scan.py's output file, or the word 'skipped'. "
+                         "Left out, the open loops read as NOT CHECKED — never as none")
     ap.add_argument("--today", default=None,
                     help="pin the run date (YYYY-MM-DD) instead of using the clock. The "
                          "projection divides by days elapsed, so fixtures tuned against "
@@ -634,6 +946,7 @@ def main():
 
     today = dt.date.fromisoformat(args.today) if args.today else None
     rows = load(sys.stdin)
+    loops = load_loops(args.loops)
     if args.mode == "json":
         json.dump({"generated": dt.datetime.now(dt.timezone.utc)
                    .strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -646,14 +959,19 @@ def main():
                    "minutes": {k: (v.isoformat() if hasattr(v, "isoformat") else v)
                                for k, v in minutes_picture(rows, args.since,
                                                            args.method, today).items()},
+                   "open_loops": {"checked": loops.get("state") == "ok",
+                                  "state": loops.get("state"),
+                                  "loops": loops.get("loops") if loops.get("state") == "ok" else None,
+                                  "measured": loops.get("measured"),
+                                  "errors": loops.get("errors") or []},
                    "repos": rows}, sys.stdout, indent=2, sort_keys=True)
         print()
     elif args.mode == "digest":
         render_digest(rows, args.owner, args.since, args.cap, sys.stdout,
-                      args.method, args.note, today)
+                      args.method, args.note, today, loops, args.word_cap)
     else:
         render_table(rows, args.owner, args.since, args.cap, sys.stdout,
-                     args.method, args.note, today)
+                     args.method, args.note, today, loops)
 
 
 if __name__ == "__main__":

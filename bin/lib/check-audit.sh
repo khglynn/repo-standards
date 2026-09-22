@@ -37,9 +37,12 @@ pass() { ASSERTIONS=$((ASSERTIONS + 1)); echo "ok: $*"; }
 nope() { ASSERTIONS=$((ASSERTIONS + 1)); FAILURES=$((FAILURES + 1)); fail=1; echo "FAIL: $*"; }
 say() { if [ "$2" = "$3" ]; then pass "$1"; else nope "$1 — got '$2', wanted '$3'"; fi; }
 
-# One place to spell the pinned date and the renderer's path.
+# One place to spell the pinned date and the renderer's path. Every assertion here runs
+# with an open-loops scan that read everything and found nothing (fixtures/loops/none.json),
+# which is exactly the digest these assertions were written against. Section 11 exercises
+# the loops themselves, including the renderer called WITHOUT a scan.
 render() { python3 bin/lib/render-audit.py --owner khglynn --since 2026-09-01 \
-                   --today 2026-09-14 "$@"; }
+                   --today 2026-09-14 --loops bin/lib/fixtures/loops/none.json "$@"; }
 
 echo "--- 1. the tree-readability predicate, taken straight out of bin/audit"
 JQ=$(grep '^TREE_STATE_JQ=' bin/audit | sed -e "s/^TREE_STATE_JQ='//" -e "s/'$//")
