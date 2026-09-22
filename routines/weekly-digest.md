@@ -17,7 +17,9 @@ cloud sandbox has no `gh` command at all (`gh: command not found`, found on its 
 run there. And its output names private repos, so it cannot be produced in this public
 repo's Actions log or committed to a public branch (Codex review, 2026-09-14). It runs in
 the private companion repo `khglynn/repo-standards-audit`, whose weekly job checks this
-repo out, runs `bin/audit --digest` every Monday before the routine wakes up, and commits
+repo out, runs `bin/audit --digest` on Sunday at 22:00 UTC — fifteen hours before the
+routine wakes up, since 2026-09-22, after GitHub started the old Monday 12:15 UTC run six
+hours late on 2026-09-21 and the routine posted its fallback — and commits
 the result there as `latest-digest.md`. The routine checks out *that* repo, reads the
 file, and posts it. That split is deliberate: the part that needs credentials never
 touches a model, and the part that needs a model never touches credentials. The job needs
@@ -25,6 +27,11 @@ one repository secret in the private repo, `AUDIT_READ_TOKEN`, a fine-grained pe
 access token that can only read (the exact permissions are in that repo's README); until
 it exists the job fails at its first step and the routine posts the fallback, which says
 the automatic check could not run.
+
+**Since 2026-09-22 the file also carries the open loops** — pull requests left open more
+than a week and why, updates queued behind failing tests, review rules that strand work, and
+security fixes that never run. Nothing in this routine changes for that: it posts the file
+as written. The fallback in step 2 cannot see any of it and should not try.
 
 **How it differs from the verdict routines.** Those fire on a GitHub event, one routine per
 repo, and speak about a single pull request. This one is on a clock, covers every repo at
