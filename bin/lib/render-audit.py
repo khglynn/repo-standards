@@ -383,7 +383,7 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
               % (used["pyyaml"], "repo" if used["pyyaml"] == 1 else "repos"), file=out)
         print(file=out)
 
-    render_loops_table(loops if loops is not None else {"state": "absent"}, out)
+    render_loops_table(loops if loops is not None else {"state": "absent"}, out, owner)
 
     errs = [(r["name"], r["errors"]) for r in rows if r.get("errors")]
     if errs:
@@ -557,7 +557,12 @@ def loop_items(doc):
             len(silent), _plural(len(silent), "repo"), fixable, _plural(fixable, "alert"))
         if critical:
             text += " (%d critical)" % critical
-        text += ": %s." % _names(names, 2)
+        # The fix, not just the finding (cause confirmed 2026-09-22): alerts that already
+        # existed when security updates were switched on account-wide were backfilled in one
+        # minute and never got a fix attempt — one only fires on a NEW alert or an enable
+        # event. Switching the repo's security updates off and on is that enable event;
+        # Dependabot started within seconds in every repo it was tried on.
+        text += ": %s. Fix: switch security updates off and back on in each." % _names(names, 2)
         items.append((max(lp.get("age_days") or 0 for lp in silent), text, len(silent)))
     items.sort(key=lambda x: (-x[0], x[1]))
     return items
@@ -632,9 +637,9 @@ def loop_act(doc):
     if lp["kind"] == "silent-security":
         crit = " (%d critical)" % lp["critical"] if lp.get("critical") else ""
         n = lp.get("fixable") or 0
-        return ("To act: find out why security fixes %s in %s — %d fixable %s%s."
-                % ("never run" if not lp.get("last_run") else "stopped running",
-                   lp["repo"], n, _plural(n, "alert"), crit))
+        # Names the fix (see loop_items): the toggle is the enable event that starts them.
+        return ("To act: switch security updates off and back on in %s to start fixes for "
+                "its %d fixable %s%s." % (lp["repo"], n, _plural(n, "alert"), crit))
     if lp["kind"] == "approvals":
         return ("To act: set required approving reviews to zero in %s's branch rules." % lp["repo"])
     verb = {"ready": "merge or close it",
@@ -645,7 +650,7 @@ def loop_act(doc):
         lp["repo"], lp["number"], _age_words(lp.get("age_days")), verb)
 
 
-def render_loops_table(doc, out):
+def render_loops_table(doc, out, owner=None):
     st = doc.get("state")
     if st != "ok":
         print("**Open loops — NOT CHECKED on this run** (%s). An empty list here would mean "
@@ -678,12 +683,19 @@ def render_loops_table(doc, out):
                 (", holding up %s" % ", ".join("#%d" % n for n in sorted(held))) if held else ""), file=out)
         else:
             n = lp.get("fixable") or 0
+            full = "%s/%s" % (owner, lp["repo"]) if owner else lp["repo"]
             print("- `%s`: security fixes on, %d fixable %s (%s critical, %s high; %s in "
                   "runtime code), no Dependabot run in %d days (last: %s) and no Dependabot "
-                  "pull request open." % (
+                  "pull request open. **Fix:** switch security updates off and back on — "
+                  "Settings → Advanced Security → Dependabot security updates, or "
+                  "`gh api -X DELETE repos/%s/automated-security-fixes && gh api -X PUT "
+                  "repos/%s/automated-security-fixes`; Dependabot starts within seconds. "
+                  "(Alerts that existed when security updates were switched on were never "
+                  "attempted; a fix only fires on a new alert or an enable event — confirmed "
+                  "2026-09-22.)" % (
                       lp["repo"], n, _plural(n, "alert"), lp.get("critical"), lp.get("high"),
                       lp.get("fixable_runtime"), doc.get("silent_days", 14),
-                      lp.get("last_run") or "never"), file=out)
+                      lp.get("last_run") or "never", full, full), file=out)
     for note in loop_notes(doc):
         print("⚠ " + note[len("Note: "):], file=out)
     for err in doc.get("errors") or []:

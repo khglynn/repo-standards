@@ -21,11 +21,16 @@ already watched Dependabot; these four are the loose ends it could not see:
      requirement on 2026-09-15 — in a one-person account the only way past it is an
      admin bypass — so a rule that still asks for one strands green pull requests.
   4. Dependabot security fixes switched on, fixable alerts open, no Dependabot run in
-     `--silent-days` (14) and no Dependabot pull request open: the fixes are probably not
-     running at all. The last condition is there because a repo whose fix is already
-     sitting in an open pull request has no reason to run again — found against a real
-     repo on 2026-09-22, where the brief's plain "no run in 14 days" rule would have
-     raised a false alarm a week later.
+     `--silent-days` (14) and no Dependabot pull request open: the fixes are not running.
+     The last condition is there because a repo whose fix is already sitting in an open
+     pull request has no reason to run again — found against a real repo on 2026-09-22,
+     where the brief's plain "no run in 14 days" rule would have raised a false alarm a
+     week later. THE CAUSE, confirmed live the same day: when security updates were
+     switched on account-wide (2026-09-11), a repo's existing alerts were backfilled in one
+     minute and Dependabot never attempted them — a fix only fires on a NEW alert or an
+     enable event. Switching the repo's security updates off and back on is that event
+     (`DELETE` then `PUT repos/{o}/{r}/automated-security-fixes`); Dependabot started
+     within about six seconds in all five repos it was tried on. The renderer names it.
 
 READ-ONLY BY CONSTRUCTION. REST calls go through actions-scan.py's GET-only client. GraphQL
 is a POST by protocol, so `Gql.query` refuses any document containing a mutation before a

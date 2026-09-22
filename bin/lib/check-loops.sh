@@ -323,7 +323,7 @@ has "the block is there, oldest first"      "$DG" "Open loops, oldest first:"
 has "stale PRs grouped by the reason they are stuck" "$DG" "Ready to merge but still open (oldest 302 days): alpha #3 and foxtrot #1."
 has "a red queued update says it will never merge" "$DG" "Tests fail, so these queued updates never merge (6 days): charlie #241."
 has "one line for every review rule, with what it strands" "$DG" "Rules still require an approving review in 2 repos, holding up 1 pull request: bravo and hotel."
-has "one line for silent security fixes, with the critical count" "$DG" "Security fixes on but never run in 1 repo, 100 fixable alerts (2 critical): echo."
+has "one line for silent security fixes, with the critical count" "$DG" "Security fixes on but never run in 1 repo, 100 fixable alerts (2 critical): echo. Fix: switch security updates off and back on in each."
 has "a conflict is its own reason, members oldest first" "$DG" "Merge conflicts (oldest 21 days): echo #5 and juliet #40."
 has "a check that never reported is its own reason" "$DG" "A required check never reported (2 days): india #30."
 has "a draft is its own reason"              "$DG" "Drafts left open (20 days): echo #6."
@@ -331,14 +331,16 @@ hasnt "a PR held by a review rule is not listed twice" "$DG" "bravo #2"
 has "tests that could not be read are said"  "$DG" "Note: tests on 2 pull requests could not be read."
 has "rules that could not be read are said"  "$DG" "Note: review rules could not be read in 2 repos."
 has "security fixes that could not be checked are said" "$DG" "Note: security fixes could not be checked in 3 repos."
-has "To act picks the most urgent loop, not the oldest" "$DG" "To act: find out why security fixes never run in echo — 100 fixable alerts (2 critical)."
+has "To act picks the most urgent loop, not the oldest" "$DG" "To act: switch security updates off and back on in echo to start fixes for its 100 fixable alerts (2 critical)."
 # …and says "stopped" rather than "never" when Dependabot did run once, with a singular
 # alert read as one alert (both wrong in the first cut, found by review).
 ONCE=$(jq '.loops |= map(if .kind=="silent-security" then .last_run="2026-08-01" | .fixable=1 else . end)' "$LOOPS")
 printf '%s\n' "$ONCE" > "$WORK/loops-once.json"
-has "a repo where Dependabot ran once: stopped, not never, and one alert" \
-    "$(render --mode digest --loops "$WORK/loops-once.json" --word-cap 400 <<< "$QUIET")" \
-    "To act: find out why security fixes stopped running in echo — 1 fixable alert (2 critical)."
+ONCE_D=$(render --mode digest --loops "$WORK/loops-once.json" --word-cap 400 <<< "$QUIET")
+has "a repo where Dependabot ran once: 'not run in 14 days', not 'never'" "$ONCE_D" \
+    "Security fixes on but not run in 14 days in 1 repo, 1 fixable alert (2 critical): echo."
+has "…and the To act line reads one alert as one alert" "$ONCE_D" \
+    "To act: switch security updates off and back on in echo to start fixes for its 1 fixable alert (2 critical)."
 if grep -qE '<[^ ]' <<< "$DG"; then nope "the loops block contains angle brackets (Slack link markup)"
 else pass "no angle brackets"; fi
 # The drifter still outranks every loop: finishing enrolment is the digest's first job.
@@ -420,6 +422,12 @@ has "table: every loop, oldest first"       "$TB" "**Open loops — 11, oldest f
 has "table: the PR a rule strands is listed too" "$TB" "\`bravo\` #2 (Dependabot), 11 days: waiting on a review the rules require."
 has "table: links"                          "$TB" "https://github.com/example/charlie/pull/241"
 has "table: a queued red update says it will wait forever" "$TB" "auto-merge is queued and will wait forever"
+# The silent-security fix, confirmed live 2026-09-22: switching security updates off and on
+# is the enable event that starts Dependabot on alerts that predate the setting. The table
+# gives the exact calls for that repo; the digest says it in plain words (no commands).
+has "table: silent security fixes name the toggle, with the repo's own path" "$TB" \
+    "gh api -X DELETE repos/khglynn/echo/automated-security-fixes && gh api -X PUT repos/khglynn/echo/automated-security-fixes"
+hasnt "digest: no command lines in the Slack message" "$DG" "gh api"
 has "table: plural alert count"             "$TB" "100 fixable alerts"
 has "table: singular alert count"           "$(render --mode table --loops "$WORK/loops-once.json" <<< "$QUIET")" "1 fixable alert ("
 has "table: not checked, said"              "$(render --mode table <<< "$QUIET")" "**Open loops — NOT CHECKED on this run**"

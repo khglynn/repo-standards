@@ -14,8 +14,19 @@ about Dependabot comes from treating them as one.
 **Job one — don't ship a known vulnerability.**
 When somebody publishes a CVE against a package you use, GitHub notices and opens a pull
 request to fix it. This is switched on **account-wide** for every repo you own, including
-new ones, and it needs **no file in any repo**. It was turned on 2026-09-11 and it is
-already working everywhere. Nothing in this repository is required for it.
+new ones, and it needs **no file in any repo**. It was turned on 2026-09-11. Nothing in
+this repository is required for it.
+
+> **Caveat, found 2026-09-22:** "working everywhere" is true for alerts raised *after* the
+> setting went on, not for the ones that already existed. When it was switched on
+> account-wide, some repos' existing alerts were all backfilled in the same minute, and
+> Dependabot never attempted a fix for them: a security fix only fires on a new alert or on
+> an enable event. Those repos showed security updates on, open fixable alerts, and zero
+> Dependabot runs ever. The fix is to switch the repo's Dependabot security updates **off and
+> back on** (Settings → Advanced Security, or `gh api -X DELETE
+> repos/<owner>/<repo>/automated-security-fixes` then `gh api -X PUT` on the same path), which
+> is that enable event — Dependabot started within seconds in every repo it was tried on.
+> The audit's open loops list any repo still in this state and name the same fix.
 
 **Job two — don't fall three years behind.**
 Routine "there's a newer version" updates. This one *does* need a file per repo
@@ -332,8 +343,9 @@ numbered line per reason, oldest first:
   one-person account the only way past one is an admin bypass — with how many pull requests
   it is holding up;
 - repos where Dependabot security fixes are switched on, fixable alerts are open, and
-  Dependabot has not run in 14 days and has no update pull request open: the fixes are
-  probably not running at all.
+  Dependabot has not run in 14 days and has no update pull request open: the fixes are not
+  running (see the caveat at the top — alerts that predate the setting were never
+  attempted), and the line says to switch security updates off and back on there.
 
 A loop the audit could not read is a note ("tests on 2 pull requests could not be read"),
 never a missing line, and a week the loops were not checked at all says so. The full list,

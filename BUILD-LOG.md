@@ -1874,3 +1874,20 @@ the audit. So:
 Revised unverified list for the watch: it has never run live and will not until a repo opts
 in; whether the workflow token reads a PUBLIC repo's check runs without `checks: read` also
 waits for that. Everything else in the list above stands.
+
+### Same day, later still — why security fixes never ran, and the fix the audit now names
+
+A sibling builder found the cause and the coordinator confirmed it live. When Dependabot
+security updates were switched on account-wide on 2026-09-11, some repos' existing alerts
+were backfilled in a single minute, and Dependabot never attempted a fix for any of them: a
+security fix fires only on a NEW alert or an enable event. Switching a repo's security
+updates off and back on (`DELETE` then `PUT repos/{o}/{r}/automated-security-fixes`) is
+that enable event — Dependabot started within about six seconds in all five repos it was
+tried on, and one already had its fix pull request. So:
+- the digest's silent-security line ends "Fix: switch security updates off and back on in
+  each", and its "To act:" line says to do exactly that in the worst repo (plain words, no
+  commands — it is a Slack message);
+- the table's line gives the exact two `gh api` calls for that repo, and the settings path;
+- the README's "no file needed, working everywhere" line carries a dated caveat: true for new
+  alerts, not for alerts backfilled at enable time, and the toggle fixes those.
+check-loops.sh: 135 assertions.
