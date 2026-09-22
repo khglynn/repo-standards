@@ -1741,3 +1741,72 @@ Enrolling khglynn/ynai
 - Kevin minted the read-only fine-grained PAT (Actions, Administration, Contents, Metadata, Pull requests; all repos; expires 2027-09-14) and it is the `AUDIT_READ_TOKEN` secret on khglynn/repo-standards-audit. First run 18:19: green end to end, digest committed. But it read "1 of 41 repos keep themselves up to date; 5 are half set up" against this morning's 5 enrolled, and told Kevin to finish setting up ynai, which was finished at 17:22.
 - Cause, proven by probing each endpoint with that token against ynai: the REST repository object **omits `allow_auto_merge`** for a caller without push access (a read-only token has none), so `bin/audit` read an empty string and reported "auto-merge is off" for every enrolled repo. Every other call it makes (rulesets, the approve switch, contents, trees, runs) works with the token. GraphQL's `autoMergeAllowed` answers the same question for a read-only caller; `bin/audit` now asks that (8098d4e) and maps anything but true/false to "?" (unknown, said so). Second run dispatched 18:36.
 - Also today: the watcher in khglynn/google_workspace_mcp posts to #infra-ops (new Errors Bot webhook; the old one deleted; #misc-build-errors archived), and says a notice once then weekly (#18) using the workflow token for its memory (#19, after the fleet PAT was refused on the variables API).
+
+## 2026-09-22 — open loops in the audit, and the failed-test watch in the shared workflow (session: state-sweep builder B1, Opus 5.5)
+
+**Why.** Agents leave pull requests open and nothing notices. A sweep that day found, across
+the account: pull requests open for weeks with nothing stopping them but attention; two
+Dependabot updates queued to merge behind a FAILED required check, one of them for six days,
+never labelled and so never sent to Slack; branch rules still demanding an approving review
+that was retired on 2026-09-15; and repos whose security fixes are switched on and have never
+run once. The Monday digest already reached Kevin, so it became the one place those surface.
+No new system, channel or token.
+
+**Built.**
+- `bin/lib/loops-scan.py` — read-only (GET-only client from actions-scan.py; GraphQL refuses a
+  mutation before sending). One GraphQL search for every open pull request, per-repo branch
+  rules, and the security-fix switch, alerts and Dependabot runs. `derive_loops` is pure and
+  pinned by fixtures. About 250 calls and 25 seconds against the account.
+- `render-audit.py` — the digest gains "Open loops, oldest first:", one numbered line per
+  reason (a line per pull request fitted two of 29 real loops into 150 words; a line per
+  reason fits all of them at ~220). The repo list gives way to the cap first, then the loops;
+  both say how many they dropped; the notes never give way. "To act:" picks the most urgent
+  loop, not the oldest. The table lists every loop with links; JSON carries them.
+- The shared workflow's step 7 waits (`watch-minutes`, default 10, 15 at most) for the
+  required checks after queueing auto-merge, labels a failure `dependabot-ci-failed`, and
+  removes that label when a later head passes. Job timeout 10 → 25.
+- The shared workflow no longer declares `permissions:`; it inherits the stub's grant. The
+  stub template adds `checks: read` and `statuses: read`. `bin/audit`'s table names every
+  stub still without them.
+- `bin/lib/check-loops.sh` (95 assertions) in CI, with `fixtures/loops/`.
+
+**Found while building, each verified.**
+- `check_run` / `check_suite` never start a workflow for a check GitHub Actions created
+  (GitHub Docs, *Events that trigger workflows*, read 2026-09-22). So no event arrives after
+  an Actions gate finishes, and the label has to be applied by the run that queued the merge.
+- A called workflow that asks for a scope its caller did not grant fails to start. Declaring
+  `checks: read` in the shared file would have stopped every enrolled repo whose stub
+  predates today — hence the inheritance.
+- Fine-grained tokens cannot be given the Checks permission at all (GitHub community #129512,
+  staff answer 2025-03-03; still listed as a known gap on *Managing your personal access
+  tokens*, read 2026-09-22). The weekly token therefore reads test results from the Actions
+  jobs on the head commit. Simulated live against both red queued updates: both read as
+  failing through that path. A Vercel commit status reads as NOT READ until the token has
+  Commit statuses: read, and alerts until it has Dependabot alerts: read.
+- The Dependabot alerts endpoint answers HTTP 400 to `page=`; it paginates by Link-header
+  cursor only.
+- Approval drift is in nine repos, not the five the sweep had listed: four more `protect-main`
+  rulesets, each active, each requiring one review.
+- Silent security fixes are in six repos, not three; the other three are small (1–3 fixable
+  alerts). All six have zero Dependabot runs ever.
+- A plain "no Dependabot run in 14 days" rule would false-alarm on a repo whose security fix
+  already sits in an open Dependabot pull request (Dependabot does not re-run while it waits),
+  so the rule also requires no open Dependabot pull request there.
+- Two digest defects fixed in passing: the word cap let exactly 150 words through while every
+  document promised under 150; and "To act:" broke age ties by API order, so the 2026-09-21
+  digest named a repo it had folded into "and 5 more".
+
+**Not done, on purpose.** No repo enrolled, no ruleset changed, nothing merged, no Slack
+post, no stub rewritten in any other repo, no routine edited.
+
+**Still unverified.**
+- The watch has never run live: it only runs from `main`. First real test: the first patch or
+  minor Dependabot pull request after merge, in a public enrolled repo (no stub change needed
+  there if public check data is readable without the permission — also unverified) or a
+  private one whose stub has the two read lines.
+- Whether the workflow token reads check runs on a PUBLIC repo without `checks: read`.
+- The weekly job's first run with this code, on the fine-grained token: it should show the
+  loops block with a "security fixes could not be checked in N repos" note until the token
+  gains Dependabot alerts: read.
+- That a `dependabot-ci-failed` label fires a verdict routine once its filter includes it (the
+  same mechanism already fires for the workflow's other labels).
