@@ -209,12 +209,13 @@ PR_FIELDS = """
   autoMergeRequest { enabledAt }
 """
 
-SEARCH = """
-query($q: String!, $after: String) {
-  search(query: $q, type: ISSUE, first: 100, after: $after) {
-    issueCount
-    pageInfo { hasNextPage endCursor }
-    nodes { ... on PullRequest { %s } }
+REPO_PRS = """
+query($o: String!, $r: String!, $after: String) {
+  repository(owner: $o, name: $r) {
+    pullRequests(states: OPEN, first: 100, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { %s }
+    }
   }
 }""" % PR_FIELDS
 
@@ -235,24 +236,27 @@ query($o: String!, $r: String!, $n: Int!) {
 }"""
 
 
-def search_open_prs(gql, owner):
-    """Every open pull request in the owner's non-archived repos, in one or two calls.
+def open_prs(gql, owner, repo):
+    """Every open pull request in one repo. Returns (prs, error); prs is None on failure.
 
-    Returns (prs, error). `prs` is None when the search itself failed — which must read as
-    "not checked", because an empty list reads as "no open loops", the good news.
+    ONE QUERY PER REPO, NOT ONE SEARCH (2026-09-22). A single search across the account is
+    one call instead of forty, but whether search returns a fine-grained token's PRIVATE
+    repos is something nobody here has checked — and if it did not, the loops would go
+    quietly empty for exactly the repos that matter most, with no error to say so. A
+    `repository(...)` query is proven on that token (bin/audit reads `autoMergeAllowed`
+    the same way), and a failure lands on the one repo it happened in.
     """
-    q = "is:pr is:open user:%s archived:false" % owner
     prs, after = [], None
     for _ in range(10):
-        data, errors, exc = gql.query(SEARCH, {"q": q, "after": after})
-        if not data or not data.get("search"):
+        data, errors, exc = gql.query(REPO_PRS, {"o": owner, "r": repo, "after": after})
+        conn = ((data or {}).get("repository") or {}).get("pullRequests")
+        if conn is None or errors:
             why = _why(exc) if exc else "; ".join(e.get("message", "?") for e in errors[:2]) or "no data"
-            return None, "open pull requests unreadable (%s)" % why
-        s = data["search"]
-        prs.extend(n for n in s.get("nodes") or [] if n and n.get("number"))
-        if not s.get("pageInfo", {}).get("hasNextPage"):
+            return None, "open pull requests unreadable in %s (%s)" % (repo, why)
+        prs.extend(n for n in conn.get("nodes") or [] if n and n.get("number"))
+        if not (conn.get("pageInfo") or {}).get("hasNextPage"):
             break
-        after = s["pageInfo"]["endCursor"]
+        after = conn["pageInfo"]["endCursor"]
     return prs, None
 
 
@@ -471,7 +475,9 @@ def derive_loops(facts, stale_days=STALE_DAYS):
     repos = facts.get("repos") or {}
     checks = facts.get("checks") or {}
     loops = []
+    prs_unread = set(facts.get("prs_unread") or [])
     measured = {"prs": facts.get("prs") is not None,
+                "prs_unread": sorted(prs_unread),
                 "checks_unread": [], "rules_unread": [], "security_unread": [],
                 "skipped": facts.get("skipped") or []}
 
@@ -533,7 +539,7 @@ def derive_loops(facts, stale_days=STALE_DAYS):
             continue
         if sec["runs_recent"] > 0:
             continue
-        if not measured["prs"]:
+        if not measured["prs"] or name in prs_unread:
             measured["security_unread"].append(name)
             continue
         if not open_bot.get(name):
@@ -554,39 +560,49 @@ def gather(client, gql, owner, repos, today, stale_days, silent_days, use_action
              "silent_days": silent_days, "repos": {}, "checks": {}, "errors": [],
              "skipped": [] if use_actions else ["actions"]}
 
-    prs, err = search_open_prs(gql, owner)
-    if err:
-        facts["errors"].append(err)
-    facts["prs"] = prs
-    if prs:
-        # Only the pull requests in this owner's non-archived repo list: search can return
-        # a PR in an archived repo for a few minutes after archiving, and the rest of the
-        # audit would not recognise that repo.
-        known = {r[0] for r in repos}
-        prs[:] = [p for p in prs if p["repository"]["name"] in known]
-        refresh_unknown(gql, owner, prs)
+    facts["prs"] = []
+    facts["prs_unread"] = []
 
     def per_repo(entry):
         name, branch, _vis, _fork = entry
         full = "%s/%s" % (owner, name)
-        return name, {"rules": read_rules(client, full, branch),
-                      "security": read_security(client, full, today, silent_days, use_actions)}
+        prs, err = open_prs(gql, owner, name)
+        return name, prs, err, {"rules": read_rules(client, full, branch),
+                                "security": read_security(client, full, today, silent_days, use_actions)}
 
+    jobs = {}
     with futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        for fut in futures.as_completed([pool.submit(per_repo, e) for e in repos]):
+        for e in repos:
+            jobs[pool.submit(per_repo, e)] = e[0]
+        for fut in futures.as_completed(jobs):
             try:
-                name, got = fut.result()
+                name, repo_prs, err, got = fut.result()
                 facts["repos"][name] = got
+                if repo_prs is None:
+                    facts["prs_unread"].append(name)
+                    facts["errors"].append(err)
+                else:
+                    facts["prs"].extend(repo_prs)
             except Exception as exc:  # one repo's failure is that repo's unknown
-                facts["errors"].append("repo scan failed: %s" % exc)
+                facts["prs_unread"].append(jobs[fut])
+                facts["errors"].append("repo scan failed for %s: %s" % (jobs[fut], exc))
             if progress:
                 sys.stderr.write(".")
                 sys.stderr.flush()
+    facts["prs_unread"].sort()
+    # Every repo failed: the same "not checked" as a scan that never ran.
+    if repos and len(facts["prs_unread"]) == len(repos):
+        facts["prs"] = None
+    elif facts["prs"]:
+        refresh_unknown(gql, owner, facts["prs"])
 
     # Checks only for the pull requests that could become loops: stale ones, and queued
     # Dependabot updates of any age.
+    # From facts["prs"], the whole account's list. (The first cut of the per-repo change
+    # read a loop variable named `prs` here — the LAST repo's pull requests — and checked
+    # nobody else's; the live comparison against the search version caught it, 2026-09-22.)
     wanted = []
-    for pr in prs or []:
+    for pr in facts["prs"] or []:
         age = _days(pr.get("createdAt"), today)
         if (age is not None and age > stale_days) or (is_bot(pr) and pr.get("autoMergeRequest")):
             wanted.append(pr)

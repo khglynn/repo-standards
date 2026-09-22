@@ -168,6 +168,49 @@ say "security: cursor pages, fixable only, runtime, severities, Dependabot runs 
 say "alerts refused: an error, never zero alerts"      "$(j .security_blind)" '["security alerts unreadable (HTTP 403)"]'
 say "security fixes off: nothing more is read"          "$(j .security_off)" 'false'
 
+echo "--- 1b. gather(), the network half, against fakes"
+# The per-repo reads and the check reads are glued together here, and the glue is where the
+# first per-repo version went wrong: it checked the tests of the LAST repo's pull requests
+# only (a loop variable shadowed the account-wide list), so every red queued update in any
+# other repo vanished, silently. Two repos, the red one first, one worker: that exact order.
+got=$(python3 - <<'PYEOF'
+import importlib.util, json, os, datetime as dt
+spec = importlib.util.spec_from_file_location("ls", os.path.join("bin", "lib", "loops-scan.py"))
+ls = importlib.util.module_from_spec(spec); spec.loader.exec_module(ls)
+PR = {"number": 7, "title": "t", "url": "u", "createdAt": "2026-09-20T00:00:00Z", "isDraft": False,
+      "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED", "reviewDecision": None,
+      "author": {"login": "dependabot"}, "repository": {"name": "red"}, "baseRefName": "main",
+      "headRefOid": "h7", "autoMergeRequest": {"enabledAt": "2026-09-20T00:01:00Z"}}
+class G:
+    def query(self, doc, v=None):
+        if "pullRequests(states" in doc:
+            nodes = [PR] if v["r"] == "red" else []
+            return {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": nodes}}}, [], None
+        if "statusCheckRollup" in doc:
+            return {"repository": {"pullRequest": {"commits": {"nodes": [{"commit": {"statusCheckRollup": {
+                "contexts": {"nodes": [{"__typename": "CheckRun", "name": "unit", "status": "COMPLETED",
+                                        "conclusion": "FAILURE"}]}}}}]}}}}, [], None
+        return None, [], None
+class C:
+    exhausted = False
+    def get(self, path):
+        if "rules/branches" in path:
+            return [{"type": "required_status_checks",
+                     "parameters": {"required_status_checks": [{"context": "unit"}]}}], {}
+        if "automated-security-fixes" in path:
+            return {"enabled": False}, {}
+        return None, type("E", (), {"code": 404})()
+facts = ls.gather(C(), G(), "o", [("red", "main", "PUBLIC", False), ("quiet", "main", "PUBLIC", False)],
+                  dt.date(2026, 9, 22), 7, 14, True, 1)
+loops, measured = ls.derive_loops(facts)
+print(json.dumps({"checked": sorted(facts["checks"]), "loops": [(l["repo"], l.get("number"), l.get("state")) for l in loops],
+                  "prs_unread": facts["prs_unread"]}))
+PYEOF
+)
+say "the red repo's queued update had its tests read" "$(jq -c .checked <<< "$got")" '["red#7"]'
+say "…and is a loop"                                  "$(jq -c .loops <<< "$got")" '[["red",7,"checks-failing"]]'
+say "…and nothing was unreadable"                      "$(jq -c .prs_unread <<< "$got")" '[]'
+
 echo "--- 2. the derivation, facts to loops, pinned"
 if diff -u <(jq -S '{loops, measured}' "$FX/expected.json") \
            <(python3 bin/lib/loops-scan.py --owner example --derive "$FX/facts.json" | jq -S '{loops, measured}') \
@@ -208,6 +251,15 @@ say "a failed search is measured.prs=false" "$(jq '.measured.prs' <<< "$NOPRS")"
 say "…and yields no PR loops" "$(jq '[.loops[] | select(.kind=="pr")] | length' <<< "$NOPRS")" "0"
 say "…and makes 'no open update PR' unknowable, so silent-security candidates are unread" \
     "$(jq -c '.measured.security_unread' <<< "$NOPRS")" '["charlie","echo","foxtrot","golf"]'
+
+# One repo's pull requests unreadable: that repo is unknown, the rest still counted.
+PART=$(jq '.prs_unread = ["foxtrot"] | .prs |= map(select(.repository.name != "foxtrot"))' "$FX/facts.json" > "$WORK/part.json" && python3 bin/lib/loops-scan.py --owner example --derive "$WORK/part.json")
+say "one repo's PRs unreadable is named" "$(jq -c '.measured.prs_unread' <<< "$PART")" '["foxtrot"]'
+say "…and its security fixes become unknown, not 'silent'" \
+    "$(jq -c '[.measured.security_unread[] | select(. == "foxtrot")]' <<< "$PART")" '["foxtrot"]'
+say "…while the other repos' loops are all still there" \
+    "$(jq '[.loops[] | select(.kind=="pr")] | length' <<< "$PART")" "5"
+printf '%s\n' "$PART" > "$WORK/loops-part.json"
 
 echo "--- 3. the digest, the table and the JSON"
 LOOPS="$WORK/loops.json"; printf '%s\n' "$D" > "$LOOPS"
@@ -264,6 +316,9 @@ done
 NP=$(render --mode digest --loops "$WORK/loops-noprs.json" --word-cap 400 <<< "$QUIET")
 has "a failed PR search is said, not shown as zero PRs" "$NP" "Note: open pull requests could not be read, so loops may be missing."
 hasnt "…and no PR group is invented" "$NP" "Ready to merge"
+has "one repo's unreadable pull requests are said" \
+    "$(render --mode digest --loops "$WORK/loops-part.json" --word-cap 400 <<< "$QUIET")" \
+    "Note: open pull requests could not be read in 1 repo."
 # A clean, fully-read week has no block and no note: silence means clean only when measured.
 CLEAN=$(render --mode digest --loops "$FX/none.json" <<< "$QUIET")
 hasnt "a measured week with no loops prints no block" "$CLEAN" "Open loops"

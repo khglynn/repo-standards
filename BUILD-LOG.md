@@ -1754,9 +1754,10 @@ No new system, channel or token.
 
 **Built.**
 - `bin/lib/loops-scan.py` — read-only (GET-only client from actions-scan.py; GraphQL refuses a
-  mutation before sending). One GraphQL search for every open pull request, per-repo branch
-  rules, and the security-fix switch, alerts and Dependabot runs. `derive_loops` is pure and
-  pinned by fixtures. About 250 calls and 25 seconds against the account.
+  mutation before sending). Per repo: its open pull requests (one GraphQL `repository` query —
+  not an account-wide search, whose reach into a fine-grained token's PRIVATE repos nobody had
+  checked), its branch rules, and its security-fix switch, alerts and Dependabot runs.
+  `derive_loops` is pure and pinned by fixtures. About 250 calls and 30 seconds.
 - `render-audit.py` — the digest gains "Open loops, oldest first:", one numbered line per
   reason (a line per pull request fitted two of 29 real loops into 150 words; a line per
   reason fits all of them at ~220). The repo list gives way to the cap first, then the loops;
@@ -1792,6 +1793,11 @@ No new system, channel or token.
 - A plain "no Dependabot run in 14 days" rule would false-alarm on a repo whose security fix
   already sits in an open Dependabot pull request (Dependabot does not re-run while it waits),
   so the rule also requires no open Dependabot pull request there.
+- Moving from one search to per-repo queries introduced a silent bug the live comparison
+  caught: a loop variable named `prs` shadowed the account-wide list, so only the LAST repo's
+  pull requests had their tests read and both red queued updates vanished from the output
+  with no error. Fixed; `check-loops.sh` section 1b now reproduces that order against fakes,
+  and was run against the buggy version to prove it fails there.
 - Two digest defects fixed in passing: the word cap let exactly 150 words through while every
   document promised under 150; and "To act:" broke age ties by API order, so the 2026-09-21
   digest named a repo it had folded into "and 5 more".

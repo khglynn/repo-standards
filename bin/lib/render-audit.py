@@ -569,6 +569,10 @@ def loop_notes(doc):
     notes = []
     if not m.get("prs"):
         notes.append("Note: open pull requests could not be read, so loops may be missing.")
+    elif m.get("prs_unread"):
+        n = len(m["prs_unread"])
+        notes.append("Note: open pull requests could not be read in %d %s."
+                     % (n, _plural(n, "repo")))
     unread = len(m.get("checks_unread") or [])
     if unread:
         notes.append("Note: tests on %d pull %s could not be read."
