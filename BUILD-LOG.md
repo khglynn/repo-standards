@@ -1802,6 +1802,33 @@ No new system, channel or token.
   document promised under 150; and "To act:" broke age ties by API order, so the 2026-09-21
   digest named a repo it had folded into "and 5 more".
 
+**The independent review (Opus, same day): no MUST-FIX, 13 SHOULD, 10 NIT — all SHOULDs
+and every cheap NIT applied, each re-verified.** The ones that would have hurt:
+- A required check whose NAME contains a comma (a matrix leg's default name, "test (ubuntu,
+  3.11)") never matched in the watch, because the names travelled as one comma-joined
+  string. They now travel as a JSON array (`required-checks-json`), in step 6 too.
+- At the default cap on the account-sized fixture the loops block printed a heading over an
+  orphaned "And 6 more" and no line at all. Now: numbered lines, or one sentence with the
+  count and the oldest age; "And N more" counts loops, not lines.
+- A required check that never reports (a paths filter, a renamed job) read as "still
+  running" forever. The watch now says "never reported", and the scanner lists such a
+  queued update after a day.
+- A scanner exception silently removed a red queued update from the output; a raised read
+  now counts as unread, and a repo with no answer at all is unread everywhere.
+- On the Actions fallback a check run from another app (CodeQL) read as "missing" once
+  statuses were readable; the fallback is now never "complete", so it reads as unread.
+- Classic protection was read only when a repo had no ruleset rules; it is read always.
+- Dependabot's runs were looked for among the newest 100 `dynamic` runs, which CodeQL can
+  crowd out; now read from Dependabot's own workflow (none at all = a measured "never").
+- The `dependabot-ci-failed` label stayed on after a later head's watch ended without a
+  verdict; it now comes off on every answer except "failed" and "unreadable". Remaining
+  gap, documented: a failed job re-run to green without a push starts no run.
+- Also: a cancelled twin of a passing run no longer counts as red (push + pull_request under
+  one concurrency group); per-call `timeout 60`; a here-string instead of a pipe into
+  `grep -q` under pipefail (a found label read as absent); the stub template must grant
+  exactly five scopes, and the audit table names stubs that grant more (the shared workflow
+  no longer caps them); a crashed scan says "failed", not "--skip-loops".
+
 **Not done, on purpose.** No repo enrolled, no ruleset changed, nothing merged, no Slack
 post, no stub rewritten in any other repo, no routine edited.
 

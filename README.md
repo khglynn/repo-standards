@@ -341,9 +341,12 @@ that never run on critical alerts, then an update queued behind failing tests.
 **It is always under 150 words**, because a message you skim is a message you read. When
 there is more to say than that, the repo list gives way first and then the open loops, and
 each says how many it left out; the notes never do, since a note that vanishes reads
-exactly like a week in which there was nothing to report. On a busy week that leaves room
-for only one or two loop lines — `bin/audit --digest --word-cap 220` fits all of them, and
-is the one-flag change to make in the weekly job if a longer Monday message is fine.
+exactly like a week in which there was nothing to report. On the busy real week of
+2026-09-22 that left room for ONE numbered loop line plus "And 18 more open loops." (the
+"To act:" line still named the most urgent one); `bin/audit --digest --word-cap 220` fitted
+five. Raising it is the one-flag change to make in the weekly job if a longer Monday
+message is fine. When not even one line fits, the block becomes a single sentence with
+the count and the oldest age, never a heading over nothing.
 
 Two things it deliberately does **not** do: it never merges, closes or comments on
 anything, and on a quiet week it is three lines rather than a report about nothing.

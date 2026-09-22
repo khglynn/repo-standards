@@ -496,7 +496,7 @@ PR_GROUP = {
     "ready": "Ready to merge but still open",
     "blocked": "Blocked by a repo rule",
     "blocked-unread": "Blocked, and why could not be read",
-    "unknown": "GitHub has not worked out whether they can merge",
+    "unknown": "Merge state not known yet",
 }
 
 
