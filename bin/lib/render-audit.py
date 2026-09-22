@@ -411,7 +411,7 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
 # and why each is stuck, Dependabot updates queued to merge behind a failed check, branch
 # rules that still demand an approving review, and security fixes that are switched on and
 # never run. The scanner decides WHAT is a loop; this file decides only how it reads.
-LOOP_LINES = 5   # most numbered loop lines the digest prints before "and N more"
+LOOP_LINES = 8   # most numbered loop lines before "And N more" — the word cap usually bites first
 
 # One phrase per reason a pull request is not merging. Plain words: the digest is read by
 # someone who should not need to know what a status check or a ruleset is.

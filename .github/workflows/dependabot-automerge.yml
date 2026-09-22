@@ -594,7 +594,7 @@ jobs:
       # "Required" means the contexts step 4 read from the branch rules — the same list
       # auto-merge itself waits on. A required check that has not reported yet is pending,
       # not passing. What counts as FAILED is pinned in WATCH_JQ below and checked against
-      # bin/lib/loops-scan.py's copy by bin/lib/check-watch.sh: two copies of one rule.
+      # bin/lib/loops-scan.py's copy by bin/lib/check-loops.sh: two copies of one rule.
       #
       # Why wait inside this run rather than start a new one when the check finishes: a
       # `check_run`/`check_suite` event is never delivered to a workflow for a check GitHub

@@ -56,7 +56,8 @@ jobs:
           shellcheck -x bin/enroll bin/audit bin/classify-pr bin/lib/verdict.sh \
                      bin/lib/verdict-matrix.sh bin/lib/check-evidence.sh \
                      bin/lib/evidence-matrix.sh bin/lib/check-classifier.sh \
-                     bin/lib/check-workflow-hygiene.sh bin/lib/check-audit.sh
+                     bin/lib/check-workflow-hygiene.sh bin/lib/check-audit.sh \
+                     bin/lib/check-loops.sh
           python3 -m py_compile bin/lib/*.py
 
       # The one rule that exists in two places and cannot be deduplicated: the shared
@@ -83,6 +84,12 @@ jobs:
       # person reads.
       - name: The audit still tells the truth about a readable tree, and the digest reads right
         run: bin/lib/check-audit.sh
+
+      # The open loops (2026-09-22): which pull requests count, why each is stuck, that a
+      # measurement nobody took reads "not checked" and never as an empty list, and that the
+      # shared workflow's failed-test watch and the scanner agree on what "failed" means.
+      - name: The open loops are found, worded, and never reported as none when unread
+        run: bin/lib/check-loops.sh
 
       # A fixture run of the ecosystem detector: proves it still says what we think it says,
       # independently of any live repo. If this ever disagrees, enroll is about to write the

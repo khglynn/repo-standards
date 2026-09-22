@@ -526,11 +526,17 @@ def derive_loops(facts, stale_days=STALE_DAYS):
             continue
         # Both halves of "nothing is fixing these" have to have been READ: the run count
         # (absent under --skip-actions) and the open pull requests (absent when the search
-        # failed). Either one missing makes this repo unknown, not quiet.
-        if sec.get("runs_recent") is None or not measured["prs"]:
+        # failed). A recent run settles it on its own; otherwise a missing half makes this
+        # repo unknown, not quiet.
+        if sec.get("runs_recent") is None:
             measured["security_unread"].append(name)
             continue
-        if sec["runs_recent"] == 0 and not open_bot.get(name):
+        if sec["runs_recent"] > 0:
+            continue
+        if not measured["prs"]:
+            measured["security_unread"].append(name)
+            continue
+        if not open_bot.get(name):
             loops.append({"kind": "silent-security", "repo": name,
                           "fixable": sec["fixable"], "fixable_runtime": sec.get("fixable_runtime"),
                           "critical": sec.get("critical"), "high": sec.get("high"),
