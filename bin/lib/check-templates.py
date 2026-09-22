@@ -34,6 +34,10 @@ def check_caller_stub() -> None:
     perms = doc.get("permissions", {})
     for needed in ("contents", "pull-requests", "issues"):
         check(perms.get(needed) == "write", f"caller-stub.yml: needs `{needed}: write`")
+    # The shared workflow declares no permissions of its own (2026-09-22) and inherits these;
+    # without the two reads its check watch is blind on a private repo.
+    for needed in ("checks", "statuses"):
+        check(perms.get(needed) == "read", f"caller-stub.yml: needs `{needed}: read`")
     uses = doc.get("jobs", {}).get("automerge", {}).get("uses", "")
     check("khglynn/repo-standards/.github/workflows/dependabot-automerge.yml" in uses,
           "caller-stub.yml: no longer points at the shared workflow")

@@ -233,6 +233,10 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   # tool cannot recognise. Reading every workflow in every repo to be sure would cost a
   # call per file across the account for a case that has never occurred.
   has_stub=no
+  # Whether the stub lets the shared workflow READ test results (`checks: read`), which its
+  # failed-test watch needs on a private repo. Stubs stamped before 2026-09-22 do not, and
+  # enroll never rewrites an existing stub, so this column is how that rollout is tracked.
+  stub_watch=null
   for cand in .github/workflows/dependabot-automerge.yml .github/workflows/dependabot-automerge-self.yml; do
     grep -qF "$cand" <<< "$paths" || continue
     content=$(gh api "repos/$R/contents/$cand" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)
@@ -241,7 +245,11 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
     # row lands on `inline` — reporting "still has its own private copy of the merge rules"
     # about a file it never read. The tree call succeeding is what makes this invisible.
     if [ -z "$content" ]; then has_stub=unreadable; break; fi
-    if grep -qF "$STD_PATH" <<< "$content"; then has_stub=yes; break; fi
+    if grep -qF "$STD_PATH" <<< "$content"; then
+      has_stub=yes
+      if grep -qE '^[[:space:]]*checks:[[:space:]]*read' <<< "$content"; then stub_watch=true; else stub_watch=false; fi
+      break
+    fi
     if grep -q 'workflow_call:' <<< "$content"; then has_stub=source; break; fi
     has_stub=inline   # an older, per-repo copy of the rules — the thing we are replacing
   done
@@ -298,7 +306,7 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
         --arg stub "$has_stub" --arg auto_merge "$auto_merge" --arg checks "$checks" \
         --arg prs "$pr_cell" --argjson pr_count "$pr_count" --argjson pr_oldest_days "$pr_age" \
         --arg approve_cell "$approve" --arg status "$status" --arg is_fork "$is_fork" \
-        --argjson scan "$scan" \
+        --argjson scan "$scan" --argjson stub_watch "$stub_watch" \
     '{name:$name, visibility:$visibility, pushed:$pushed, manifest:$manifest,
       dependabot:$dependabot, stub:$stub, auto_merge:$auto_merge, checks:$checks,
       prs:$prs, pr_count:$pr_count, pr_oldest_days:$pr_oldest_days,
@@ -312,7 +320,7 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
       double_trigger:($scan.double_trigger // []),
       unparsed:($scan.unparsed // []), parser:($scan.parser // null),
       errors:($scan.errors // []),
-      is_fork:($is_fork=="true"), status:$status}' >> "$TMP/rows.jsonl"
+      is_fork:($is_fork=="true"), status:$status, stub_watch:$stub_watch}' >> "$TMP/rows.jsonl"
 done <<< "$repos"
 
 printf '                                             \r' >&2

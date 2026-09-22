@@ -338,6 +338,15 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
               "a read-only monitor, so nothing here reads them._", file=out)
     print(file=out)
 
+    blind = [r["name"] for r in rows if r.get("stub_watch") is False]
+    if blind:
+        print("**Stubs that cannot see a failed test** (no `checks: read`, stamped before "
+              "2026-09-22): %s. A Dependabot update whose tests fail there is not labelled; "
+              "the open-loops list below still catches it weekly. Fix: add `checks: read` and "
+              "`statuses: read` to that repo's `.github/workflows/dependabot-automerge.yml`, as "
+              "in `templates/caller-stub.yml`." % ", ".join("`%s`" % n for n in blind), file=out)
+        print(file=out)
+
     missing, double, unparsed = warn_lines(rows)
     if missing or double or unparsed:
         print("**Warnings — not drift, nothing is broken, but each one costs minutes.**", file=out)
@@ -643,12 +652,13 @@ def render_loops_table(doc, out):
             print("- `%s`: the default branch's %s requires %d approving review%s%s." % (
                 lp["repo"], "ruleset" if lp.get("source") == "ruleset" else "branch protection",
                 lp["approvals"], "" if lp["approvals"] == 1 else "s",
-                (", holding up %s" % ", ".join("#%d" % n for n in held)) if held else ""), file=out)
+                (", holding up %s" % ", ".join("#%d" % n for n in sorted(held))) if held else ""), file=out)
         else:
-            print("- `%s`: security fixes on, %d fixable alerts (%s critical, %s high; %s in "
+            n = lp.get("fixable") or 0
+            print("- `%s`: security fixes on, %d fixable %s (%s critical, %s high; %s in "
                   "runtime code), no Dependabot run in %d days (last: %s) and no Dependabot "
                   "pull request open." % (
-                      lp["repo"], lp.get("fixable") or 0, lp.get("critical"), lp.get("high"),
+                      lp["repo"], n, _plural(n, "alert"), lp.get("critical"), lp.get("high"),
                       lp.get("fixable_runtime"), doc.get("silent_days", 14),
                       lp.get("last_run") or "never"), file=out)
     for note in loop_notes(doc):
