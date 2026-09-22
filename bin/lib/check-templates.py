@@ -38,6 +38,11 @@ def check_caller_stub() -> None:
     # without the two reads its check watch is blind on a private repo.
     for needed in ("checks", "statuses"):
         check(perms.get(needed) == "read", f"caller-stub.yml: needs `{needed}: read`")
+    # …and NOTHING beyond these five. Before that date the shared workflow capped whatever a
+    # stub granted at three scopes; now the stub's grant IS the job's token, so an extra
+    # scope here is an extra scope in every enrolled repo.
+    extra = sorted(set(perms) - {"contents", "pull-requests", "issues", "checks", "statuses"})
+    check(not extra, f"caller-stub.yml: grants more than the workflow uses: {extra}")
     uses = doc.get("jobs", {}).get("automerge", {}).get("uses", "")
     check("khglynn/repo-standards/.github/workflows/dependabot-automerge.yml" in uses,
           "caller-stub.yml: no longer points at the shared workflow")

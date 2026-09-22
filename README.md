@@ -60,8 +60,9 @@ instead.
 request opens, seconds before its tests finish, so until 2026-09-22 a patch or minor update
 that then went red simply sat there: auto-merge queued, GitHub waiting forever, no label, no
 message. One grouped update did that for six days. Now the workflow waits for the required
-checks (ten minutes at most by default) and labels a failure `dependabot-ci-failed`; the
-label comes off again if a later push goes green. On a private repo the wait costs runner
+checks (ten minutes at most by default) and labels a failure `dependabot-ci-failed`; a
+later push that is not seen failing takes the label off. (A failed job re-run to green
+without a push starts no run, so there the label stays until removed by hand.) On a private repo the wait costs runner
 time — about two extra minutes per update pull request at the check times measured that day —
 and `watch-minutes: 0` in a repo's stub turns it off.
 

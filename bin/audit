@@ -72,7 +72,8 @@ while [ $# -gt 0 ]; do
     --cap) CAP="${2:-300}"; shift 2 ;;
     --skip-actions) SKIP_ACTIONS=yes; shift ;;
     --skip-loops) SKIP_LOOPS=yes; shift ;;
-    --word-cap) WORD_CAP="${2:-150}"; shift 2 ;;
+    --word-cap) WORD_CAP="${2:-150}"; shift 2
+                case "$WORD_CAP" in ''|*[!0-9]*) echo "--word-cap needs a whole number" >&2; exit 1 ;; esac ;;
     # The header block itself, not a hard-coded line range: bin/enroll's identical range
     # silently truncated its help mid-sentence the moment its header grew (2026-09-14).
     -h|--help) awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "${BASH_SOURCE[0]}"; exit 0 ;;
@@ -237,6 +238,10 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
   # failed-test watch needs on a private repo. Stubs stamped before 2026-09-22 do not, and
   # enroll never rewrites an existing stub, so this column is how that rollout is tracked.
   stub_watch=null
+  # Whether the stub grants more than the shared workflow uses. Since 2026-09-22 the shared
+  # workflow declares no permissions and runs on exactly the stub's grant, so a hand-edited
+  # stub is now the only thing standing between a scope and every step of that job.
+  stub_broad=null
   for cand in .github/workflows/dependabot-automerge.yml .github/workflows/dependabot-automerge-self.yml; do
     grep -qF "$cand" <<< "$paths" || continue
     content=$(gh api "repos/$R/contents/$cand" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)
@@ -247,7 +252,22 @@ while IFS=$'\t' read -r name visibility pushed_at default_branch is_fork; do
     if [ -z "$content" ]; then has_stub=unreadable; break; fi
     if grep -qF "$STD_PATH" <<< "$content"; then
       has_stub=yes
-      if grep -qE '^[[:space:]]*checks:[[:space:]]*read' <<< "$content"; then stub_watch=true; else stub_watch=false; fi
+      # Both reads (or broader) must be granted; checks without statuses still leaves a
+      # Vercel-style gate unreadable. A stub with no top-level permissions block at all
+      # hands the job the repo's default token, which may be anything — "broad".
+      if grep -qE '^permissions:[[:space:]]*(read|write)-all' <<< "$content" \
+         || { grep -qE '^[[:space:]]+checks:[[:space:]]*(read|write)' <<< "$content" \
+              && grep -qE '^[[:space:]]+statuses:[[:space:]]*(read|write)' <<< "$content"; }; then
+        stub_watch=true
+      else
+        stub_watch=false
+      fi
+      if ! grep -qE '^permissions:' <<< "$content" || grep -qE '^permissions:[[:space:]]*write-all' <<< "$content" \
+         || grep -qE '^[[:space:]]+(actions|deployments|packages|pages|security-events|id-token|repository-projects|discussions|attestations|models):[[:space:]]*write' <<< "$content"; then
+        stub_broad=true
+      else
+        stub_broad=false
+      fi
       break
     fi
     if grep -q 'workflow_call:' <<< "$content"; then has_stub=source; break; fi
@@ -306,7 +326,7 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
         --arg stub "$has_stub" --arg auto_merge "$auto_merge" --arg checks "$checks" \
         --arg prs "$pr_cell" --argjson pr_count "$pr_count" --argjson pr_oldest_days "$pr_age" \
         --arg approve_cell "$approve" --arg status "$status" --arg is_fork "$is_fork" \
-        --argjson scan "$scan" --argjson stub_watch "$stub_watch" \
+        --argjson scan "$scan" --argjson stub_watch "$stub_watch" --argjson stub_broad "$stub_broad" \
     '{name:$name, visibility:$visibility, pushed:$pushed, manifest:$manifest,
       dependabot:$dependabot, stub:$stub, auto_merge:$auto_merge, checks:$checks,
       prs:$prs, pr_count:$pr_count, pr_oldest_days:$pr_oldest_days,
@@ -320,7 +340,8 @@ print((datetime.datetime.now(datetime.timezone.utc)-d).days)" "$oldest")
       double_trigger:($scan.double_trigger // []),
       unparsed:($scan.unparsed // []), parser:($scan.parser // null),
       errors:($scan.errors // []),
-      is_fork:($is_fork=="true"), status:$status, stub_watch:$stub_watch}' >> "$TMP/rows.jsonl"
+      is_fork:($is_fork=="true"), status:$status, stub_watch:$stub_watch,
+      stub_broad:$stub_broad}' >> "$TMP/rows.jsonl"
 done <<< "$repos"
 
 printf '                                             \r' >&2
@@ -341,7 +362,9 @@ if [ "$SKIP_LOOPS" = "no" ]; then
        > "$TMP/loops.json"; then
     loops_arg="$TMP/loops.json"
   else
-    echo "open-loops scan failed; the output will say they were not checked" >&2
+    # Its own word, not "skipped": a scan that crashed is not the same fact as a flag.
+    loops_arg="failed"
+    echo "open-loops scan FAILED; the output will say so" >&2
   fi
 fi
 

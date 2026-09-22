@@ -39,8 +39,8 @@ say() { if [ "$2" = "$3" ]; then pass "$1"; else nope "$1 — got '$2', wanted '
 
 # One place to spell the pinned date and the renderer's path. Every assertion here runs
 # with an open-loops scan that read everything and found nothing (fixtures/loops/none.json),
-# which is exactly the digest these assertions were written against. Section 11 exercises
-# the loops themselves, including the renderer called WITHOUT a scan.
+# which is exactly the digest these assertions were written against. bin/lib/check-loops.sh
+# exercises the loops themselves, including the renderer called WITHOUT a scan.
 render() { python3 bin/lib/render-audit.py --owner khglynn --since 2026-09-01 \
                    --today 2026-09-14 --loops bin/lib/fixtures/loops/none.json "$@"; }
 

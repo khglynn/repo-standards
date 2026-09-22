@@ -57,6 +57,9 @@ out = {}
 ev = ls.evaluate_checks
 out["fail"] = ev(["unit"], [("unit", "FAILURE"), ("other", "SUCCESS")], True)["failing"]
 out["cancelled_is_failed"] = ev(["unit"], [("unit", "CANCELLED")], True)["failing"]
+out["cancelled_twin_of_a_pass"] = ev(["unit"], [("unit", "CANCELLED"), ("unit", "SUCCESS")], True)["passed"]
+out["cancelled_while_rerun_runs"] = ev(["unit"], [("unit", "CANCELLED"), ("unit", "IN_PROGRESS")], True)["pending"]
+out["hard_beats_a_pass"] = ev(["unit"], [("unit", "FAILURE"), ("unit", "SUCCESS")], True)["failing"]
 out["one_matrix_leg_red"] = ev(["checks"], [("checks", "SUCCESS"), ("checks", "FAILURE")], True)["failing"]
 out["running"] = ev(["unit"], [("unit", "IN_PROGRESS")], True)["pending"]
 out["skipped_passes"] = ev(["unit"], [("unit", "SKIPPED")], True)["passed"]
@@ -132,22 +135,57 @@ class Paged(Fake):
         if "dependabot/alerts" in path:
             return [alert("critical", "runtime", True), alert("low", "development", False)], \
                    {"Link": '<https://api.github.com/repos/o/r/dependabot/alerts?after=p2>; rel="next"'}
-        if "actions/runs" in path:
-            return {"workflow_runs": [
-                {"event": "dynamic", "path": "dynamic/dependabot/dependabot-updates", "created_at": "2026-09-01T00:00:00Z"},
-                {"event": "pull_request", "path": ".github/workflows/ci.yml", "created_at": "2026-09-21T00:00:00Z"}]}, {}
+        if "actions/workflows/55/runs" in path:
+            return {"workflow_runs": [{"created_at": "2026-09-01T00:00:00Z"}]}, {}
+        if "actions/workflows" in path:
+            return {"workflows": [
+                {"id": 55, "path": "dynamic/dependabot/dependabot-updates"},
+                {"id": 66, "path": "dynamic/github-code-scanning/codeql"},
+                {"id": 77, "path": ".github/workflows/ci.yml"}]}, {}
         return None, E403
 sec = ls.read_security(Paged({}), "o/r", today, 14)
 out["security"] = {k: sec[k] for k in ("alerts", "fixable", "fixable_runtime", "critical", "high", "last_run", "runs_recent")}
 out["security_blind"] = ls.read_security(Fake({"automated-security-fixes": ({"enabled": True}, {}),
                                                "dependabot/alerts": (None, E403)}), "o/r", today, 14)["errors"]
 out["security_off"] = ls.read_security(Fake({"automated-security-fixes": ({"enabled": False}, {})}), "o/r", today, 14)["fixes_on"]
+# No Dependabot workflow at all is a MEASURED "never", not an unread.
+class NeverRan(Paged):
+    def get(self, path):
+        if "actions/workflows" in path:
+            return {"workflows": [{"id": 66, "path": "dynamic/github-code-scanning/codeql"}]}, {}
+        return Paged.get(self, path)
+nr = ls.read_security(NeverRan({}), "o/r", today, 14)
+out["never_ran"] = [nr["last_run"], nr["runs_recent"], nr["errors"]]
+
+# The Actions fallback (a token that cannot read check runs): every job, no de-dup by
+# name, and a required name found nowhere is UNREAD — it may be another app's check run.
+class Blind:
+    def query(self, doc, v=None):
+        return None, [{"message": "Resource not accessible by personal access token"}], None
+class Jobs:
+    exhausted = False
+    def get(self, path):
+        if "actions/runs?head_sha" in path:
+            return {"workflow_runs": [{"id": 1}, {"id": 2}]}, {}
+        if "runs/1/jobs" in path:
+            return {"jobs": [{"name": "checks", "status": "completed", "conclusion": "success"},
+                             {"name": "checks", "status": "completed", "conclusion": "failure"}]}, {}
+        if "runs/2/jobs" in path:
+            return {"jobs": [{"name": "lint", "status": "in_progress"}]}, {}
+        if path.endswith("/status"):
+            return {"statuses": [{"context": "Vercel", "state": "success"}]}, {}
+        return None, E403
+fb = ls.read_checks(Jobs(), Blind(), "o", "r", 1, "sha", ["checks", "Vercel", "CodeQL"])
+out["fallback"] = {k: fb[k] for k in ("failing", "passed", "missing", "unread", "source")}
 print(json.dumps(out, sort_keys=True))
 PYEOF
 )
 j() { jq -c "$1" <<< "$got"; }
 say "a failed required check is failing"               "$(j .fail)" '["unit"]'
 say "a cancelled required check blocks like a failure" "$(j .cancelled_is_failed)" '["unit"]'
+say "…unless a twin of the same name passed"            "$(j .cancelled_twin_of_a_pass)" '["unit"]'
+say "…and a re-run still going is pending"              "$(j .cancelled_while_rerun_runs)" '["unit"]'
+say "a hard failure is red even beside a pass"          "$(j .hard_beats_a_pass)" '["unit"]'
 say "one red matrix leg makes the check red"           "$(j .one_matrix_leg_red)" '["checks"]'
 say "an unfinished check is pending"                   "$(j .running)" '["unit"]'
 say "a skipped required check passes (GitHub's rule)"  "$(j .skipped_passes)" '["unit"]'
@@ -167,6 +205,9 @@ say "security: cursor pages, fixable only, runtime, severities, Dependabot runs 
   '{"alerts":3,"critical":1,"fixable":2,"fixable_runtime":2,"high":1,"last_run":"2026-09-01","runs_recent":0}'
 say "alerts refused: an error, never zero alerts"      "$(j .security_blind)" '["security alerts unreadable (HTTP 403)"]'
 say "security fixes off: nothing more is read"          "$(j .security_off)" 'false'
+say "no Dependabot workflow at all: a measured never"   "$(j .never_ran)" '[null,0,[]]'
+say "fallback: every leg counts, another app's check is unread, a status is read" "$(j .fallback)" \
+  '{"failing":["checks"],"missing":[],"passed":["Vercel"],"source":"actions","unread":["CodeQL"]}'
 
 echo "--- 1b. gather(), the network half, against fakes"
 # The per-repo reads and the check reads are glued together here, and the glue is where the
@@ -230,7 +271,17 @@ say "a queued update with FAILED tests is a loop at 6 days" \
 say "a queued update still running is not a loop" \
     "$(jq '[.loops[] | select(.number==242)] | length' <<< "$D")" "0"
 say "a queued update whose tests could not be read is counted as unread" \
-    "$(jq -c '.measured.checks_unread' <<< "$D")" '["delta#22"]'
+    "$(jq -c '[.measured.checks_unread[] | select(. == "delta#22")]' <<< "$D")" '["delta#22"]'
+say "…and so is one whose check read never came back at all" \
+    "$(jq -c '[.measured.checks_unread[] | select(. == "lima#50")]' <<< "$D")" '["lima#50"]'
+say "a queued update whose required check never reported, a day on, is a loop" \
+    "$(jq -c '[.loops[] | select(.repo=="india" and .number==30) | .state]' <<< "$D")" '["check-missing"]'
+say "…but not on the day it opened" \
+    "$(jq '[.loops[] | select(.repo=="india" and .number==31)] | length' <<< "$D")" "0"
+say "a queued update that conflicts AND is red is still a loop, shown as the conflict" \
+    "$(jq -c '[.loops[] | select(.repo=="juliet") | .state, .failing]' <<< "$D")" '["conflicting",["unit"]]'
+say "a repo whose scan raised is unread on rules and security, not absent" \
+    "$(jq -c '[(.measured.rules_unread | index("kilo") != null), (.measured.security_unread | index("kilo") != null)]' <<< "$D")" '[true,true]'
 say "the review rule carries the PR it strands" \
     "$(jq -c '[.loops[] | select(.kind=="approvals" and .repo=="bravo") | .stranded]' <<< "$D")" '[[2]]'
 say "classic protection's review count is drift too" \
@@ -240,17 +291,17 @@ say "silent security fixes: on, fixable alerts, no run, no open update PR" \
 say "an open Dependabot PR means Dependabot is running there" \
     "$(jq '[.loops[] | select(.kind=="silent-security" and .repo=="foxtrot")] | length' <<< "$D")" "0"
 say "unreadable alerts and an unmeasured run count are UNREAD, not quiet" \
-    "$(jq -c '.measured.security_unread' <<< "$D")" '["charlie","golf"]'
+    "$(jq -c '.measured.security_unread' <<< "$D")" '["charlie","golf","kilo"]'
 say "unreadable rules are UNREAD, not zero approvals" \
-    "$(jq -c '.measured.rules_unread' <<< "$D")" '["delta"]'
+    "$(jq -c '.measured.rules_unread' <<< "$D")" '["delta","kilo"]'
 say "oldest first" \
-    "$(jq -c '[.loops[].age_days]' <<< "$D")" '[302,21,20,12,11,11,11,6,0]'
+    "$(jq -c '[.loops[].age_days]' <<< "$D")" '[302,21,20,12,11,11,11,6,3,2,0]'
 # A search that failed: no PR loops, and the digest must be told, not handed an empty list.
 NOPRS=$(jq '.prs = null' "$FX/facts.json" > "$WORK/noprs.json" && python3 bin/lib/loops-scan.py --owner example --derive "$WORK/noprs.json")
 say "a failed search is measured.prs=false" "$(jq '.measured.prs' <<< "$NOPRS")" "false"
 say "…and yields no PR loops" "$(jq '[.loops[] | select(.kind=="pr")] | length' <<< "$NOPRS")" "0"
 say "…and makes 'no open update PR' unknowable, so silent-security candidates are unread" \
-    "$(jq -c '.measured.security_unread' <<< "$NOPRS")" '["charlie","echo","foxtrot","golf"]'
+    "$(jq -c '.measured.security_unread' <<< "$NOPRS")" '["charlie","echo","foxtrot","golf","kilo"]'
 
 # One repo's pull requests unreadable: that repo is unknown, the rest still counted.
 PART=$(jq '.prs_unread = ["foxtrot"] | .prs |= map(select(.repository.name != "foxtrot"))' "$FX/facts.json" > "$WORK/part.json" && python3 bin/lib/loops-scan.py --owner example --derive "$WORK/part.json")
@@ -258,12 +309,11 @@ say "one repo's PRs unreadable is named" "$(jq -c '.measured.prs_unread' <<< "$P
 say "…and its security fixes become unknown, not 'silent'" \
     "$(jq -c '[.measured.security_unread[] | select(. == "foxtrot")]' <<< "$PART")" '["foxtrot"]'
 say "…while the other repos' loops are all still there" \
-    "$(jq '[.loops[] | select(.kind=="pr")] | length' <<< "$PART")" "5"
+    "$(jq '[.loops[] | select(.kind=="pr")] | length' <<< "$PART")" "7"
 printf '%s\n' "$PART" > "$WORK/loops-part.json"
 
 echo "--- 3. the digest, the table and the JSON"
 LOOPS="$WORK/loops.json"; printf '%s\n' "$D" > "$LOOPS"
-jq '.' "$WORK/noprs.json" > /dev/null
 printf '%s\n' "$NOPRS" > "$WORK/loops-noprs.json"
 render() { python3 bin/lib/render-audit.py --owner khglynn --since 2026-09-01 --today 2026-09-22 "$@"; }
 # The four-repo rows minus the drifter, so the "To act:" line is free to name a loop.
@@ -273,14 +323,22 @@ has "the block is there, oldest first"      "$DG" "Open loops, oldest first:"
 has "stale PRs grouped by the reason they are stuck" "$DG" "Ready to merge but still open (oldest 302 days): alpha #3 and foxtrot #1."
 has "a red queued update says it will never merge" "$DG" "Tests fail, so these queued updates never merge (6 days): charlie #241."
 has "one line for every review rule, with what it strands" "$DG" "Rules still require an approving review in 2 repos, holding up 1 pull request: bravo and hotel."
-has "one line for silent security fixes, with the critical count" "$DG" "Security fixes on but never run in 1 repo, 158 fixable alerts (4 critical): echo."
-has "a conflict is its own reason"           "$DG" "Merge conflicts (21 days): echo #5."
+has "one line for silent security fixes, with the critical count" "$DG" "Security fixes on but never run in 1 repo, 100 fixable alerts (2 critical): echo."
+has "a conflict is its own reason, members oldest first" "$DG" "Merge conflicts (oldest 21 days): echo #5 and juliet #40."
+has "a check that never reported is its own reason" "$DG" "A required check never reported (2 days): india #30."
 has "a draft is its own reason"              "$DG" "Drafts left open (20 days): echo #6."
 hasnt "a PR held by a review rule is not listed twice" "$DG" "bravo #2"
-has "tests that could not be read are said"  "$DG" "Note: tests on 1 pull request could not be read."
-has "rules that could not be read are said"  "$DG" "Note: review rules could not be read in 1 repo."
-has "security fixes that could not be checked are said" "$DG" "Note: security fixes could not be checked in 2 repos."
-has "To act picks the most urgent loop, not the oldest" "$DG" "To act: find out why security fixes never run in echo — 158 fixable alerts (4 critical)."
+has "tests that could not be read are said"  "$DG" "Note: tests on 2 pull requests could not be read."
+has "rules that could not be read are said"  "$DG" "Note: review rules could not be read in 2 repos."
+has "security fixes that could not be checked are said" "$DG" "Note: security fixes could not be checked in 3 repos."
+has "To act picks the most urgent loop, not the oldest" "$DG" "To act: find out why security fixes never run in echo — 100 fixable alerts (2 critical)."
+# …and says "stopped" rather than "never" when Dependabot did run once, with a singular
+# alert read as one alert (both wrong in the first cut, found by review).
+ONCE=$(jq '.loops |= map(if .kind=="silent-security" then .last_run="2026-08-01" | .fixable=1 else . end)' "$LOOPS")
+printf '%s\n' "$ONCE" > "$WORK/loops-once.json"
+has "a repo where Dependabot ran once: stopped, not never, and one alert" \
+    "$(render --mode digest --loops "$WORK/loops-once.json" --word-cap 400 <<< "$QUIET")" \
+    "To act: find out why security fixes stopped running in echo — 1 fixable alert (2 critical)."
 if grep -qE '<[^ ]' <<< "$DG"; then nope "the loops block contains angle brackets (Slack link markup)"
 else pass "no angle brackets"; fi
 # The drifter still outranks every loop: finishing enrolment is the digest's first job.
@@ -288,15 +346,40 @@ DRIFT=$(render --mode digest --loops "$LOOPS" --word-cap 400 < bin/lib/fixtures/
 has "a half-set-up repo still wins the To act line" "$DRIFT" "To act: finish setting up list-maker"
 
 # The cap. Under it by default at account size, and the loops say how many they left out.
-WD=$(render --mode digest --loops "$LOOPS" < bin/lib/fixtures/audit/rows-wide.jsonl)
+# The cap, on a week where everything was read (the realistic case: the stress fixture's
+# five unread-notes never give way, by design, and alone would carry it past 150).
+READ_ALL=$(jq '.measured |= (.checks_unread = [] | .rules_unread = [] | .security_unread = [])' "$LOOPS")
+printf '%s\n' "$READ_ALL" > "$WORK/loops-read.json"
+WD=$(render --mode digest --loops "$WORK/loops-read.json" < bin/lib/fixtures/audit/rows-wide.jsonl)
 n=$(wc -w <<< "$WD" | tr -d ' ')
 if [ "$n" -lt 150 ]; then pass "account-sized digest with loops is $n words (cap 150)"
 else nope "account-sized digest with loops is $n words, cap is 150"; echo "$WD"; fi
-TIGHT=$(render --mode digest --loops "$LOOPS" --word-cap 90 <<< "$QUIET")
+# At account size there must be SOMETHING about the loops: a numbered line, or the one-line
+# count. A header over an orphaned "And N more" is what the first cut printed.
+if grep -qE '^1\. |^Open loops: [0-9]+ this week' <<< "$WD"; then pass "…and it still says something about the loops"
+else nope "the account-sized digest lost the loops entirely"; echo "$WD"; fi
+if grep -qE '^Open loops, oldest first:$' <<< "$WD" && ! grep -qE '^1\. ' <<< "$WD"; then
+  nope "a loops header with no numbered line under it"; echo "$WD"
+else pass "no loops header without a numbered line"; fi
+TIGHT=$(render --mode digest --loops "$LOOPS" --word-cap 170 <<< "$QUIET")
 if grep -qE '^And [0-9]+ more open loops?\.$' <<< "$TIGHT"; then
   pass "a cut loop list says how many it left out"
 else nope "the loop list was cut in silence"; printf '%s\n' "$TIGHT"; fi
-has "…and the notes survive the cut" "$TIGHT" "Note: tests on 1 pull request could not be read."
+# "And N more" counts loops (pull requests and repos), not the lines that group them.
+shown=$(grep -cE '^[0-9]+\. ' <<< "$TIGHT" || true)
+say "…and counts loops, not lines" "$(grep -oE '^And [0-9]+' <<< "$TIGHT" | grep -oE '[0-9]+')" \
+    "$(python3 - "$LOOPS" "$shown" <<'PYEOF'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("r", os.path.join("bin", "lib", "render-audit.py"))
+r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
+doc = json.load(open(sys.argv[1])); doc["state"] = "ok"
+print(sum(c for _, _, c in r.loop_items(doc)[int(sys.argv[2]):]))
+PYEOF
+)"
+has "…and the notes survive the cut" "$TIGHT" "Note: tests on 2 pull requests could not be read."
+ZERO=$(render --mode digest --loops "$LOOPS" --word-cap 60 <<< "$QUIET")
+has "no room for any line: one sentence with the count and the oldest age" "$ZERO" "Open loops: 10 this week, the oldest 302 days old."
+hasnt "…and no orphaned 'And N more'" "$ZERO" "more open loop"
 # The repo list gives way before the loops, and never leaves an orphaned "and N more".
 if grep -qE '^- and [0-9]+ more' <<< "$(render --mode digest --loops "$LOOPS" --word-cap 110 < bin/lib/fixtures/audit/rows-wide.jsonl)" \
    && ! grep -qE '^- [a-z]' <<< "$(render --mode digest --loops "$LOOPS" --word-cap 110 < bin/lib/fixtures/audit/rows-wide.jsonl | grep -v '^- and')"; then
@@ -313,6 +396,14 @@ for how in absent skipped unreadable; do
   has "digest ($how): says open loops were not checked" "$T" "Note: open loops were not checked this week."
   hasnt "digest ($how): no loops block pretending to be complete" "$T" "Open loops, oldest first:"
 done
+has "a scan that FAILED says so, in its own words" "$(render --mode digest --loops failed <<< "$QUIET")" \
+    "Note: the open-loops scan failed this week, so none are listed."
+has "…and the table does not call it --skip-loops" "$(render --mode table --loops failed <<< "$QUIET")" \
+    "the open-loops scan FAILED"
+jq '.errors = ["something nobody planned for"] | .measured |= (.checks_unread = [] | .rules_unread = [] | .security_unread = [])' "$LOOPS" > "$WORK/loops-err.json"
+has "an error no specific note covers still gets a note" \
+    "$(render --mode digest --loops "$WORK/loops-err.json" --word-cap 400 <<< "$QUIET")" \
+    "Note: the open-loops scan hit an error, so the list may be incomplete."
 NP=$(render --mode digest --loops "$WORK/loops-noprs.json" --word-cap 400 <<< "$QUIET")
 has "a failed PR search is said, not shown as zero PRs" "$NP" "Note: open pull requests could not be read, so loops may be missing."
 hasnt "…and no PR group is invented" "$NP" "Ready to merge"
@@ -325,15 +416,16 @@ hasnt "a measured week with no loops prints no block" "$CLEAN" "Open loops"
 hasnt "…and no not-checked note" "$CLEAN" "not checked"
 
 TB=$(render --mode table --loops "$LOOPS" <<< "$QUIET")
-has "table: every loop, oldest first"       "$TB" "**Open loops — 9, oldest first**"
+has "table: every loop, oldest first"       "$TB" "**Open loops — 11, oldest first**"
 has "table: the PR a rule strands is listed too" "$TB" "\`bravo\` #2 (Dependabot), 11 days: waiting on a review the rules require."
 has "table: links"                          "$TB" "https://github.com/example/charlie/pull/241"
 has "table: a queued red update says it will wait forever" "$TB" "auto-merge is queued and will wait forever"
-has "table: singular alert count reads right" "$(render --mode table --loops "$LOOPS" <<< "$QUIET")" "158 fixable alerts"
+has "table: plural alert count"             "$TB" "100 fixable alerts"
+has "table: singular alert count"           "$(render --mode table --loops "$WORK/loops-once.json" <<< "$QUIET")" "1 fixable alert ("
 has "table: not checked, said"              "$(render --mode table <<< "$QUIET")" "**Open loops — NOT CHECKED on this run**"
 JS=$(render --mode json --loops "$LOOPS" <<< "$QUIET")
 say "json: checked"           "$(jq '.open_loops.checked' <<< "$JS")" "true"
-say "json: every loop"        "$(jq '.open_loops.loops | length' <<< "$JS")" "9"
+say "json: every loop"        "$(jq '.open_loops.loops | length' <<< "$JS")" "11"
 JN=$(render --mode json <<< "$QUIET")
 say "json: not checked"       "$(jq '.open_loops.checked' <<< "$JN")" "false"
 say "json: loops null, not []" "$(jq '.open_loops.loops' <<< "$JN")" "null"
@@ -343,6 +435,8 @@ BLIND=$(jq -c 'if .name=="patchwork" then .stub_watch=false else . end' <<< "$QU
 has "table names a stub that cannot see a failed test" "$BLIND" "**Stubs that cannot see a failed test**"
 has "…and which repo" "$BLIND" "\`patchwork\`"
 hasnt "…and says nothing when every stub can" "$(render --mode table --loops "$FX/none.json" <<< "$QUIET")" "Stubs that cannot see"
+BROAD=$(jq -c 'if .name=="patchwork" then .stub_broad=true else . end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
+has "table names a stub that grants more than the workflow uses" "$BROAD" "**Stubs that grant more than the workflow uses:** \`patchwork\`"
 
 echo "--- 4. the workflow's watch rule, taken straight out of the shared workflow"
 WF=.github/workflows/dependabot-automerge.yml
@@ -356,40 +450,50 @@ resp() {  # resp <state> <head> <ctx-json>
       if .[0] == "run" then {__typename: "CheckRun", name: .[1], status: .[2], conclusion: .[3]}
       else {__typename: "StatusContext", context: .[1], state: .[3]} end ]}}}}]}}}}}'
 }
-w() { jq -r --arg req "$1" --arg head H "$WATCH" <<< "$2"; }  # w <required> <response>
-say "a failed required job"            "$(w unit "$(resp OPEN H '[["run","unit","COMPLETED","FAILURE"],["run","lint","COMPLETED","SUCCESS"]]')")" "failed:unit"
-say "a failed non-required job is ignored" "$(w unit "$(resp OPEN H '[["run","unit","COMPLETED","SUCCESS"],["run","lint","COMPLETED","FAILURE"]]')")" "passed"
-say "one red matrix leg"               "$(w checks "$(resp OPEN H '[["run","checks","COMPLETED","SUCCESS"],["run","checks","COMPLETED","FAILURE"]]')")" "failed:checks"
-say "still running"                    "$(w unit "$(resp OPEN H '[["run","unit","IN_PROGRESS",null]]')")" "pending"
-say "not reported yet is pending, never passed" "$(w unit "$(resp OPEN H '[["run","lint","COMPLETED","SUCCESS"]]')")" "pending"
-say "no checks at all yet"             "$(w unit "$(resp OPEN H '[]')")" "pending"
-say "a skipped required job passes"    "$(w unit "$(resp OPEN H '[["run","unit","COMPLETED","SKIPPED"]]')")" "passed"
-say "cancelled counts as failed"       "$(w unit "$(resp OPEN H '[["run","unit","COMPLETED","CANCELLED"]]')")" "failed:unit"
-say "a commit status (Vercel) failing" "$(w Vercel "$(resp OPEN H '[["status","Vercel",null,"FAILURE"]]')")" "failed:Vercel"
-say "a commit status pending"          "$(w Vercel "$(resp OPEN H '[["status","Vercel",null,"PENDING"]]')")" "pending"
-say "two required, one still running"  "$(w unit,Vercel "$(resp OPEN H '[["run","unit","COMPLETED","SUCCESS"],["status","Vercel",null,"PENDING"]]')")" "pending"
-say "two required, both green"         "$(w unit,Vercel "$(resp OPEN H '[["run","unit","COMPLETED","SUCCESS"],["status","Vercel",null,"SUCCESS"]]')")" "passed"
-say "the head moved"                   "$(w unit "$(resp OPEN OTHER '[["run","unit","COMPLETED","FAILURE"]]')")" "moved"
-say "merged or closed"                 "$(w unit "$(resp MERGED H '[]')")" "gone"
+w() { jq -r --argjson req "$1" --arg head H "$WATCH" <<< "$2"; }  # w <required-json> <response>
+say "a failed required job"            "$(w '["unit"]' "$(resp OPEN H '[["run","unit","COMPLETED","FAILURE"],["run","lint","COMPLETED","SUCCESS"]]')")" "failed:unit"
+say "a failed non-required job is ignored" "$(w '["unit"]' "$(resp OPEN H '[["run","unit","COMPLETED","SUCCESS"],["run","lint","COMPLETED","FAILURE"]]')")" "passed"
+say "one red matrix leg"               "$(w '["checks"]' "$(resp OPEN H '[["run","checks","COMPLETED","SUCCESS"],["run","checks","COMPLETED","FAILURE"]]')")" "failed:checks"
+say "still running"                    "$(w '["unit"]' "$(resp OPEN H '[["run","unit","IN_PROGRESS",null]]')")" "pending"
+say "not reported yet is missing, never passed" "$(w '["unit"]' "$(resp OPEN H '[["run","lint","COMPLETED","SUCCESS"]]')")" "missing:unit"
+say "no checks at all yet"             "$(w '["unit"]' "$(resp OPEN H '[]')")" "missing:unit"
+say "one running, one never reported: still pending" "$(w '["unit","Vercel"]' "$(resp OPEN H '[["run","unit","IN_PROGRESS",null]]')")" "pending"
+say "a cancelled twin of a pass is passed" "$(w '["unit"]' "$(resp OPEN H '[["run","unit","COMPLETED","CANCELLED"],["run","unit","COMPLETED","SUCCESS"]]')")" "passed"
+say "a check name with a comma (a matrix leg)" \
+    "$(w '["test (ubuntu-latest, 3.11)"]' "$(resp OPEN H '[["run","test (ubuntu-latest, 3.11)","COMPLETED","FAILURE"]]')")" "failed:test (ubuntu-latest, 3.11)"
+say "a skipped required job passes"    "$(w '["unit"]' "$(resp OPEN H '[["run","unit","COMPLETED","SKIPPED"]]')")" "passed"
+say "cancelled counts as failed"       "$(w '["unit"]' "$(resp OPEN H '[["run","unit","COMPLETED","CANCELLED"]]')")" "failed:unit"
+say "a commit status (Vercel) failing" "$(w '["Vercel"]' "$(resp OPEN H '[["status","Vercel",null,"FAILURE"]]')")" "failed:Vercel"
+say "a commit status pending"          "$(w '["Vercel"]' "$(resp OPEN H '[["status","Vercel",null,"PENDING"]]')")" "pending"
+say "two required, one still running"  "$(w '["unit","Vercel"]' "$(resp OPEN H '[["run","unit","COMPLETED","SUCCESS"],["status","Vercel",null,"PENDING"]]')")" "pending"
+say "two required, both green"         "$(w '["unit","Vercel"]' "$(resp OPEN H '[["run","unit","COMPLETED","SUCCESS"],["status","Vercel",null,"SUCCESS"]]')")" "passed"
+say "the head moved"                   "$(w '["unit"]' "$(resp OPEN OTHER '[["run","unit","COMPLETED","FAILURE"]]')")" "moved"
+say "merged or closed"                 "$(w '["unit"]' "$(resp MERGED H '[]')")" "gone"
 say "an error for the check runs (a token without checks: read)" \
-    "$(w unit '{"errors":[{"message":"Resource not accessible by integration"}],"data":{"repository":{"pullRequest":{"state":"OPEN","headRefOid":"H","commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}}}')" "unread"
-say "no pull request in the answer"    "$(w unit '{"data":{"repository":{"pullRequest":null}}}')" "unread"
+    "$(w '["unit"]' '{"errors":[{"message":"Resource not accessible by integration"}],"data":{"repository":{"pullRequest":{"state":"OPEN","headRefOid":"H","commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}}}')" "unread"
+say "no pull request in the answer"    "$(w '["unit"]' '{"data":{"repository":{"pullRequest":null}}}')" "unread"
 
-# Two copies of one rule: the states the watch calls failed and the ones the scanner does.
-WF_FAILED=$(grep -o 'any(IN([^)]*))' <<< "$WATCH" | grep -oE '"[A-Z_]+"' | tr -d '"' | sort | tr '\n' ' ')
-PY_FAILED=$(python3 -c 'import importlib.util,os
+# Two copies of one rule: the three state lists in the watch and in the scanner.
+lists() {  # lists <jq def name>  → the sorted names in the workflow's `def <name>: [...]`
+  grep -E "def $1: \[" <<< "$WATCH" | grep -oE '"[A-Z_]+"' | tr -d '"' | sort | tr '\n' ' '
+}
+pylist() {
+  python3 -c 'import importlib.util,os,sys
 s=importlib.util.spec_from_file_location("ls",os.path.join("bin","lib","loops-scan.py"));m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
-print(" ".join(sorted(m.FAILED)) + " ")')
-say "the workflow and the scanner agree on what 'failed' means" "$WF_FAILED" "$PY_FAILED"
-WF_PASSED=$(grep -o 'all(IN([^)]*))' <<< "$WATCH" | grep -oE '"[A-Z_]+"' | tr -d '"' | sort | tr '\n' ' ')
-PY_PASSED=$(python3 -c 'import importlib.util,os
-s=importlib.util.spec_from_file_location("ls",os.path.join("bin","lib","loops-scan.py"));m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
-print(" ".join(sorted(m.PASSED)) + " ")')
-say "…and on what 'passed' means" "$WF_PASSED" "$PY_PASSED"
+print(" ".join(sorted(getattr(m, sys.argv[1]))) + " ")' "$1"
+}
+say "the workflow and the scanner agree on HARD failures" "$(lists hard)" "$(pylist HARD)"
+say "…on SOFT ones (cancelled, stale)"                    "$(lists soft)" "$(pylist SOFT)"
+say "…and on what passing means"                          "$(lists pass)" "$(pylist PASSED)"
+# …and step 6's stale-and-red warning counts the union, so it never disagrees with them.
+STEP6=$(grep -oE 'select\(IN\("failure"[^)]*\)\)' "$WF" | grep -oE '"[a-z_]+"' | tr -d '"' | tr '[:lower:]' '[:upper:]' | sort | tr '\n' ' ')
+# Word-splitting the two lists into one is the point here, so it is done by `tr`, not by
+# an unquoted expansion.
+say "step 6 counts exactly HARD + SOFT as red" "$STEP6" "$(printf '%s %s' "$(lists hard)" "$(lists soft)" | tr ' ' '\n' | grep . | sort | tr '\n' ' ')"
 
 # The shared workflow must never declare its own permissions again: asking for one scope an
 # older stub did not grant is a startup failure in every enrolled repo at once.
-if grep -qE '^permissions:' "$WF"; then
+if grep -qE '^[[:space:]]*permissions:' "$WF"; then
   nope "the shared workflow declares permissions again — every older stub would fail to start"
 else pass "the shared workflow inherits its permissions from the stub"; fi
 say "the stub template grants what the watch reads" \

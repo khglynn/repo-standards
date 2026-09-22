@@ -342,15 +342,22 @@ jobs:
           # Branch names with a slash have to be escaped for this path segment.
           base_esc=${BASE_BRANCH//\//%2F}
           checks=""
+          # The same list as a JSON array, for the steps that need the NAMES exactly: a
+          # required check can contain a comma — a matrix leg is named "test (ubuntu, 3.11)"
+          # by default — and splitting the joined string on "," turns it into two names that
+          # never match anything (found by review, 2026-09-22). `checks` stays the joined
+          # form for the log lines and for `ok` below.
+          checks_json='[]'
           unreadable=false
 
           # --paginate --slurp: the endpoint returns 30 rules a page, and a required check
           # on page two would read as "no gate" (fail-closed, but wrong). Same fix as
           # bin/enroll and bin/audit got on 2026-09-14; .[][] flattens the pages.
           if rules=$(gh api --paginate --slurp "repos/$REPO/rules/branches/$base_esc?per_page=100" 2>/dev/null); then
-            checks=$(printf '%s' "$rules" | jq -r '
+            checks_json=$(printf '%s' "$rules" | jq -c '
               [.[][] | select(.type == "required_status_checks")
-                     | .parameters.required_status_checks[]?.context] | unique | join(",")')
+                     | .parameters.required_status_checks[]?.context] | unique')
+            checks=$(jq -r 'join(",")' <<< "$checks_json")
           else
             echo "note: could not read rulesets for $BASE_BRANCH (permissions or none configured)"
           fi
@@ -362,9 +369,10 @@ jobs:
             status=$(printf '%s' "$prot" | head -1 | awk '{print $2}')
             case "$status" in
               200)
-                checks=$(printf '%s' "$prot" | sed -n '/^{/,$p' | jq -r '
+                checks_json=$(printf '%s' "$prot" | sed -n '/^{/,$p' | jq -c '
                   (((.required_status_checks.checks // []) | map(.context))
-                   + (.required_status_checks.contexts // [])) | unique | join(",")')
+                   + (.required_status_checks.contexts // [])) | unique')
+                checks=$(jq -r 'join(",")' <<< "$checks_json")
                 ;;
               403)
                 unreadable=true
@@ -376,8 +384,11 @@ jobs:
             esac
           fi
 
-          echo "required-checks=$checks" >> "$GITHUB_OUTPUT"
-          echo "unreadable=$unreadable" >> "$GITHUB_OUTPUT"
+          {
+            echo "required-checks=$checks"
+            echo "required-checks-json=$checks_json"
+            echo "unreadable=$unreadable"
+          } >> "$GITHUB_OUTPUT"
 
           # `ok` is the single condition every later step keys off, so the "did we clear the
           # CI gate?" question is answered in exactly one place instead of re-derived three times.
@@ -520,6 +531,7 @@ jobs:
         if: steps.gate.outputs.ok == 'true'
         env:
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
+          REQUIRED_CHECKS_JSON: ${{ steps.gate.outputs.required-checks-json }}
         run: |
           set -euo pipefail
           # Everything in this step is advisory — auto-merge is already enabled above — so
@@ -536,14 +548,16 @@ jobs:
           # Piped into a REAL jq rather than gh's `--jq`: gh's flag takes the expression and
           # nothing else, so `--jq --arg req …` would silently treat "--arg" as the program.
           # Any jq option (--arg, --argjson, --slurp) has to go to jq itself.
+          # Names come in as a JSON array (see step 4: a check name can contain a comma).
+          # The states are the union of step 7's two failure lists, so this warning and the
+          # label never disagree about what "red" means; check-loops.sh pins that.
           # shellcheck disable=SC2016  # the $r and $req below are jq variables, not shell
           failed=$(gh pr view "$PR_URL" --json statusCheckRollup 2>/dev/null \
-            | jq -r --arg req "$REQUIRED_CHECKS" '
-              ($req | split(",") | map(select(. != ""))) as $r
-              | [ .statusCheckRollup[]?
-                  | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index($n)))
+            | jq -r --argjson r "${REQUIRED_CHECKS_JSON:-[]}" '
+              [ .statusCheckRollup[]?
+                  | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index([$n])))
                   | ((.conclusion // .state // "") | ascii_downcase)
-                  | select(. == "failure" or . == "timed_out" or . == "action_required" or . == "error") ]
+                  | select(IN("failure", "timed_out", "action_required", "startup_failure", "error", "cancelled", "stale")) ]
               | length' 2>/dev/null || echo 0)
           case "$failed" in ''|*[!0-9]*) failed=0 ;; esac
           echo "$failed required check(s) currently failing"
@@ -580,10 +594,12 @@ jobs:
       #                                on it and post to Slack); auto-merge stays queued, so
       #                                a fix or a Dependabot rebuild that goes green still
       #                                lands by itself
-      #   every required check passed → remove that label if an earlier head left it, so
-      #                                it only ever means "red right now"
-      #   still running at the limit  → a notice and nothing else; the weekly audit lists a
-      #                                queued update whose tests went red later
+      #   every required check passed → remove that label if an earlier head left it
+      #   still running at the limit, → a notice, and the label comes off too: it described
+      #   or never reported              an earlier head. The weekly audit lists a queued
+      #                                  update whose tests go red after the watch ended.
+      # One gap, said plainly: a failed job RE-RUN to green (no new push) starts no run
+      # here, so its label stays until the next push or until someone removes it.
       #   the head moved / PR closed  → stop; a new head gets its own run
       #   the checks are unreadable   → a warning naming the fix, and nothing else
       #
@@ -609,29 +625,48 @@ jobs:
         if: steps.gate.outputs.ok == 'true' && inputs.watch-minutes > 0
         env:
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
+          REQUIRED_CHECKS_JSON: ${{ steps.gate.outputs.required-checks-json }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -uo pipefail
-          if [ -z "$REQUIRED_CHECKS" ]; then
+          if [ -z "$REQUIRED_CHECKS" ] || [ "${REQUIRED_CHECKS_JSON:-[]}" = "[]" ]; then
             echo "no required checks to watch (require-ci is off here) — nothing to do"; exit 0
           fi
-          # shellcheck disable=SC2016  # $pr, $r, $c, $per, $failed are jq variables
+          # One verdict for the whole PR, from one verdict per required check:
+          #   missing  — nothing by that name has reported at all (yet, or ever)
+          #   failed   — a hard failure; or it was cancelled/stale and nothing of that
+          #              name passed (a push+PR double trigger can cancel one run while
+          #              its twin passes, and GitHub merges on the pass)
+          #   pending  — something by that name is still running
+          #   passed   — everything by that name finished, at least one passed
+          # The three lists are pinned against bin/lib/loops-scan.py's HARD / SOFT / PASSED
+          # by bin/lib/check-loops.sh: two copies of one rule.
+          # shellcheck disable=SC2016  # $pr, $c, $v, $req, $head are jq variables
           WATCH_JQ='
+            def hard: ["FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"];
+            def soft: ["CANCELLED", "STALE"];
+            def pass: ["SUCCESS", "NEUTRAL", "SKIPPED"];
+            def state_of:
+              if length == 0 then "missing"
+              elif any(IN(hard[])) then "failed"
+              elif any((IN(pass[]) or IN(soft[])) | not) then "pending"
+              elif any(IN(pass[])) then "passed"
+              else "failed" end;
             if ((.errors // []) | length) > 0 or (.data.repository.pullRequest == null) then "unread"
             else .data.repository.pullRequest as $pr
             | if $pr.state != "OPEN" then "gone"
               elif $pr.headRefOid != $head then "moved"
-              else ($req | split(",") | map(select(. != ""))) as $r
-              | [ ($pr.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])[]
+              else
+                [ ($pr.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])[]
                   | {n: (.name // .context),
                      s: (if .__typename == "CheckRun"
                          then (if .status == "COMPLETED" then .conclusion else .status end)
                          else .state end)} ] as $c
-              | [ $r[] as $x | {x: $x, s: [ $c[] | select(.n == $x) | .s ]} ] as $per
-              | [ $per[] | select(.s | any(IN("FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE", "ERROR"))) | .x ] as $failed
-              | if ($failed | length) > 0 then "failed:" + ($failed | join(","))
-                elif ($per | all(.s | length > 0 and all(IN("SUCCESS", "NEUTRAL", "SKIPPED")))) then "passed"
-                else "pending" end
+                | [ $req[] as $x | {x: $x, v: ([ $c[] | select(.n == $x) | .s ] | state_of)} ] as $v
+                | if any($v[]; .v == "failed") then "failed:" + ([ $v[] | select(.v == "failed") | .x ] | join(", "))
+                  elif all($v[]; .v == "passed") then "passed"
+                  elif any($v[]; .v == "pending") then "pending"
+                  else "missing:" + ([ $v[] | select(.v == "missing") | .x ] | join(", ")) end
               end
             end'
           # shellcheck disable=SC2016  # $o, $r, $n are GraphQL variables
@@ -647,9 +682,10 @@ jobs:
           unread_in_a_row=0
           verdict=pending
           while :; do
-            resp=$(gh api graphql -f query="$QUERY" -f o="${REPO%%/*}" -f r="${REPO#*/}" -F n="$PR_NUMBER" 2>/dev/null)
+            # `timeout`: one hung call must not eat the job's whole 25 minutes.
+            resp=$(timeout 60 gh api graphql -f query="$QUERY" -f o="${REPO%%/*}" -f r="${REPO#*/}" -F n="$PR_NUMBER" 2>/dev/null)
             if [ -n "$resp" ]; then
-              verdict=$(jq -r --arg req "$REQUIRED_CHECKS" --arg head "$HEAD_SHA" "$WATCH_JQ" <<< "$resp" 2>/dev/null)
+              verdict=$(jq -r --argjson req "$REQUIRED_CHECKS_JSON" --arg head "$HEAD_SHA" "$WATCH_JQ" <<< "$resp" 2>/dev/null)
               [ -n "$verdict" ] || verdict=unread
             else
               verdict=unread
@@ -661,15 +697,31 @@ jobs:
             else
               unread_in_a_row=0
             fi
-            [ "$verdict" = "pending" ] || break
+            case "$verdict" in pending|missing:*) ;; *) break ;; esac
             [ "$(date +%s)" -lt "$deadline" ] || break
             sleep 20
           done
+          # Blips at the very end leave `pending` standing in for "could not read".
+          if [ "$verdict" = "pending" ] && [ "$unread_in_a_row" -gt 0 ]; then verdict=unread; fi
+
+          # The label means "this head is red". Any other answer about a NEWER head than the
+          # one that was labelled — passed, still running, never reported — means it no
+          # longer describes the PR, so it comes off. (Unreadable leaves it: no new facts.)
+          clear_label() {
+            local labels
+            labels=$(timeout 60 gh pr view "$PR_URL" --json labels --jq '.labels[].name' 2>/dev/null)
+            # A here-string, not a pipe: `grep -q` exits at its first match, the writer then
+            # takes SIGPIPE, and under pipefail a FOUND label reads as not found.
+            if grep -qxF "$LABEL_CI_FAILED" <<< "$labels"; then
+              timeout 60 gh pr edit "$PR_URL" --remove-label "$LABEL_CI_FAILED" \
+                && echo "removed '$LABEL_CI_FAILED': it described an earlier head"
+            fi
+          }
 
           case "$verdict" in
             failed:*)
               failed=${verdict#failed:}
-              if gh pr edit "$PR_URL" --add-label "$LABEL_CI_FAILED"; then
+              if timeout 60 gh pr edit "$PR_URL" --add-label "$LABEL_CI_FAILED"; then
                 echo "::warning title=Required check failed::[$failed] failed on $HEAD_SHA. Labelled '$LABEL_CI_FAILED'. Auto-merge stays queued and will land by itself if a fix goes green."
               else
                 echo "::warning title=Could not label::[$failed] failed on $HEAD_SHA, and adding '$LABEL_CI_FAILED' was refused."
@@ -677,13 +729,15 @@ jobs:
               ;;
             passed)
               echo "every required check passed on $HEAD_SHA — auto-merge will land it"
-              if gh pr view "$PR_URL" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF "$LABEL_CI_FAILED"; then
-                gh pr edit "$PR_URL" --remove-label "$LABEL_CI_FAILED" \
-                  && echo "removed '$LABEL_CI_FAILED' left by an earlier head"
-              fi
+              clear_label
               ;;
             pending)
               echo "::notice title=Checks still running::[$REQUIRED_CHECKS] had not finished after ${IN_WATCH_MINUTES} minutes. Not labelled; the weekly audit lists a queued update whose tests go red later."
+              clear_label
+              ;;
+            missing:*)
+              echo "::warning title=Required check never reported::[${verdict#missing:}] never reported on $HEAD_SHA in ${IN_WATCH_MINUTES} minutes. If the workflow skips this kind of change (a paths filter) or the job was renamed, auto-merge will wait forever; the weekly audit lists it after a day."
+              clear_label
               ;;
             moved) echo "the PR's head moved during the watch — its own run will watch the new head" ;;
             gone)  echo "the PR is no longer open (merged or closed) — nothing to watch" ;;

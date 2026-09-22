@@ -73,10 +73,10 @@
     },
     {
       "age_days": 11,
-      "critical": 4,
-      "fixable": 158,
-      "fixable_runtime": 127,
-      "high": 67,
+      "critical": 2,
+      "fixable": 100,
+      "fixable_runtime": 80,
+      "high": 30,
       "kind": "silent-security",
       "last_run": null,
       "repo": "echo"
@@ -96,6 +96,32 @@
       "url": "https://github.com/example/charlie/pull/241"
     },
     {
+      "age_days": 3,
+      "bot": true,
+      "failing": [
+        "unit"
+      ],
+      "kind": "pr",
+      "number": 40,
+      "queued": true,
+      "repo": "juliet",
+      "state": "conflicting",
+      "title": "t",
+      "url": "https://github.com/example/juliet/pull/40"
+    },
+    {
+      "age_days": 2,
+      "bot": true,
+      "failing": [],
+      "kind": "pr",
+      "number": 30,
+      "queued": true,
+      "repo": "india",
+      "state": "check-missing",
+      "title": "t",
+      "url": "https://github.com/example/india/pull/30"
+    },
+    {
       "age_days": 0,
       "approvals": 2,
       "kind": "approvals",
@@ -106,16 +132,19 @@
   ],
   "measured": {
     "checks_unread": [
-      "delta#22"
+      "delta#22",
+      "lima#50"
     ],
     "prs": true,
     "prs_unread": [],
     "rules_unread": [
-      "delta"
+      "delta",
+      "kilo"
     ],
     "security_unread": [
       "charlie",
-      "golf"
+      "golf",
+      "kilo"
     ],
     "skipped": []
   }

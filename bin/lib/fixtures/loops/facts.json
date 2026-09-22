@@ -1,11 +1,25 @@
 {
-  "_about": "What loops-scan.py would have READ on 2026-09-22 for a made-up owner, one case per rule. check-loops.sh derives loops from it (loops-scan.py --derive, no network) and diffs the result against expected.json. The repo names are placeholders on purpose: this repo is public and the real account's are not all. Each PR's `_case` says what it proves.",
+  "_about": "What loops-scan.py would have READ on 2026-09-22 for a made-up owner, one case per rule. check-loops.sh derives loops from it (loops-scan.py --derive, no network) and diffs the result against expected.json. The repo names are placeholders on purpose: this repo is public and the real account's are not all. Each PR's `_case` says what it proves. `repo_names` lists every repo asked about; `kilo` is in it with no answer at all (its scan raised), which must read as unread everywhere.",
   "owner": "example",
   "today": "2026-09-22",
   "stale_days": 7,
   "silent_days": 14,
   "errors": [],
   "skipped": [],
+  "repo_names": [
+    "alpha",
+    "bravo",
+    "charlie",
+    "delta",
+    "echo",
+    "foxtrot",
+    "golf",
+    "hotel",
+    "india",
+    "juliet",
+    "kilo",
+    "lima"
+  ],
   "prs_unread": [],
   "prs": [
     {
@@ -193,6 +207,94 @@
       "baseRefName": "main",
       "headRefOid": "f1",
       "autoMergeRequest": null
+    },
+    {
+      "_case": "queued update, 2 days old, its required check NEVER reported (a paths filter, a renamed job): stuck forever, so a loop",
+      "number": 30,
+      "title": "t",
+      "url": "https://github.com/example/india/pull/30",
+      "createdAt": "2026-09-20T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "india"
+      },
+      "baseRefName": "main",
+      "headRefOid": "i30",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-20T10:00:00Z"
+      }
+    },
+    {
+      "_case": "queued update opened today whose check has not reported YET: not a loop",
+      "number": 31,
+      "title": "t",
+      "url": "https://github.com/example/india/pull/31",
+      "createdAt": "2026-09-22T09:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "india"
+      },
+      "baseRefName": "main",
+      "headRefOid": "i31",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-22T09:00:00Z"
+      }
+    },
+    {
+      "_case": "queued update that conflicts AND has a failed check: still a loop at 3 days, shown as the conflict",
+      "number": 40,
+      "title": "t",
+      "url": "https://github.com/example/juliet/pull/40",
+      "createdAt": "2026-09-19T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DIRTY",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "juliet"
+      },
+      "baseRefName": "main",
+      "headRefOid": "j40",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-19T10:00:00Z"
+      }
+    },
+    {
+      "_case": "queued update whose check read RAISED (no checks entry at all): unread, not clean",
+      "number": 50,
+      "title": "t",
+      "url": "https://github.com/example/lima/pull/50",
+      "createdAt": "2026-09-21T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "lima"
+      },
+      "baseRefName": "main",
+      "headRefOid": "l50",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-21T10:00:00Z"
+      }
     }
   ],
   "checks": {
@@ -281,6 +383,45 @@
         "ci"
       ],
       "source": "actions"
+    },
+    "india#30": {
+      "required": [
+        "ci"
+      ],
+      "failing": [],
+      "pending": [],
+      "missing": [
+        "ci"
+      ],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    },
+    "india#31": {
+      "required": [
+        "ci"
+      ],
+      "failing": [],
+      "pending": [],
+      "missing": [
+        "ci"
+      ],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    },
+    "juliet#40": {
+      "required": [
+        "unit"
+      ],
+      "failing": [
+        "unit"
+      ],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
     }
   },
   "repos": {
@@ -391,11 +532,11 @@
       },
       "security": {
         "fixes_on": true,
-        "alerts": 160,
-        "fixable": 158,
-        "fixable_runtime": 127,
-        "critical": 4,
-        "high": 67,
+        "alerts": 120,
+        "fixable": 100,
+        "fixable_runtime": 80,
+        "critical": 2,
+        "high": 30,
         "oldest_fixable": "2026-09-11",
         "last_run": null,
         "runs_recent": 0,
@@ -454,6 +595,78 @@
         "required": [],
         "approvals": 2,
         "source": "classic",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "india": {
+      "rules": {
+        "read": true,
+        "required": [
+          "ci"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "juliet": {
+      "rules": {
+        "read": true,
+        "required": [
+          "unit"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "lima": {
+      "rules": {
+        "read": true,
+        "required": [
+          "ci"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
         "ruleset_ids": [],
         "errors": []
       },

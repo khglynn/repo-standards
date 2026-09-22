@@ -338,6 +338,13 @@ def render_table(rows, owner, since, cap, out, method="jobs", note="", today=Non
               "a read-only monitor, so nothing here reads them._", file=out)
     print(file=out)
 
+    broad = [r["name"] for r in rows if r.get("stub_broad") is True]
+    if broad:
+        print("**Stubs that grant more than the workflow uses:** %s. The shared workflow "
+              "runs with exactly its caller's permissions (since 2026-09-22), so trim each "
+              "to the five in `templates/caller-stub.yml`." % ", ".join("`%s`" % n for n in broad),
+              file=out)
+        print(file=out)
     blind = [r["name"] for r in rows if r.get("stub_watch") is False]
     if blind:
         print("**Stubs that cannot see a failed test** (no `checks: read`, stamped before "
@@ -441,8 +448,8 @@ def load_loops(path):
     """
     if not path:
         return {"state": "absent"}
-    if path == "skipped":
-        return {"state": "skipped"}
+    if path in ("skipped", "failed"):
+        return {"state": path}
     try:
         with open(path) as fh:
             doc = json.load(fh)
@@ -504,7 +511,8 @@ def loop_items(doc):
     * Every repo whose security fixes never run is ONE line, biggest first.
 
     Groups are ordered by the age of the oldest thing in them. Each item is returned as
-    text; `_names` says how many members it left out, so nothing is cut in silence.
+    (age, text, how many loops it covers); `_names` says how many members a line left out,
+    and the count is what "And N more" adds up, so nothing is cut in silence.
     """
     loops = doc.get("loops") or []
     approvals = [lp for lp in loops if lp["kind"] == "approvals"]
@@ -527,7 +535,8 @@ def loop_items(doc):
         if oldest == 0:
             tag = "opened today"
         items.append((oldest or 0, "%s (%s): %s." % (
-            label, tag, _names(["%s #%d" % (m["repo"], m["number"]) for m in members], 2))))
+            label, tag, _names(["%s #%d" % (m["repo"], m["number"]) for m in members], 2)),
+            len(members)))
     if approvals:
         held = sum(len(lp.get("stranded") or []) for lp in approvals)
         names = [lp["repo"] for lp in sorted(approvals, key=lambda x: (-len(x.get("stranded") or []), x["repo"]))]
@@ -536,7 +545,7 @@ def loop_items(doc):
         if held:
             text += ", holding up %d pull %s" % (held, _plural(held, "request"))
         text += ": %s." % _names(names, 2)
-        items.append((max(lp.get("age_days") or 0 for lp in approvals), text))
+        items.append((max(lp.get("age_days") or 0 for lp in approvals), text, len(approvals)))
     if silent:
         fixable = sum(lp.get("fixable") or 0 for lp in silent)
         critical = sum(lp.get("critical") or 0 for lp in silent)
@@ -548,9 +557,9 @@ def loop_items(doc):
         if critical:
             text += " (%d critical)" % critical
         text += ": %s." % _names(names, 2)
-        items.append((max(lp.get("age_days") or 0 for lp in silent), text))
+        items.append((max(lp.get("age_days") or 0 for lp in silent), text, len(silent)))
     items.sort(key=lambda x: (-x[0], x[1]))
-    return [t for _, t in items]
+    return items
 
 
 def loop_notes(doc):
@@ -563,6 +572,8 @@ def loop_notes(doc):
     the rest was padding.
     """
     st = doc.get("state")
+    if st == "failed":
+        return ["Note: the open-loops scan failed this week, so none are listed."]
     if st != "ok":
         return ["Note: open loops were not checked this week."]
     m = doc.get("measured") or {}
@@ -585,6 +596,10 @@ def loop_notes(doc):
     if sec:
         notes.append("Note: security fixes could not be checked in %d %s."
                      % (sec, _plural(sec, "repo")))
+    if doc.get("errors") and not notes:
+        # Every error the scanner records is meant to land in one of the notes above. One
+        # that did not is still an error, and the list may be short because of it.
+        notes.append("Note: the open-loops scan hit an error, so the list may be incomplete.")
     return notes
 
 
@@ -615,8 +630,10 @@ def loop_act(doc):
     lp = sorted(loops, key=lambda x: (rank(x), x["repo"], x.get("number") or 0))[0]
     if lp["kind"] == "silent-security":
         crit = " (%d critical)" % lp["critical"] if lp.get("critical") else ""
-        return ("To act: find out why security fixes never run in %s — %d fixable alerts%s."
-                % (lp["repo"], lp.get("fixable") or 0, crit))
+        n = lp.get("fixable") or 0
+        return ("To act: find out why security fixes %s in %s — %d fixable %s%s."
+                % ("never run" if not lp.get("last_run") else "stopped running",
+                   lp["repo"], n, _plural(n, "alert"), crit))
     if lp["kind"] == "approvals":
         return ("To act: set required approving reviews to zero in %s's branch rules." % lp["repo"])
     verb = {"ready": "merge or close it",
@@ -632,6 +649,7 @@ def render_loops_table(doc, out):
     if st != "ok":
         print("**Open loops — NOT CHECKED on this run** (%s). An empty list here would mean "
               "nothing." % {"absent": "no scan was passed in", "skipped": "`--skip-loops`",
+                            "failed": "the open-loops scan FAILED, see the run's log",
                             "unreadable": "the scan file could not be read"}.get(st, st),
               file=out)
         print(file=out)
@@ -692,12 +710,19 @@ def _assemble(head, repo_lines, keep, collapsed, tail, act, loop_lines=(), lkeep
     if collapsed:
         body.append(collapsed)
     block = []
-    if loop_lines:
+    if loop_lines and lkeep == 0:
+        # No room for a single numbered line: one sentence instead of a header over an
+        # orphaned "And N more" (review finding, 2026-09-22). The count and the oldest age
+        # still say how much is waiting, and "To act:" names the most urgent one.
+        n = sum(c for _, _, c in loop_lines)
+        block.append("Open loops: %d this week, the oldest %s old."
+                     % (n, _age_words(max(a for a, _, _ in loop_lines))))
+    elif loop_lines:
         block.append("Open loops, oldest first:")
-        block.extend("%d. %s" % (i + 1, t) for i, t in enumerate(loop_lines[:lkeep]))
-        lrest = len(loop_lines) - lkeep
-        if lrest > 0:
-            block.append("And %d more open %s." % (lrest, _plural(lrest, "loop")))
+        block.extend("%d. %s" % (i + 1, t) for i, (_, t, _) in enumerate(loop_lines[:lkeep]))
+        hidden = sum(c for _, _, c in loop_lines[lkeep:])
+        if hidden:
+            block.append("And %d more open %s." % (hidden, _plural(hidden, "loop")))
     return [head, body, block, tail, [act]]
 
 

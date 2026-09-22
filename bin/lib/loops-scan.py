@@ -68,11 +68,14 @@ _spec.loader.exec_module(scan)
 
 STALE_DAYS = 7
 SILENT_DAYS = 14
-# What GitHub itself treats as "this required check did not pass". CANCELLED and STALE are
-# in on purpose: a required check that was cancelled on the current head blocks the merge
-# exactly as hard as a failure does, and auto-merge waits on it forever.
-FAILED = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE",
-          "STALE", "ERROR"}
+# What "this required check did not pass" means, in two strengths. A HARD result is red
+# whatever else ran under that name. A SOFT one (cancelled, stale) blocks the merge exactly
+# as hard — auto-merge waits on it forever — UNLESS a run of the same name passed: a repo
+# that tests on both push and pull_request with one concurrency group cancels one twin
+# while the other passes, and GitHub merges on the pass (review finding, 2026-09-22).
+# The shared workflow's step 7 carries the same three lists; check-loops.sh pins them.
+HARD = {"FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"}
+SOFT = {"CANCELLED", "STALE"}
 PASSED = {"SUCCESS", "NEUTRAL", "SKIPPED"}
 
 
@@ -182,23 +185,30 @@ def read_rules(client, repo, branch):
                 out["ruleset_ids"].append(rule.get("ruleset_id"))
             out["source"] = "ruleset"
 
-    if not rules:
-        data, err = client.get("repos/%s/branches/%s/protection" % (repo, esc))
-        code = getattr(err, "code", None)
-        if isinstance(data, dict):
-            rsc = data.get("required_status_checks") or {}
-            ctxs = [c.get("context") for c in rsc.get("checks") or []] + list(rsc.get("contexts") or [])
-            out["required"] = sorted({c for c in ctxs if c})
-            reviews = data.get("required_pull_request_reviews")
-            if reviews is not None:
-                out["approvals"] = reviews.get("required_approving_review_count") or 0
+    # Classic branch protection ALWAYS, not only when there are no rules: both apply at
+    # once, and a repo enrolled with a ruleset can still carry a classic "one review"
+    # from before — which would otherwise read as a clean 0 (review finding, 2026-09-22).
+    data, err = client.get("repos/%s/branches/%s/protection" % (repo, esc))
+    code = getattr(err, "code", None)
+    if isinstance(data, dict):
+        rsc = data.get("required_status_checks") or {}
+        ctxs = [c.get("context") for c in rsc.get("checks") or []] + list(rsc.get("contexts") or [])
+        for c in ctxs:
+            if c and c not in out["required"]:
+                out["required"].append(c)
+        reviews = data.get("required_pull_request_reviews")
+        if reviews is not None:
+            n = reviews.get("required_approving_review_count") or 0
+            if n > (out["approvals"] or 0):
+                out["approvals"] = n
                 out["source"] = "classic"
-        elif code == 404:
-            pass  # no classic protection: an answer, not an error
-        else:
-            # 403 = this token is not allowed to look. That is "unknown", not "none".
-            out["approvals"] = None
-            out["errors"].append("classic protection unreadable (%s)" % _why(err))
+    elif code == 404:
+        pass  # no classic protection: an answer, not an error
+    elif not out["approvals"]:
+        # 403 = this token may not look. With a ruleset review count already in hand the
+        # drift is known either way; without one, the answer is "unknown", not "none".
+        out["approvals"] = None
+        out["errors"].append("classic protection unreadable (%s)" % _why(err))
     return out
 
 
@@ -262,17 +272,19 @@ def open_prs(gql, owner, repo):
 
 def refresh_unknown(gql, owner, prs):
     """GitHub works mergeability out lazily: the first question starts the computation and
-    answers UNKNOWN. Asking again a few seconds later usually gets the real answer. Only the
-    PRs that came back UNKNOWN are asked twice; a second UNKNOWN is reported as unknown."""
-    stale = [p for p in prs if p.get("mergeStateStatus") == "UNKNOWN" or p.get("mergeable") == "UNKNOWN"]
-    if not stale:
-        return
-    time.sleep(4)
-    for p in stale:
-        data, _errors, _exc = gql.query(ONE_PR, {"o": owner, "r": p["repository"]["name"], "n": p["number"]})
-        fresh = ((data or {}).get("repository") or {}).get("pullRequest")
-        if fresh:
-            p.update(fresh)
+    answers UNKNOWN. Asking again a few seconds later usually gets the real answer — and on
+    a slow day twice (a 53-day-old PR read UNKNOWN after one 4-second retry on 2026-09-22).
+    Two rounds, 4 then 8 seconds; whatever is still UNKNOWN is reported as unknown."""
+    for wait in (4, 8):
+        stale = [p for p in prs if p.get("mergeStateStatus") == "UNKNOWN" or p.get("mergeable") == "UNKNOWN"]
+        if not stale:
+            return
+        time.sleep(wait)
+        for p in stale:
+            data, _errors, _exc = gql.query(ONE_PR, {"o": owner, "r": p["repository"]["name"], "n": p["number"]})
+            fresh = ((data or {}).get("repository") or {}).get("pullRequest")
+            if fresh:
+                p.update(fresh)
 
 
 # ------------------------------------------------------------------ checks
@@ -293,12 +305,14 @@ def evaluate_checks(required, contexts, complete):
         states = [s for n, s in contexts if n == req]
         if not states:
             (out["missing"] if complete else out["unread"]).append(req)
-        elif any(s in FAILED for s in states):
+        elif any(s in HARD for s in states):
             out["failing"].append(req)
-        elif all(s in PASSED for s in states):
+        elif any(s not in PASSED and s not in SOFT for s in states):
+            out["pending"].append(req)
+        elif any(s in PASSED for s in states):
             out["passed"].append(req)
         else:
-            out["pending"].append(req)
+            out["failing"].append(req)  # every run of it was cancelled or went stale
     return out
 
 
@@ -337,34 +351,42 @@ def read_checks(client, gql, owner, repo, number, head_sha, required, use_action
         return dict(evaluate_checks(required, [], False), source="unread")
 
     full = "%s/%s" % (owner, repo)
-    ctx, complete = [], True
+    # `complete` is False on this path by construction, whatever answers below: check runs
+    # from any app other than GitHub Actions (CodeQL, a GitHub App gate) are visible only to
+    # the check-runs API this token cannot call. So a required name found nowhere here is
+    # UNREAD, never "missing" — a young queued update must not drop out of the loops because
+    # its red check came from an app we could not ask (review finding, 2026-09-22).
+    ctx, complete = [], False
+    readable = True
     runs, err = client.get("repos/%s/actions/runs?head_sha=%s&per_page=100" % (full, head_sha))
     if isinstance(runs, dict):
-        # Newest run first, so a re-run's result is the one that counts for a job name.
-        latest = {}
-        for run in sorted(runs.get("workflow_runs") or [], key=lambda r: r.get("id") or 0, reverse=True):
+        # Every job of every run on this commit, the way the check-runs rollup would list
+        # them. No de-duplication by name: two matrix legs can share one name, and keeping
+        # only the first would hide a red leg behind a green one. Re-runs need no handling
+        # here — each run is listed once and its jobs endpoint answers for its latest
+        # attempt — and a cancelled twin next to a pass is what SOFT exists for.
+        for run in runs.get("workflow_runs") or []:
             jobs, jerr = client.get("repos/%s/actions/runs/%d/jobs?per_page=100" % (full, run["id"]))
             if not isinstance(jobs, dict):
-                complete = False
+                readable = False
                 continue
             for job in jobs.get("jobs") or []:
                 name = job.get("name")
-                if not name or name in latest:
+                if not name:
                     continue
                 if job.get("status") == "completed":
-                    latest[name] = (job.get("conclusion") or "").upper() or "PENDING"
+                    ctx.append((name, (job.get("conclusion") or "").upper() or "PENDING"))
                 else:
-                    latest[name] = (job.get("status") or "PENDING").upper()
-        ctx.extend(latest.items())
+                    ctx.append((name, (job.get("status") or "PENDING").upper()))
     else:
-        complete = False
+        readable = False
     statuses, serr = client.get("repos/%s/commits/%s/status" % (full, head_sha))
     if isinstance(statuses, dict):
         for s in statuses.get("statuses") or []:
             ctx.append((s.get("context"), (s.get("state") or "pending").upper()))
     else:
-        complete = False
-    source = "actions" if complete else "partial"
+        readable = False
+    source = "actions" if readable else "partial"
     return dict(evaluate_checks(required, ctx, complete), source=source)
 
 
@@ -418,12 +440,25 @@ def read_security(client, repo, today, silent_days, use_actions=True):
     if not fixable or not use_actions:
         return out
 
-    data, err = client.get("repos/%s/actions/runs?event=dynamic&per_page=100" % repo)
+    # Dependabot's OWN workflow's runs, found by path. Reading the newest 100 `dynamic`
+    # runs instead would let CodeQL and dependency-submission runs push Dependabot's off
+    # the page in a busy repo — a false "never runs" (review finding, 2026-09-22). A repo
+    # where Dependabot has never run has no such workflow at all: a real "never".
+    data, err = client.get("repos/%s/actions/workflows?per_page=100" % repo)
     if not isinstance(data, dict):
         out["errors"].append("Dependabot runs unreadable (%s)" % _why(err))
         return out
-    mine = [r for r in data.get("workflow_runs") or [] if scan._is_free_dependabot_run(r)]
-    dates = sorted((r.get("created_at") or "")[:10] for r in mine if r.get("created_at"))
+    wf = [w for w in data.get("workflows") or []
+          if str(w.get("path") or "").startswith("dynamic/dependabot/")]
+    dates = []
+    for w in wf:
+        runs, rerr = client.get("repos/%s/actions/workflows/%s/runs?per_page=100" % (repo, w["id"]))
+        if not isinstance(runs, dict):
+            out["errors"].append("Dependabot runs unreadable (%s)" % _why(rerr))
+            return out
+        dates.extend((r.get("created_at") or "")[:10] for r in runs.get("workflow_runs") or []
+                     if r.get("created_at"))
+    dates.sort()
     out["last_run"] = dates[-1] if dates else None
     cutoff = (today - dt.timedelta(days=silent_days)).isoformat()
     out["runs_recent"] = sum(1 for d in dates if d >= cutoff)
@@ -481,6 +516,13 @@ def derive_loops(facts, stale_days=STALE_DAYS):
                 "checks_unread": [], "rules_unread": [], "security_unread": [],
                 "skipped": facts.get("skipped") or []}
 
+    # Every repo that was asked about but has no answer at all (its scan raised) is unread
+    # on every count — not absent, which would read as clean (review finding, 2026-09-22).
+    for name in facts.get("repo_names") or []:
+        if name not in repos:
+            measured["rules_unread"].append(name)
+            measured["security_unread"].append(name)
+
     open_bot = {}
     for pr in facts.get("prs") or []:
         name = pr["repository"]["name"]
@@ -496,10 +538,19 @@ def derive_loops(facts, stale_days=STALE_DAYS):
         if not stale and not (is_bot(pr) and queued):
             continue
         state = pr_state(pr, chk)
-        if chk and chk.get("unread") and (stale or queued):
+        # A candidate whose checks were never read (the read raised) is unread, the same
+        # as one whose checks could not be seen.
+        if chk is None or chk.get("unread"):
             measured["checks_unread"].append(key)
-        if not stale and state != "checks-failing":
-            continue  # a queued update that is merely waiting is not a loop yet
+        if not stale:
+            # A young queued update is a loop only when it is provably stuck: a required
+            # check failed (whatever else is wrong — a conflict too is still stuck), or a
+            # required check has never reported a day after opening (a paths filter or a
+            # renamed job; auto-merge waits on it forever).
+            red = bool(chk and chk.get("failing"))
+            silent = bool(chk and chk.get("missing")) and (age or 0) >= 1
+            if not (red or silent):
+                continue
         loops.append({"kind": "pr", "repo": name, "number": pr["number"], "url": pr.get("url"),
                       "title": pr.get("title"), "bot": is_bot(pr), "queued": queued,
                       "age_days": age, "state": state,
@@ -549,6 +600,8 @@ def derive_loops(facts, stale_days=STALE_DAYS):
                           "last_run": sec.get("last_run"),
                           "age_days": _days(sec.get("oldest_fixable"), today) or 0})
 
+    for k in ("rules_unread", "security_unread", "checks_unread"):
+        measured[k] = sorted(set(measured[k]))
     loops.sort(key=lambda x: (-(x.get("age_days") or 0), x["repo"], x.get("number") or 0))
     return loops, measured
 
@@ -562,6 +615,7 @@ def gather(client, gql, owner, repos, today, stale_days, silent_days, use_action
 
     facts["prs"] = []
     facts["prs_unread"] = []
+    facts["repo_names"] = sorted(r[0] for r in repos)
 
     def per_repo(entry):
         name, branch, _vis, _fork = entry

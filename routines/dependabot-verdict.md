@@ -16,7 +16,7 @@
 | list-maker | `trig_01KJQ1Lz1eaPsaVL4WsAfng5` | 2026-09-13 |
 | ynai | `trig_01S8V7kddMxPZbyLrDWgEBk3` (security-only enrolment; majors among its security fixes still get a verdict) | 2026-09-14 |
 
-All five carry the same prompt (below), Opus 5, Slack as the only connector, trigger `pull_request.labeled` filtered to author `dependabot[bot]` and labels `major-review-needed, dependabot-needs-human, no-ci-gate` — plus `dependabot-ci-failed` once the 2026-09-22 change above is made. Edit them through the playwright-2 profile; there is no duplicate button, so a fifth repo means the form again (about a dozen clicks; the recipe is in this session's BUILD-LOG entry for 2026-09-13).
+All five carry the same prompt (below), Opus 5, Slack as the only connector, trigger `pull_request.labeled` filtered to author `dependabot[bot]` and labels `major-review-needed, dependabot-needs-human, no-ci-gate` — plus `dependabot-ci-failed` once the 2026-09-22 change above is made. Edit them through the playwright-2 profile; there is no duplicate button, so a sixth repo means the form again (about a dozen clicks; the recipe is in this session's BUILD-LOG entry for 2026-09-13).
 **Model:** Opus 5.
 
 **Prompt rewritten 2026-09-13 21:58 CT** after Kevin read the first automatic verdict (eachie #143) and said it was too long and too jargony. The new shape leads with verdict and risk, allows one plain sentence of why, bans acronyms and file/job names, and caps the whole message at 100 words. Refined the same night: "Why" split into "What changed" and "Why that's safe", one sentence each, because the first cut answered only the second.
