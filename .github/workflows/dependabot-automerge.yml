@@ -31,6 +31,19 @@
 # workflow run, so "refresh the branch and let CI re-run" is a dead end that strands
 # the PR behind a check that will never report again. Anything that needs CI to re-run
 # has to come from Dependabot's own push. See step 6.
+#
+# AND THE GAP THAT RULE LEFT (step 7, added 2026-09-22, OFF BY DEFAULT): this workflow
+# runs when the PR opens, seconds before its tests finish. When a patch/minor update then
+# went RED, nothing ever ran again: auto-merge stayed queued forever, no label was applied,
+# so no verdict reached Slack — one grouped update sat that way for six days, invisible.
+# Step 7 can wait (a bounded number of minutes) for the required checks and label a failure
+# `dependabot-ci-failed`, which the verdict routines pick up like the other labels. It has
+# to happen inside THIS run: GitHub never starts a workflow for a check that GitHub Actions
+# itself reported (the `check_run`/`check_suite` recursion rule), so there is no later
+# event to hang it on. It ships switched off — `watch-minutes: 0` — because waiting costs
+# private runner minutes and the account was already past its allowance that month, and
+# because the weekly audit's open loops list red queued updates anyway. A repo opts in
+# from its stub; see the `watch-minutes` input below for the three steps.
 
 name: dependabot-automerge (reusable)
 
@@ -86,11 +99,36 @@ on:
           there is no broken run here.
         type: string
         default: dependabot-opted-out
+      label-ci-failed:
+        description: >-
+          Label put on a PR this workflow queued to merge whose required check then FAILED.
+          Its own label, not dependabot-needs-human: that one means this workflow could not
+          classify the PR or broke; this one means the update itself broke the tests.
+        type: string
+        default: dependabot-ci-failed
+      watch-minutes:
+        description: >-
+          OFF BY DEFAULT (0). After queueing auto-merge, how long to wait for the required
+          checks so a failure can be labelled `label-ci-failed` (15 at most). Waiting costs
+          runner minutes on a private repo: about two extra per update PR at the check
+          times measured 2026-09-22. To turn it on in one repo: add `checks: read` and
+          `statuses: read` to that repo's stub permissions, set this in its `with:` block
+          (10 is plenty), and add dependabot-ci-failed to its verdict routine's label filter.
+        type: number
+        default: 0
 
-permissions:
-  contents: write        # enable auto-merge
-  pull-requests: write   # approve, label, comment
-  issues: write          # create the labels themselves (labels live on the Issues API)
+# NO `permissions:` BLOCK HERE, ON PURPOSE (2026-09-22). A called workflow may only narrow
+# what its caller granted — and asking for one scope the caller did NOT grant is not a
+# narrowing, it is a startup failure ("the nested job is requesting 'checks: read', but is
+# only allowed 'checks: none'"). Step 7 reads check results, which needs `checks: read` and
+# `statuses: read`, and the stubs already in enrolled repos grant neither. Declaring them
+# here would have broken every one of those repos at once. So the caller decides, and this
+# job runs with exactly what the stub grants:
+#   contents: write, pull-requests: write, issues: write   — every stub (approve, merge, label)
+#   checks: read, statuses: read                           — only a stub that turns step 7 on
+# With the watch on and those two missing, step 7 cannot read the checks on a private repo;
+# it says so in the log and changes nothing. With the watch off (the default) this job
+# runs with the same three scopes, and does the same things, as before 2026-09-22.
 
 jobs:
   automerge:
@@ -102,7 +140,10 @@ jobs:
     # private allowance for one stuck run, in every enrolled repo at once. This job makes
     # a handful of API calls and never waits on anything; ten minutes is generous. Found by
     # this repo's own bin/audit the day the timeout check shipped (2026-09-14).
-    timeout-minutes: 10
+    # Since 2026-09-22 the ceiling follows step 7: still 10 for every repo that has not
+    # turned the watch on (the default), 25 for one that has (`watch-minutes` is 15 at
+    # most). Expressions have no arithmetic, hence the `&& ||` choice between the two.
+    timeout-minutes: ${{ inputs.watch-minutes > 0 && 25 || 10 }}
     # One run per pull request. A Dependabot PR can fire `synchronize` several times in a
     # row (each rebase is a new push); queuing them serially avoids two runs racing to
     # enable auto-merge on the same PR. NOTE: GitHub keeps at most ONE pending run per
@@ -130,6 +171,8 @@ jobs:
       LABEL_UNPARSED: ${{ inputs.label-unparsed }}
       LABEL_NO_CI: ${{ inputs.label-no-ci }}
       LABEL_OPTED_OUT: ${{ inputs.label-opted-out }}
+      LABEL_CI_FAILED: ${{ inputs.label-ci-failed }}
+      IN_WATCH_MINUTES: ${{ inputs.watch-minutes }}
 
     steps:
       # ---------------------------------------------------------------------------------
@@ -164,7 +207,15 @@ jobs:
             none|comment) : ;;
             *) echo "::error title=Bad stale-strategy::'$IN_STALE_STRATEGY' is not none or comment"; exit 1 ;;
           esac
-          echo "inputs ok: patch=$IN_MERGE_PATCH minor=$IN_MERGE_MINOR method=$IN_MERGE_METHOD require-ci=$IN_REQUIRE_CI stale=$IN_STALE_STRATEGY"
+          # A whole number from 0 to 15. The job's own timeout is 25, and a watch that could
+          # outlast it would be killed mid-wait and read as a broken run.
+          case "$IN_WATCH_MINUTES" in
+            ''|*[!0-9]*) echo "::error title=Bad watch-minutes::'$IN_WATCH_MINUTES' is not a whole number of minutes"; exit 1 ;;
+          esac
+          if [ "$IN_WATCH_MINUTES" -gt 15 ]; then
+            echo "::error title=Bad watch-minutes::'$IN_WATCH_MINUTES' is more than 15"; exit 1
+          fi
+          echo "inputs ok: patch=$IN_MERGE_PATCH minor=$IN_MERGE_MINOR method=$IN_MERGE_METHOD require-ci=$IN_REQUIRE_CI stale=$IN_STALE_STRATEGY watch=${IN_WATCH_MINUTES}m"
 
       - name: Make sure the labels exist (idempotent)
         run: |
@@ -175,7 +226,14 @@ jobs:
           create "$LABEL_UNPARSED"  "b60205" "Auto-merge could not classify this update (or the run broke)"
           create "$LABEL_NO_CI"     "fbca04" "No required status check on the base branch, so nothing was auto-merged"
           create "$LABEL_OPTED_OUT" "c5def5" "Classified fine, but this repo opted out of auto-merging that tier"
-          echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT"
+          # Only where the watch is on: with it off (the default) this step creates exactly
+          # the labels it created before 2026-09-22, so a repo sees no new label it cannot get.
+          if [ "$IN_WATCH_MINUTES" -gt 0 ]; then
+            create "$LABEL_CI_FAILED" "e99695" "Queued to merge, but a required check failed — it will not merge until fixed"
+            echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT, $LABEL_CI_FAILED"
+          else
+            echo "labels: ensured dependencies, $LABEL_MAJOR, $LABEL_UNPARSED, $LABEL_NO_CI, $LABEL_OPTED_OUT"
+          fi
 
       # ---------------------------------------------------------------------------------
       # 2. Read what Dependabot is actually proposing.
@@ -298,15 +356,22 @@ jobs:
           # Branch names with a slash have to be escaped for this path segment.
           base_esc=${BASE_BRANCH//\//%2F}
           checks=""
+          # The same list as a JSON array, for the steps that need the NAMES exactly: a
+          # required check can contain a comma — a matrix leg is named "test (ubuntu, 3.11)"
+          # by default — and splitting the joined string on "," turns it into two names that
+          # never match anything (found by review, 2026-09-22). `checks` stays the joined
+          # form for the log lines and for `ok` below.
+          checks_json='[]'
           unreadable=false
 
           # --paginate --slurp: the endpoint returns 30 rules a page, and a required check
           # on page two would read as "no gate" (fail-closed, but wrong). Same fix as
           # bin/enroll and bin/audit got on 2026-09-14; .[][] flattens the pages.
           if rules=$(gh api --paginate --slurp "repos/$REPO/rules/branches/$base_esc?per_page=100" 2>/dev/null); then
-            checks=$(printf '%s' "$rules" | jq -r '
+            checks_json=$(printf '%s' "$rules" | jq -c '
               [.[][] | select(.type == "required_status_checks")
-                     | .parameters.required_status_checks[]?.context] | unique | join(",")')
+                     | .parameters.required_status_checks[]?.context] | unique')
+            checks=$(jq -r 'join(",")' <<< "$checks_json")
           else
             echo "note: could not read rulesets for $BASE_BRANCH (permissions or none configured)"
           fi
@@ -318,9 +383,10 @@ jobs:
             status=$(printf '%s' "$prot" | head -1 | awk '{print $2}')
             case "$status" in
               200)
-                checks=$(printf '%s' "$prot" | sed -n '/^{/,$p' | jq -r '
+                checks_json=$(printf '%s' "$prot" | sed -n '/^{/,$p' | jq -c '
                   (((.required_status_checks.checks // []) | map(.context))
-                   + (.required_status_checks.contexts // [])) | unique | join(",")')
+                   + (.required_status_checks.contexts // [])) | unique')
+                checks=$(jq -r 'join(",")' <<< "$checks_json")
                 ;;
               403)
                 unreadable=true
@@ -332,8 +398,11 @@ jobs:
             esac
           fi
 
-          echo "required-checks=$checks" >> "$GITHUB_OUTPUT"
-          echo "unreadable=$unreadable" >> "$GITHUB_OUTPUT"
+          {
+            echo "required-checks=$checks"
+            echo "required-checks-json=$checks_json"
+            echo "unreadable=$unreadable"
+          } >> "$GITHUB_OUTPUT"
 
           # `ok` is the single condition every later step keys off, so the "did we clear the
           # CI gate?" question is answered in exactly one place instead of re-derived three times.
@@ -476,6 +545,7 @@ jobs:
         if: steps.gate.outputs.ok == 'true'
         env:
           REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
+          REQUIRED_CHECKS_JSON: ${{ steps.gate.outputs.required-checks-json }}
         run: |
           set -euo pipefail
           # Everything in this step is advisory — auto-merge is already enabled above — so
@@ -492,14 +562,16 @@ jobs:
           # Piped into a REAL jq rather than gh's `--jq`: gh's flag takes the expression and
           # nothing else, so `--jq --arg req …` would silently treat "--arg" as the program.
           # Any jq option (--arg, --argjson, --slurp) has to go to jq itself.
+          # Names come in as a JSON array (see step 4: a check name can contain a comma).
+          # The states are the union of step 7's two failure lists, so this warning and the
+          # label never disagree about what "red" means; check-loops.sh pins that.
           # shellcheck disable=SC2016  # the $r and $req below are jq variables, not shell
           failed=$(gh pr view "$PR_URL" --json statusCheckRollup 2>/dev/null \
-            | jq -r --arg req "$REQUIRED_CHECKS" '
-              ($req | split(",") | map(select(. != ""))) as $r
-              | [ .statusCheckRollup[]?
-                  | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index($n)))
+            | jq -r --argjson r "${REQUIRED_CHECKS_JSON:-[]}" '
+              [ .statusCheckRollup[]?
+                  | select((.name // .context // "") as $n | ($r | length == 0) or ($r | index([$n])))
                   | ((.conclusion // .state // "") | ascii_downcase)
-                  | select(. == "failure" or . == "timed_out" or . == "action_required" or . == "error") ]
+                  | select(IN("failure", "timed_out", "action_required", "startup_failure", "error", "cancelled", "stale")) ]
               | length' 2>/dev/null || echo 0)
           case "$failed" in ''|*[!0-9]*) failed=0 ;; esac
           echo "$failed required check(s) currently failing"
@@ -527,7 +599,174 @@ jobs:
           fi
 
       # ---------------------------------------------------------------------------------
-      # 7. If anything above broke, say so ON THE PULL REQUEST.
+      # 7. Watch the required checks, and label the PR if one FAILS. OFF BY DEFAULT.
+      #
+      # Runs only where a repo's stub sets `watch-minutes` above 0 (see that input for the
+      # three steps that turn it on). Everywhere else this step is skipped and the run is
+      # exactly what it was before 2026-09-22.
+      #
+      # Auto-merge is already queued (step 5), so a green result needs nothing from us and
+      # a red one would otherwise sit queued forever with nobody told. This polls the PR's
+      # checks every 20 seconds for up to `watch-minutes`, then:
+      #   a required check failed    → label `label-ci-failed` (the verdict routines fire
+      #                                on it and post to Slack); auto-merge stays queued, so
+      #                                a fix or a Dependabot rebuild that goes green still
+      #                                lands by itself
+      #   every required check passed → remove that label if an earlier head left it
+      #   still running at the limit, → a notice, and the label comes off too: it described
+      #   or never reported              an earlier head. The weekly audit lists a queued
+      #                                  update whose tests go red after the watch ended.
+      # One gap, said plainly: a failed job RE-RUN to green (no new push) starts no run
+      # here, so its label stays until the next push or until someone removes it.
+      #   the head moved / PR closed  → stop; a new head gets its own run
+      #   the checks are unreadable   → a warning naming the fix, and nothing else
+      #
+      # ADVISORY, LIKE STEP 6: nothing here may turn the run red, because the failure
+      # handler below would then label a PR that is, right now, queued to merge. Hence
+      # `set -uo pipefail` without `-e`, and every call checked by hand.
+      #
+      # "Required" means the contexts step 4 read from the branch rules — the same list
+      # auto-merge itself waits on. A required check that has not reported yet is pending,
+      # not passing. What counts as FAILED is pinned in WATCH_JQ below and checked against
+      # bin/lib/loops-scan.py's copy by bin/lib/check-loops.sh: two copies of one rule.
+      #
+      # Why wait inside this run rather than start a new one when the check finishes: a
+      # `check_run`/`check_suite` event is never delivered to a workflow for a check GitHub
+      # Actions itself created (GitHub Docs, *Events that trigger workflows*, read
+      # 2026-09-22), and every enrolled repo's gate but one is an Actions job; `workflow_run`
+      # needs each repo's workflow names in its stub; `status` would start a run for every
+      # commit status on every branch. All three also need a new stub in every repo. The
+      # wait needs only two permission lines, and costs the check's own duration in runner
+      # time (about two minutes on the measured repos).
+      # ---------------------------------------------------------------------------------
+      - name: Watch the required checks and label a failure
+        if: steps.gate.outputs.ok == 'true' && inputs.watch-minutes > 0
+        env:
+          REQUIRED_CHECKS: ${{ steps.gate.outputs.required-checks }}
+          REQUIRED_CHECKS_JSON: ${{ steps.gate.outputs.required-checks-json }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          if [ -z "$REQUIRED_CHECKS" ] || [ "${REQUIRED_CHECKS_JSON:-[]}" = "[]" ]; then
+            echo "no required checks to watch (require-ci is off here) — nothing to do"; exit 0
+          fi
+          # One verdict for the whole PR, from one verdict per required check:
+          #   missing  — nothing by that name has reported at all (yet, or ever)
+          #   failed   — a hard failure; or it was cancelled/stale and nothing of that
+          #              name passed (a push+PR double trigger can cancel one run while
+          #              its twin passes, and GitHub merges on the pass)
+          #   pending  — something by that name is still running
+          #   passed   — everything by that name finished, at least one passed
+          # The three lists are pinned against bin/lib/loops-scan.py's HARD / SOFT / PASSED
+          # by bin/lib/check-loops.sh: two copies of one rule.
+          # shellcheck disable=SC2016  # $pr, $c, $v, $req, $head are jq variables
+          WATCH_JQ='
+            def hard: ["FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"];
+            def soft: ["CANCELLED", "STALE"];
+            def pass: ["SUCCESS", "NEUTRAL", "SKIPPED"];
+            def state_of:
+              if length == 0 then "missing"
+              elif any(IN(hard[])) then "failed"
+              elif any((IN(pass[]) or IN(soft[])) | not) then "pending"
+              elif any(IN(pass[])) then "passed"
+              else "failed" end;
+            if ((.errors // []) | length) > 0 or (.data.repository.pullRequest == null) then "unread"
+            else .data.repository.pullRequest as $pr
+            | if $pr.state != "OPEN" then "gone"
+              elif $pr.headRefOid != $head then "moved"
+              else
+                [ ($pr.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])[]
+                  | {n: (.name // .context),
+                     s: (if .__typename == "CheckRun"
+                         then (if .status == "COMPLETED" then .conclusion else .status end)
+                         else .state end)} ] as $c
+                | [ $req[] as $x | {x: $x, v: ([ $c[] | select(.n == $x) | .s ] | state_of)} ] as $v
+                | if any($v[]; .v == "failed") then "failed:" + ([ $v[] | select(.v == "failed") | .x ] | join(", "))
+                  elif all($v[]; .v == "passed") then "passed"
+                  elif any($v[]; .v == "pending") then "pending"
+                  else "missing:" + ([ $v[] | select(.v == "missing") | .x ] | join(", ")) end
+              end
+            end'
+          # shellcheck disable=SC2016  # $o, $r, $n are GraphQL variables
+          QUERY='query($o: String!, $r: String!, $n: Int!) { repository(owner: $o, name: $r) { pullRequest(number: $n) {
+            state headRefOid
+            commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+              __typename
+              ... on CheckRun { name status conclusion }
+              ... on StatusContext { context state }
+            } } } } } } } } }'
+
+          deadline=$(( $(date +%s) + IN_WATCH_MINUTES * 60 ))
+          unread_in_a_row=0
+          verdict=pending
+          while :; do
+            # `timeout`: one hung call must not eat the job's whole 25 minutes.
+            resp=$(timeout 60 gh api graphql -f query="$QUERY" -f o="${REPO%%/*}" -f r="${REPO#*/}" -F n="$PR_NUMBER" 2>/dev/null)
+            if [ -n "$resp" ]; then
+              verdict=$(jq -r --argjson req "$REQUIRED_CHECKS_JSON" --arg head "$HEAD_SHA" "$WATCH_JQ" <<< "$resp" 2>/dev/null)
+              [ -n "$verdict" ] || verdict=unread
+            else
+              verdict=unread
+            fi
+            # One unreadable answer is an API blip; three in a row is a token that cannot see.
+            if [ "$verdict" = "unread" ]; then
+              unread_in_a_row=$((unread_in_a_row + 1))
+              if [ "$unread_in_a_row" -lt 3 ]; then verdict=pending; fi
+            else
+              unread_in_a_row=0
+            fi
+            case "$verdict" in pending|missing:*) ;; *) break ;; esac
+            [ "$(date +%s)" -lt "$deadline" ] || break
+            sleep 20
+          done
+          # Blips at the very end leave `pending` standing in for "could not read".
+          if [ "$verdict" = "pending" ] && [ "$unread_in_a_row" -gt 0 ]; then verdict=unread; fi
+
+          # The label means "this head is red". Any other answer about a NEWER head than the
+          # one that was labelled — passed, still running, never reported — means it no
+          # longer describes the PR, so it comes off. (Unreadable leaves it: no new facts.)
+          clear_label() {
+            local labels
+            labels=$(timeout 60 gh pr view "$PR_URL" --json labels --jq '.labels[].name' 2>/dev/null)
+            # A here-string, not a pipe: `grep -q` exits at its first match, the writer then
+            # takes SIGPIPE, and under pipefail a FOUND label reads as not found.
+            if grep -qxF "$LABEL_CI_FAILED" <<< "$labels"; then
+              timeout 60 gh pr edit "$PR_URL" --remove-label "$LABEL_CI_FAILED" \
+                && echo "removed '$LABEL_CI_FAILED': it described an earlier head"
+            fi
+          }
+
+          case "$verdict" in
+            failed:*)
+              failed=${verdict#failed:}
+              if timeout 60 gh pr edit "$PR_URL" --add-label "$LABEL_CI_FAILED"; then
+                echo "::warning title=Required check failed::[$failed] failed on $HEAD_SHA. Labelled '$LABEL_CI_FAILED'. Auto-merge stays queued and will land by itself if a fix goes green."
+              else
+                echo "::warning title=Could not label::[$failed] failed on $HEAD_SHA, and adding '$LABEL_CI_FAILED' was refused."
+              fi
+              ;;
+            passed)
+              echo "every required check passed on $HEAD_SHA — auto-merge will land it"
+              clear_label
+              ;;
+            pending)
+              echo "::notice title=Checks still running::[$REQUIRED_CHECKS] had not finished after ${IN_WATCH_MINUTES} minutes. Not labelled; the weekly audit lists a queued update whose tests go red later."
+              clear_label
+              ;;
+            missing:*)
+              echo "::warning title=Required check never reported::[${verdict#missing:}] never reported on $HEAD_SHA in ${IN_WATCH_MINUTES} minutes. If the workflow skips this kind of change (a paths filter) or the job was renamed, auto-merge will wait forever; the weekly audit lists it after a day."
+              clear_label
+              ;;
+            moved) echo "the PR's head moved during the watch — its own run will watch the new head" ;;
+            gone)  echo "the PR is no longer open (merged or closed) — nothing to watch" ;;
+            *)
+              echo "::warning title=Checks unreadable::Could not read this PR's check results. On a private repo that usually means this repo's automerge stub turns the watch on without granting 'checks: read' and 'statuses: read' in its permissions block."
+              ;;
+          esac
+          exit 0
+
+      # ---------------------------------------------------------------------------------
+      # 8. If anything above broke, say so ON THE PULL REQUEST.
       #
       # A failed Actions run is invisible unless someone goes looking. A label is not.
       # ---------------------------------------------------------------------------------

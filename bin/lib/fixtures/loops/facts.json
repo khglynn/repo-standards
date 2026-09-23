@@ -1,0 +1,687 @@
+{
+  "_about": "What loops-scan.py would have READ on 2026-09-22 for a made-up owner, one case per rule. check-loops.sh derives loops from it (loops-scan.py --derive, no network) and diffs the result against expected.json. The repo names are placeholders on purpose: this repo is public and the real account's are not all. Each PR's `_case` says what it proves. `repo_names` lists every repo asked about; `kilo` is in it with no answer at all (its scan raised), which must read as unread everywhere.",
+  "owner": "example",
+  "today": "2026-09-22",
+  "stale_days": 7,
+  "silent_days": 14,
+  "errors": [],
+  "skipped": [],
+  "repo_names": [
+    "alpha",
+    "bravo",
+    "charlie",
+    "delta",
+    "echo",
+    "foxtrot",
+    "golf",
+    "hotel",
+    "india",
+    "juliet",
+    "kilo",
+    "lima"
+  ],
+  "prs_unread": [],
+  "prs": [
+    {
+      "_case": "302 days old and mergeable: a stale PR, state ready",
+      "number": 3,
+      "title": "t",
+      "url": "https://github.com/example/alpha/pull/3",
+      "createdAt": "2025-11-24T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": null,
+      "author": {
+        "login": "someone"
+      },
+      "repository": {
+        "name": "alpha"
+      },
+      "baseRefName": "main",
+      "headRefOid": "a3",
+      "autoMergeRequest": null
+    },
+    {
+      "_case": "exactly 7 days old: NOT a loop (older than 7 means 8+)",
+      "number": 9,
+      "title": "t",
+      "url": "https://github.com/example/alpha/pull/9",
+      "createdAt": "2026-09-15T23:59:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": null,
+      "author": {
+        "login": "someone"
+      },
+      "repository": {
+        "name": "alpha"
+      },
+      "baseRefName": "main",
+      "headRefOid": "a9",
+      "autoMergeRequest": null
+    },
+    {
+      "_case": "11-day Dependabot PR blocked only by a required review, in a repo whose rules require one: stranded",
+      "number": 2,
+      "title": "t",
+      "url": "https://github.com/example/bravo/pull/2",
+      "createdAt": "2026-09-11T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "bravo"
+      },
+      "baseRefName": "main",
+      "headRefOid": "b2",
+      "autoMergeRequest": null
+    },
+    {
+      "_case": "6-day Dependabot PR, auto-merge queued, required check FAILED: a loop at any age",
+      "number": 241,
+      "title": "t",
+      "url": "https://github.com/example/charlie/pull/241",
+      "createdAt": "2026-09-16T06:34:59Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "charlie"
+      },
+      "baseRefName": "main",
+      "headRefOid": "c241",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-16T06:35:30Z"
+      }
+    },
+    {
+      "_case": "queued Dependabot PR whose check is still running: NOT a loop yet",
+      "number": 242,
+      "title": "t",
+      "url": "https://github.com/example/charlie/pull/242",
+      "createdAt": "2026-09-16T06:35:30Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "charlie"
+      },
+      "baseRefName": "main",
+      "headRefOid": "c242",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-16T06:36:00Z"
+      }
+    },
+    {
+      "_case": "queued Dependabot PR opened today whose checks could not be read: not a loop, but counted as unread",
+      "number": 22,
+      "title": "t",
+      "url": "https://github.com/example/delta/pull/22",
+      "createdAt": "2026-09-22T02:55:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "delta"
+      },
+      "baseRefName": "main",
+      "headRefOid": "d22",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-22T02:55:20Z"
+      }
+    },
+    {
+      "_case": "21-day PR with a merge conflict",
+      "number": 5,
+      "title": "t",
+      "url": "https://github.com/example/echo/pull/5",
+      "createdAt": "2026-09-01T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DIRTY",
+      "reviewDecision": null,
+      "author": {
+        "login": "someone"
+      },
+      "repository": {
+        "name": "echo"
+      },
+      "baseRefName": "main",
+      "headRefOid": "e5",
+      "autoMergeRequest": null
+    },
+    {
+      "_case": "20-day draft that ALSO conflicts: draft wins, it is not meant to merge yet",
+      "number": 6,
+      "title": "t",
+      "url": "https://github.com/example/echo/pull/6",
+      "createdAt": "2026-09-02T10:00:00Z",
+      "isDraft": true,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DRAFT",
+      "reviewDecision": null,
+      "author": {
+        "login": "someone"
+      },
+      "repository": {
+        "name": "echo"
+      },
+      "baseRefName": "main",
+      "headRefOid": "e6",
+      "autoMergeRequest": null
+    },
+    {
+      "_case": "12-day Dependabot PR in a repo with silent-looking security fixes: its presence means Dependabot IS working there",
+      "number": 1,
+      "title": "t",
+      "url": "https://github.com/example/foxtrot/pull/1",
+      "createdAt": "2026-09-10T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "foxtrot"
+      },
+      "baseRefName": "main",
+      "headRefOid": "f1",
+      "autoMergeRequest": null
+    },
+    {
+      "_case": "queued update, 2 days old, its required check NEVER reported (a paths filter, a renamed job): stuck forever, so a loop",
+      "number": 30,
+      "title": "t",
+      "url": "https://github.com/example/india/pull/30",
+      "createdAt": "2026-09-20T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "india"
+      },
+      "baseRefName": "main",
+      "headRefOid": "i30",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-20T10:00:00Z"
+      }
+    },
+    {
+      "_case": "queued update opened today whose check has not reported YET: not a loop",
+      "number": 31,
+      "title": "t",
+      "url": "https://github.com/example/india/pull/31",
+      "createdAt": "2026-09-22T09:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "india"
+      },
+      "baseRefName": "main",
+      "headRefOid": "i31",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-22T09:00:00Z"
+      }
+    },
+    {
+      "_case": "queued update that conflicts AND has a failed check: still a loop at 3 days, shown as the conflict",
+      "number": 40,
+      "title": "t",
+      "url": "https://github.com/example/juliet/pull/40",
+      "createdAt": "2026-09-19T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DIRTY",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "juliet"
+      },
+      "baseRefName": "main",
+      "headRefOid": "j40",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-19T10:00:00Z"
+      }
+    },
+    {
+      "_case": "queued update whose check read RAISED (no checks entry at all): unread, not clean",
+      "number": 50,
+      "title": "t",
+      "url": "https://github.com/example/lima/pull/50",
+      "createdAt": "2026-09-21T10:00:00Z",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": null,
+      "author": {
+        "login": "dependabot"
+      },
+      "repository": {
+        "name": "lima"
+      },
+      "baseRefName": "main",
+      "headRefOid": "l50",
+      "autoMergeRequest": {
+        "enabledAt": "2026-09-21T10:00:00Z"
+      }
+    }
+  ],
+  "checks": {
+    "alpha#3": {
+      "required": [],
+      "failing": [],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "none-required"
+    },
+    "bravo#2": {
+      "required": [],
+      "failing": [],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "none-required"
+    },
+    "charlie#241": {
+      "required": [
+        "unit"
+      ],
+      "failing": [
+        "unit"
+      ],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    },
+    "charlie#242": {
+      "required": [
+        "unit"
+      ],
+      "failing": [],
+      "pending": [
+        "unit"
+      ],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    },
+    "delta#22": {
+      "required": [],
+      "failing": [],
+      "pending": [],
+      "missing": [],
+      "unread": [
+        "(rules)"
+      ],
+      "passed": [],
+      "source": "rules-unread"
+    },
+    "echo#5": {
+      "required": [],
+      "failing": [],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "none-required"
+    },
+    "echo#6": {
+      "required": [],
+      "failing": [],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "none-required"
+    },
+    "foxtrot#1": {
+      "required": [
+        "ci"
+      ],
+      "failing": [],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [
+        "ci"
+      ],
+      "source": "actions"
+    },
+    "india#30": {
+      "required": [
+        "ci"
+      ],
+      "failing": [],
+      "pending": [],
+      "missing": [
+        "ci"
+      ],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    },
+    "india#31": {
+      "required": [
+        "ci"
+      ],
+      "failing": [],
+      "pending": [],
+      "missing": [
+        "ci"
+      ],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    },
+    "juliet#40": {
+      "required": [
+        "unit"
+      ],
+      "failing": [
+        "unit"
+      ],
+      "pending": [],
+      "missing": [],
+      "unread": [],
+      "passed": [],
+      "source": "rollup"
+    }
+  },
+  "repos": {
+    "alpha": {
+      "rules": {
+        "read": true,
+        "required": [],
+        "approvals": 0,
+        "source": null,
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": true,
+        "alerts": 0,
+        "fixable": 0,
+        "fixable_runtime": 0,
+        "critical": 0,
+        "high": 0,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "bravo": {
+      "rules": {
+        "read": true,
+        "required": [],
+        "approvals": 1,
+        "source": "ruleset",
+        "ruleset_ids": [
+          101
+        ],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": true,
+        "alerts": 3,
+        "fixable": 3,
+        "fixable_runtime": 3,
+        "critical": 0,
+        "high": 1,
+        "oldest_fixable": "2026-09-11",
+        "last_run": "2026-09-19",
+        "runs_recent": 2,
+        "errors": []
+      }
+    },
+    "charlie": {
+      "rules": {
+        "read": true,
+        "required": [
+          "unit"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": true,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": [
+          "security alerts unreadable (HTTP 403)"
+        ]
+      }
+    },
+    "delta": {
+      "rules": {
+        "read": false,
+        "required": [],
+        "approvals": null,
+        "source": null,
+        "ruleset_ids": [],
+        "errors": [
+          "rules unreadable (HTTP 403)"
+        ]
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "echo": {
+      "rules": {
+        "read": true,
+        "required": [],
+        "approvals": 0,
+        "source": null,
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": true,
+        "alerts": 120,
+        "fixable": 100,
+        "fixable_runtime": 80,
+        "critical": 2,
+        "high": 30,
+        "oldest_fixable": "2026-09-11",
+        "last_run": null,
+        "runs_recent": 0,
+        "errors": []
+      }
+    },
+    "foxtrot": {
+      "rules": {
+        "read": true,
+        "required": [
+          "ci"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": true,
+        "alerts": 5,
+        "fixable": 5,
+        "fixable_runtime": 5,
+        "critical": 1,
+        "high": 3,
+        "oldest_fixable": "2026-09-11",
+        "last_run": null,
+        "runs_recent": 0,
+        "errors": []
+      }
+    },
+    "golf": {
+      "rules": {
+        "read": true,
+        "required": [],
+        "approvals": 0,
+        "source": null,
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": true,
+        "alerts": 2,
+        "fixable": 2,
+        "fixable_runtime": 2,
+        "critical": 0,
+        "high": 0,
+        "oldest_fixable": "2026-09-11",
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "hotel": {
+      "rules": {
+        "read": true,
+        "required": [],
+        "approvals": 2,
+        "source": "classic",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "india": {
+      "rules": {
+        "read": true,
+        "required": [
+          "ci"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "juliet": {
+      "rules": {
+        "read": true,
+        "required": [
+          "unit"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    },
+    "lima": {
+      "rules": {
+        "read": true,
+        "required": [
+          "ci"
+        ],
+        "approvals": 0,
+        "source": "ruleset",
+        "ruleset_ids": [],
+        "errors": []
+      },
+      "security": {
+        "fixes_on": false,
+        "alerts": null,
+        "fixable": null,
+        "fixable_runtime": null,
+        "critical": null,
+        "high": null,
+        "oldest_fixable": null,
+        "last_run": null,
+        "runs_recent": null,
+        "errors": []
+      }
+    }
+  }
+}

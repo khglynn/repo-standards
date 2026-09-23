@@ -16,9 +16,11 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  contents: write        # enable auto-merge, refresh a stale branch
+  contents: write        # enable auto-merge
   pull-requests: write   # approve, label, comment
   issues: write          # create the labels (labels are an Issues-API object)
+  # The shared workflow runs with exactly what this block grants — it declares none of its
+  # own. The failed-test watch is off here (as by default), so no read scopes are needed.
 
 jobs:
   automerge:

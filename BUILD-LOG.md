@@ -1741,3 +1741,153 @@ Enrolling khglynn/ynai
 - Kevin minted the read-only fine-grained PAT (Actions, Administration, Contents, Metadata, Pull requests; all repos; expires 2027-09-14) and it is the `AUDIT_READ_TOKEN` secret on khglynn/repo-standards-audit. First run 18:19: green end to end, digest committed. But it read "1 of 41 repos keep themselves up to date; 5 are half set up" against this morning's 5 enrolled, and told Kevin to finish setting up ynai, which was finished at 17:22.
 - Cause, proven by probing each endpoint with that token against ynai: the REST repository object **omits `allow_auto_merge`** for a caller without push access (a read-only token has none), so `bin/audit` read an empty string and reported "auto-merge is off" for every enrolled repo. Every other call it makes (rulesets, the approve switch, contents, trees, runs) works with the token. GraphQL's `autoMergeAllowed` answers the same question for a read-only caller; `bin/audit` now asks that (8098d4e) and maps anything but true/false to "?" (unknown, said so). Second run dispatched 18:36.
 - Also today: the watcher in khglynn/google_workspace_mcp posts to #infra-ops (new Errors Bot webhook; the old one deleted; #misc-build-errors archived), and says a notice once then weekly (#18) using the workflow token for its memory (#19, after the fleet PAT was refused on the variables API).
+
+## 2026-09-22 — open loops in the audit, and the failed-test watch in the shared workflow (session: state-sweep builder B1, Opus 5.5)
+
+**Why.** Agents leave pull requests open and nothing notices. A sweep that day found, across
+the account: pull requests open for weeks with nothing stopping them but attention; two
+Dependabot updates queued to merge behind a FAILED required check, one of them for six days,
+never labelled and so never sent to Slack; branch rules still demanding an approving review
+that was retired on 2026-09-15; and repos whose security fixes are switched on and have never
+run once. The Monday digest already reached Kevin, so it became the one place those surface.
+No new system, channel or token.
+
+**Built.**
+- `bin/lib/loops-scan.py` — read-only (GET-only client from actions-scan.py; GraphQL refuses a
+  mutation before sending). Per repo: its open pull requests (one GraphQL `repository` query —
+  not an account-wide search, whose reach into a fine-grained token's PRIVATE repos nobody had
+  checked), its branch rules, and its security-fix switch, alerts and Dependabot runs.
+  `derive_loops` is pure and pinned by fixtures. About 250 calls and 30 seconds.
+- `render-audit.py` — the digest gains "Open loops, oldest first:", one numbered line per
+  reason (a line per pull request fitted two of 29 real loops into 150 words; a line per
+  reason fits all of them at ~220). The repo list gives way to the cap first, then the loops;
+  both say how many they dropped; the notes never give way. "To act:" picks the most urgent
+  loop, not the oldest. The table lists every loop with links; JSON carries them.
+- The shared workflow's step 7 waits (`watch-minutes`, default 10, 15 at most) for the
+  required checks after queueing auto-merge, labels a failure `dependabot-ci-failed`, and
+  removes that label when a later head passes. Job timeout 10 → 25.
+- The shared workflow no longer declares `permissions:`; it inherits the stub's grant. The
+  stub template adds `checks: read` and `statuses: read`. `bin/audit`'s table names every
+  stub still without them.
+- `bin/lib/check-loops.sh` (95 assertions) in CI, with `fixtures/loops/`.
+
+**Found while building, each verified.**
+- `check_run` / `check_suite` never start a workflow for a check GitHub Actions created
+  (GitHub Docs, *Events that trigger workflows*, read 2026-09-22). So no event arrives after
+  an Actions gate finishes, and the label has to be applied by the run that queued the merge.
+- A called workflow that asks for a scope its caller did not grant fails to start. Declaring
+  `checks: read` in the shared file would have stopped every enrolled repo whose stub
+  predates today — hence the inheritance.
+- Fine-grained tokens cannot be given the Checks permission at all (GitHub community #129512,
+  staff answer 2025-03-03; still listed as a known gap on *Managing your personal access
+  tokens*, read 2026-09-22). The weekly token therefore reads test results from the Actions
+  jobs on the head commit. Simulated live against both red queued updates: both read as
+  failing through that path. A Vercel commit status reads as NOT READ until the token has
+  Commit statuses: read, and alerts until it has Dependabot alerts: read.
+- The Dependabot alerts endpoint answers HTTP 400 to `page=`; it paginates by Link-header
+  cursor only.
+- Approval drift is in nine repos, not the five the sweep had listed: four more `protect-main`
+  rulesets, each active, each requiring one review.
+- Silent security fixes are in six repos, not three; the other three are small (1–3 fixable
+  alerts). All six have zero Dependabot runs ever.
+- A plain "no Dependabot run in 14 days" rule would false-alarm on a repo whose security fix
+  already sits in an open Dependabot pull request (Dependabot does not re-run while it waits),
+  so the rule also requires no open Dependabot pull request there.
+- Moving from one search to per-repo queries introduced a silent bug the live comparison
+  caught: a loop variable named `prs` shadowed the account-wide list, so only the LAST repo's
+  pull requests had their tests read and both red queued updates vanished from the output
+  with no error. Fixed; `check-loops.sh` section 1b now reproduces that order against fakes,
+  and was run against the buggy version to prove it fails there.
+- Two digest defects fixed in passing: the word cap let exactly 150 words through while every
+  document promised under 150; and "To act:" broke age ties by API order, so the 2026-09-21
+  digest named a repo it had folded into "and 5 more".
+
+**The independent review (Opus, same day): no MUST-FIX, 13 SHOULD, 10 NIT — all SHOULDs
+and every cheap NIT applied, each re-verified.** The ones that would have hurt:
+- A required check whose NAME contains a comma (a matrix leg's default name, "test (ubuntu,
+  3.11)") never matched in the watch, because the names travelled as one comma-joined
+  string. They now travel as a JSON array (`required-checks-json`), in step 6 too.
+- At the default cap on the account-sized fixture the loops block printed a heading over an
+  orphaned "And 6 more" and no line at all. Now: numbered lines, or one sentence with the
+  count and the oldest age; "And N more" counts loops, not lines.
+- A required check that never reports (a paths filter, a renamed job) read as "still
+  running" forever. The watch now says "never reported", and the scanner lists such a
+  queued update after a day.
+- A scanner exception silently removed a red queued update from the output; a raised read
+  now counts as unread, and a repo with no answer at all is unread everywhere.
+- On the Actions fallback a check run from another app (CodeQL) read as "missing" once
+  statuses were readable; the fallback is now never "complete", so it reads as unread.
+- Classic protection was read only when a repo had no ruleset rules; it is read always.
+- Dependabot's runs were looked for among the newest 100 `dynamic` runs, which CodeQL can
+  crowd out; now read from Dependabot's own workflow (none at all = a measured "never").
+- The `dependabot-ci-failed` label stayed on after a later head's watch ended without a
+  verdict; it now comes off on every answer except "failed" and "unreadable". Remaining
+  gap, documented: a failed job re-run to green without a push starts no run.
+- Also: a cancelled twin of a passing run no longer counts as red (push + pull_request under
+  one concurrency group); per-call `timeout 60`; a here-string instead of a pipe into
+  `grep -q` under pipefail (a found label read as absent); the stub template must grant
+  exactly five scopes, and the audit table names stubs that grant more (the shared workflow
+  no longer caps them); a crashed scan says "failed", not "--skip-loops".
+
+**Not done, on purpose.** No repo enrolled, no ruleset changed, nothing merged, no Slack
+post, no stub rewritten in any other repo, no routine edited.
+
+**Still unverified.**
+- The watch has never run live: it only runs from `main`. First real test: the first patch or
+  minor Dependabot pull request after merge, in a public enrolled repo (no stub change needed
+  there if public check data is readable without the permission — also unverified) or a
+  private one whose stub has the two read lines.
+- Whether the workflow token reads check runs on a PUBLIC repo without `checks: read`.
+- The weekly job's first run with this code, on the fine-grained token: it should show the
+  loops block with a "security fixes could not be checked in N repos" note until the token
+  gains Dependabot alerts: read.
+- That a `dependabot-ci-failed` label fires a verdict routine once its filter includes it (the
+  same mechanism already fires for the workflow's other labels).
+
+### Same day, later — the watch ships OFF by default (the coordinator's call)
+
+Merging this must be purely additive: the audit and digest land, and every enrolled repo's
+Dependabot run behaves exactly as before. Reasons: private Actions minutes were already past
+the 3,000 allowance that month; the digest's open loops already list red queued updates
+(both of today's) every Monday; and turning the watch on needs two other steps (the stub
+permission lines and the routine label filter) that should not be preconditions for merging
+the audit. So:
+- `watch-minutes` defaults to **0**. Step 7 is skipped unless a stub sets it.
+- The job ceiling is `${{ inputs.watch-minutes > 0 && 25 || 10 }}` — still 10 minutes for
+  every repo that has not opted in. (Expressions have no arithmetic; `+ 10` fails actionlint.)
+- The `dependabot-ci-failed` label is created only where the watch is on, so an off run
+  creates exactly the labels it did before.
+- The stub template grants the same three scopes as before; `checks: read` and
+  `statuses: read` ship commented out next to `watch-minutes`, as the recipe. The self-stub
+  drops them too. `check-templates.py` allows exactly the three scopes.
+- The audit's stub column is now `off` / `on` / `blind`; only `blind` (watch on, reads
+  missing) is named in the table.
+- To turn it on in one repo: uncomment the two read lines, set `watch-minutes: 10`, and add
+  `dependabot-ci-failed` to that repo's verdict routine filter. README spells it out.
+- The only behaviour change left in an off repo: step 6's advisory "stale and red" LOG line
+  now matches required-check names exactly (a comma in a name used to split it) and counts
+  cancelled/stale/startup-failure as red, like the rest. With the default
+  `stale-strategy: none` that is a log line and nothing else.
+- `check-loops.sh`: 132 assertions, including that the default is 0, the ceiling expression,
+  the gated label, and the three-scope template.
+
+Revised unverified list for the watch: it has never run live and will not until a repo opts
+in; whether the workflow token reads a PUBLIC repo's check runs without `checks: read` also
+waits for that. Everything else in the list above stands.
+
+### Same day, later still — why security fixes never ran, and the fix the audit now names
+
+A sibling builder found the cause and the coordinator confirmed it live. When Dependabot
+security updates were switched on account-wide on 2026-09-11, some repos' existing alerts
+were backfilled in a single minute, and Dependabot never attempted a fix for any of them: a
+security fix fires only on a NEW alert or an enable event. Switching a repo's security
+updates off and back on (`DELETE` then `PUT repos/{o}/{r}/automated-security-fixes`) is
+that enable event — Dependabot started within about six seconds in all five repos it was
+tried on, and one already had its fix pull request. So:
+- the digest's silent-security line ends "Fix: switch security updates off and back on in
+  each", and its "To act:" line says to do exactly that in the worst repo (plain words, no
+  commands — it is a Slack message);
+- the table's line gives the exact two `gh api` calls for that repo, and the settings path;
+- the README's "no file needed, working everywhere" line carries a dated caveat: true for new
+  alerts, not for alerts backfilled at enable time, and the toggle fixes those.
+check-loops.sh: 135 assertions.

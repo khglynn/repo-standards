@@ -2,7 +2,7 @@
 
 **One place that decides how dependency updates work across all of Kevin's repos.**
 
-Last verified: 2026-09-14.
+Last verified: 2026-09-22 (open loops added that day, and a failed-test watch that ships switched off).
 
 ---
 
@@ -14,8 +14,19 @@ about Dependabot comes from treating them as one.
 **Job one — don't ship a known vulnerability.**
 When somebody publishes a CVE against a package you use, GitHub notices and opens a pull
 request to fix it. This is switched on **account-wide** for every repo you own, including
-new ones, and it needs **no file in any repo**. It was turned on 2026-09-11 and it is
-already working everywhere. Nothing in this repository is required for it.
+new ones, and it needs **no file in any repo**. It was turned on 2026-09-11. Nothing in
+this repository is required for it.
+
+> **Caveat, found 2026-09-22:** "working everywhere" is true for alerts raised *after* the
+> setting went on, not for the ones that already existed. When it was switched on
+> account-wide, some repos' existing alerts were all backfilled in the same minute, and
+> Dependabot never attempted a fix for them: a security fix only fires on a new alert or on
+> an enable event. Those repos showed security updates on, open fixable alerts, and zero
+> Dependabot runs ever. The fix is to switch the repo's Dependabot security updates **off and
+> back on** (Settings → Advanced Security, or `gh api -X DELETE
+> repos/<owner>/<repo>/automated-security-fixes` then `gh api -X PUT` on the same path), which
+> is that enable event — Dependabot started within seconds in every repo it was tried on.
+> The audit's open loops list any repo still in this state and name the same fix.
 
 **Job two — don't fall three years behind.**
 Routine "there's a newer version" updates. This one *does* need a file per repo
@@ -45,6 +56,7 @@ Each repo keeps a ten-line file that points at it. Fix a rule here, every repo g
 | Major bump (`1.2.3 → 2.0.0`) | Labelled `major-review-needed`, waits for you |
 | A mix it can't classify | Labelled `dependabot-needs-human`, waits for you |
 | Anything, in a repo with no CI | Labelled `no-ci-gate`, waits for you, with a comment saying why |
+| A patch or minor whose tests then **fail** | Stays queued. Listed in the Monday digest's open loops; labelled `dependabot-ci-failed` at once only in a repo that has turned the watch on (off by default, since 2026-09-22) |
 
 Two deliberate details behind that table:
 
@@ -54,6 +66,30 @@ anything — it merges *on the spot*
 ([cli/cli#13880](https://github.com/cli/cli/issues/13880), still open). So "auto-merge" in
 a repo with no CI means "merge instantly, untested". The workflow refuses and labels
 instead.
+
+**A queued update whose tests go red is said out loud.** The workflow runs when the pull
+request opens, seconds before its tests finish, so until 2026-09-22 a patch or minor update
+that then went red simply sat there: auto-merge queued, GitHub waiting forever, no label, no
+message. One grouped update did that for six days. Now the Monday digest lists every such
+update under its open loops. For a same-day message there is also a **failed-test watch,
+OFF by default**: the workflow waits for the required checks and labels a failure
+`dependabot-ci-failed`, which a verdict routine then posts about. It ships off because the
+wait costs private runner time — about two extra minutes per update pull request at the
+check times measured that day, in a month the account was already past its allowance — and
+because the digest already catches these weekly. With it off, the shared workflow does
+exactly what it did before 2026-09-22.
+
+To turn it on in one repo, all three:
+1. in that repo's `.github/workflows/dependabot-automerge.yml`, uncomment `checks: read`
+   and `statuses: read` under `permissions:` (on a private repo the watch cannot see a
+   result without them);
+2. in the same file's `with:` block, set `watch-minutes: 10` (15 at most);
+3. add `dependabot-ci-failed` to that repo's verdict routine's "Labels is one of" filter
+   (see `routines/dependabot-verdict.md`).
+
+A later push that is not seen failing takes the label off. (A failed job re-run to green
+without a push starts no run, so there the label stays until removed by hand.) The audit
+table names any stub that turns the watch on without the two read lines.
 
 **A grouped PR has to be clean all the way through.** Dependabot's own metadata action
 publishes a convenient single "update type" for a PR — but that value is the *maximum*
@@ -200,6 +236,7 @@ end; the audit will flag it as `drift: still has its own private copy of the mer
 | `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed, or it could not read the branch's protection settings. | Look at the PR's checks tab |
 | `dependabot-opted-out` | Classified fine, but this repo has that tier switched off in its stub (`merge-minor: false`, say). Nothing is broken. | Read it and merge it yourself, or change the stub |
 | `no-ci-gate` | The repo has no required status check, so auto-merge would have been instant-merge. | Merge by hand, or give the repo a CI check and re-run `enroll` |
+| `dependabot-ci-failed` | A patch or minor update was queued to merge and a required check then failed. Still queued: it lands by itself if a fix goes green. | Read the verdict in `#dependabot`; fix the test, or close the pull request |
 
 ---
 
@@ -211,7 +248,9 @@ bin/audit
 
 Read-only, writes nothing. About two and a half minutes across 40 repos (measured
 2026-09-14) — most of that is measuring Actions minutes, which costs roughly 1,600 API
-calls, a third of GitHub's hourly allowance. `bin/audit --skip-actions` does the
+calls, a third of GitHub's hourly allowance. The open-loops scan adds about 250 calls and
+half a minute (measured 2026-09-22; `--skip-loops` leaves it out, and says so in the
+output). `bin/audit --skip-actions` does the
 enrolment half in about 40 seconds and spends almost nothing, and `--cap 30` samples the
 minutes instead of measuring every build — every output then says the build-time and
 permission checks were **not measured**, rather than reporting them as zero and clean.
@@ -254,8 +293,10 @@ nothing else:
 
 **Where it runs.** The audit runs in a private companion repo,
 [`khglynn/repo-standards-audit`](https://github.com/khglynn/repo-standards-audit), whose
-weekly GitHub Actions job checks this repo out, runs `bin/audit --digest` on Monday
-mornings, and commits the result there as `latest-digest.md`; the routine checks that
+weekly GitHub Actions job checks this repo out, runs `bin/audit --digest` on Sunday
+evenings (22:00 UTC since 2026-09-22, fifteen hours ahead of the routine, because GitHub
+started the old Monday-morning run six hours late on 2026-09-21), and commits the result
+there as `latest-digest.md`; the routine checks that
 repo out, reads the file, and posts it. Two reasons it is not here: the routine cannot run
 the audit itself (its cloud sandbox has no `gh` and no token that reaches the other
 repos, found 2026-09-14), and the audit's output names private repos, which must not
@@ -289,12 +330,49 @@ message cannot see. A build file nobody could read gets its own note for the sam
 That is the whole point of the digest: a number you can act on, or an admission — never a
 confident zero standing in for a measurement nobody took.
 
+**What has been left hanging?** (the open loops, since 2026-09-22) Agents open pull
+requests and nobody notices when they stall, so the digest now lists the loose ends, one
+numbered line per reason, oldest first:
+
+- any pull request open more than a week, whoever opened it, grouped by the one reason it is
+  not merging — ready and waiting, failing tests, a merge conflict, a draft, a review the
+  rules still require;
+- a Dependabot update queued to merge whose required check failed, at any age — GitHub holds
+  those forever and tells nobody (the label above catches new ones; this catches the rest);
+- a branch whose rules still require an approving review — retired 2026-09-15, because in a
+  one-person account the only way past one is an admin bypass — with how many pull requests
+  it is holding up;
+- repos where Dependabot security fixes are switched on, fixable alerts are open, and
+  Dependabot has not run in 14 days and has no update pull request open: the fixes are not
+  running (see the caveat at the top — alerts that predate the setting were never
+  attempted), and the line says to switch security updates off and back on there.
+
+A loop the audit could not read is a note ("tests on 2 pull requests could not be read"),
+never a missing line, and a week the loops were not checked at all says so. The full list,
+with links, is in the table (`bin/audit`); `bin/lib/loops-scan.py` explains each rule.
+
+**What the weekly run's token cannot see.** The audit's read-only token is a fine-grained
+one, and GitHub does not let a fine-grained token read check runs at all (a known gap it
+lists on *Managing your personal access tokens*, read 2026-09-22). So the weekly run reads
+test results from the Actions jobs instead — same names, same answers for any check that is
+an Actions job — and reports a check it cannot see, like a Vercel status, as not read. It
+also cannot read security alerts until the token is given **Dependabot alerts: read** (and
+Vercel-style statuses need **Commit statuses: read**); until then the digest carries a
+note saying the security-fix check did not run.
+
 It closes with one line beginning "To act:" — the single most useful thing to do that week.
+When an open loop is the answer, the most urgent one wins, not the oldest: security fixes
+that never run on critical alerts, then an update queued behind failing tests.
 
 **It is always under 150 words**, because a message you skim is a message you read. When
-there is more to say than that, the repo list is what gives way, and it says how many
-repos it left out; the notes never do, since a note that vanishes reads exactly like a
-week in which there was nothing to report.
+there is more to say than that, the repo list gives way first and then the open loops, and
+each says how many it left out; the notes never do, since a note that vanishes reads
+exactly like a week in which there was nothing to report. On the busy real week of
+2026-09-22 that left room for ONE numbered loop line plus "And 18 more open loops." (the
+"To act:" line still named the most urgent one); `bin/audit --digest --word-cap 220` fitted
+five. Raising it is the one-flag change to make in the weekly job if a longer Monday
+message is fine. When not even one line fits, the block becomes a single sentence with
+the count and the oldest age, never a heading over nothing.
 
 Two things it deliberately does **not** do: it never merges, closes or comments on
 anything, and on a quiet week it is three lines rather than a report about nothing.
@@ -422,6 +500,35 @@ that is wrong for a repo which already has one. It now separates the two: 404 me
 The durable fix is rulesets everywhere — `enroll` only ever creates those, and the ruleset
 endpoint is readable without admin.
 
+**2026-09-22 — the shared workflow declares no permissions; each stub grants them.**
+A called workflow can only narrow what its caller granted, and asking for a scope the caller
+did not grant is not a narrowing — the run fails to start ("the nested job is requesting
+'checks: read', but is only allowed 'checks: none'"). The failed-test watch needs
+`checks: read` and `statuses: read`, which no enrolled stub grants, so declaring them in the
+shared file would have stopped every enrolled repo at once. The shared file now declares
+nothing and inherits the stub's grant exactly — which, for every stub as it stands, is the
+same three scopes it always ran with. `templates/caller-stub.yml` carries the two read lines
+commented out, next to `watch-minutes`, for a repo that turns the watch on. Because the
+shared file no longer caps anything, the template check allows exactly those three scopes,
+and the audit table names a stub that grants more.
+
+**2026-09-22 — the failed-test watch waits inside the run, because nothing later can start
+one.** A `check_run` or `check_suite` event is never delivered to a workflow for a check
+GitHub Actions itself created (GitHub Docs, *Events that trigger workflows*), and every
+enrolled gate but one is an Actions job. `workflow_run` would need each repo's workflow
+names written into its stub, and `status` would start a run for every commit status on every
+branch. Waiting a bounded few minutes in the run that queued the merge costs the check's own
+duration in runner time and needs only the two permission lines. Shipped OFF by default the
+same day (the coordinator's call): merging it changes nothing until a repo opts in, and the
+job's ceiling stays 10 minutes there.
+
+**⚠ Still unverified (2026-09-22): the watch has never run live.** It is off by default and
+only runs from `main`, so its first real test is the first patch or minor update in a repo
+that turns it on. Its decision rule was run against real pull requests (a red queued update
+reads `failed:<check>`, a green one `passed`, a moved head `moved`); what has not been seen
+is the workflow's own token reading checks with the two read lines granted, or the label
+reaching a verdict routine.
+
 ---
 
 ## What is in here
@@ -436,7 +543,7 @@ endpoint is readable without admin.
 | `bin/enroll` | Enroll one repo. Idempotent. Opens a PR, never pushes to `main` |
 | `bin/audit` | Read-only status of every repo |
 | `bin/classify-pr` | Read-only. "What would the workflow do with this PR?" — answers it without waiting for a run |
-| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, the Actions scanner and workflow-hygiene parser behind the audit's newer columns, and the four self-checks CI runs |
+| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, the Actions scanner and workflow-hygiene parser behind the audit's newer columns, the open-loops scanner (`loops-scan.py`), and the five self-checks CI runs |
 | `bin/lib/fixtures/` | Worked examples the self-checks assert against — each file says at the top what it is supposed to prove |
 | `routines/` | The prompts for the scheduled Claude routines that post to `#dependabot`: a per-pull-request verdict, and the weekly digest |
 | `BUILD-LOG.md` | What was built and what was found, as it happened |

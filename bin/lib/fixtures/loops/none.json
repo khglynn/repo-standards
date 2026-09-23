@@ -1,0 +1,3 @@
+{"_about": "A week in which the open-loops scan ran, read everything, and found nothing. check-audit.sh passes this to every older digest assertion, so they keep testing exactly what they tested before open loops existed (2026-09-22).",
+ "loops": [], "measured": {"prs": true, "checks_unread": [], "rules_unread": [], "security_unread": [], "skipped": []},
+ "stale_days": 7, "silent_days": 14, "errors": []}
