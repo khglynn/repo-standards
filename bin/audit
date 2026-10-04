@@ -371,6 +371,20 @@ if [ "$SKIP_LOOPS" = "no" ]; then
   fi
 fi
 
+# Every read that failed, one line each, to STDERR. The scanners record them in their JSON,
+# which dies with $TMP, and the outputs only ever say "could not be read in N repos" — so
+# for weeks "security fixes could not be checked in 40 repos" had no traceable cause. The
+# weekly job keeps stderr as its audit-log artifact (since 2026-10-04); this is what makes
+# that log say WHICH call failed and how. Repo names and HTTP codes only, never a token.
+jq -r '.repos // {} | to_entries[] | .key as $r | (.value.errors // [])[] | "actions: \($r): \(.)"' \
+  "$TMP/scan.json" >&2 2>/dev/null || true
+# One line, so check-loops.sh can lift the real program out of this file and run it.
+# shellcheck disable=SC2016  # $r and $v are jq variables, not the shell's
+LOOPS_ERRORS_JQ='((.errors // [])[] | "loops: \(.)"), (.facts.repos // {} | to_entries[] | .key as $r | .value as $v | (($v.rules.errors // []) + ($v.security.errors // []) + (if ($v.security.fixes_on != true) and $v.security.alerts_error then ["security alerts unreadable (\($v.security.alerts_error))"] else [] end))[] | "loops: \($r): \(.)")'
+if [ -f "$TMP/loops.json" ]; then
+  jq -r "$LOOPS_ERRORS_JQ" "$TMP/loops.json" >&2 2>/dev/null || true
+fi
+
 # How the minutes were measured — and, when they were not, WHICH kind of not. The
 # renderer refuses to print a figure for "skipped" or "none", because the alternative is
 # what `--digest --skip-actions` printed on 2026-09-14: "about 0 minutes of the free 3,000

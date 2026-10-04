@@ -558,6 +558,17 @@ hasnt "…and says nothing about stubs that leave it off" \
 BROAD=$(jq -c 'if .name=="patchwork" then .stub_broad=true else . end' <<< "$QUIET" | render --mode table --loops "$FX/none.json")
 has "table names a stub that grants more than the workflow uses" "$BROAD" "**Stubs that grant more than the workflow uses:** \`patchwork\`"
 
+# bin/audit echoes every failed read to stderr, which the weekly job keeps as its audit-log
+# artifact (2026-10-04): the outputs only say "could not be read in N repos", so this is
+# where the WHICH and the HOW live. The program is lifted out of bin/audit, not retyped.
+LEJ=$(sed -n "s/^LOOPS_ERRORS_JQ='\(.*\)'$/\1/p" bin/audit)
+if [ -z "$LEJ" ]; then nope "LOOPS_ERRORS_JQ not found in bin/audit"; else
+  jq '.facts.repos.hotel.security.alerts_error = "HTTP 403" | .errors = ["a scan-wide error"]' "$LOOPS" > "$WORK/loops-diag.json"
+  say "the audit log names every failed read: scan-wide, rules, alerts (fixes on and off)" \
+      "$(jq -r "$LEJ" "$WORK/loops-diag.json" | paste -sd'|' -)" \
+      "loops: a scan-wide error|loops: charlie: security alerts unreadable (HTTP 403)|loops: delta: rules unreadable (HTTP 403)|loops: hotel: security alerts unreadable (HTTP 403)"
+fi
+
 echo "--- 4. the workflow's watch rule, taken straight out of the shared workflow"
 WF=.github/workflows/dependabot-automerge.yml
 WATCH=$(sed -n "/WATCH_JQ='/,/end'\$/p" "$WF" | sed -e "s/^.*WATCH_JQ='//" -e "s/'\$//")
