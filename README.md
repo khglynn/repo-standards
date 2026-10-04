@@ -293,8 +293,8 @@ nothing else:
 
 **Where it runs.** The audit runs in a private companion repo,
 [`khglynn/repo-standards-audit`](https://github.com/khglynn/repo-standards-audit), whose
-weekly GitHub Actions job checks this repo out, runs `bin/audit --digest` on Sunday
-evenings (22:00 UTC since 2026-09-22, fifteen hours ahead of the routine, because GitHub
+weekly GitHub Actions job checks this repo out, runs `bin/audit --digest` on Wednesday
+evenings (22:00 UTC since 2026-10-04, about fifteen hours before the Thursday 8am CT digest, because GitHub
 started the old Monday-morning run six hours late on 2026-09-21), and commits the result
 there as `latest-digest.md`; the routine checks that
 repo out, reads the file, and posts it. Two reasons it is not here: the routine cannot run

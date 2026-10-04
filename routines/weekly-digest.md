@@ -17,9 +17,9 @@ cloud sandbox has no `gh` command at all (`gh: command not found`, found on its 
 run there. And its output names private repos, so it cannot be produced in this public
 repo's Actions log or committed to a public branch (Codex review, 2026-09-14). It runs in
 the private companion repo `khglynn/repo-standards-audit`, whose weekly job checks this
-repo out, runs `bin/audit --digest` on Sunday at 22:00 UTC — fifteen hours before the
-routine wakes up, since 2026-09-22, after GitHub started the old Monday 12:15 UTC run six
-hours late on 2026-09-21 and the routine posted its fallback — and commits
+repo out, runs `bin/audit --digest` on Wednesday at 22:00 UTC — about fifteen hours before the
+routine wakes up at 8am CT Thursday (Wednesday evening since 2026-10-04; Sunday evening from 2026-09-22 until then, after GitHub started the old Monday 12:15 UTC run six
+hours late on 2026-09-21 and the routine posted its fallback) — and commits
 the result there as `latest-digest.md`. The routine checks out *that* repo, reads the
 file, and posts it. That split is deliberate: the part that needs credentials never
 touches a model, and the part that needs a model never touches credentials. The job needs
