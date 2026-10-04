@@ -132,6 +132,35 @@ def _why(err):
     return scan._why(err)
 
 
+# What a refused alert read SAYS, so the digest names a cause only when one was shown.
+# Codex review, 2026-10-04: a bare "HTTP 403" was being read as "the token lacks the
+# permission", but GitHub's rate limiter answers 403 too. The permission gap is claimed only
+# when GitHub's own message says the token may not look; a rate limit says so; any other
+# refusal stays a plain code. The fine-grained-token wording ("Resource not accessible by
+# personal access token") is GitHub's standard 403 for a missing permission.
+NO_PERMISSION = "HTTP 403: no permission"
+RATE_LIMITED = "rate limited"
+
+
+def _refusal(client, err):
+    code = getattr(err, "code", None)
+    headers = getattr(err, "headers", None)
+    hget = headers.get if hasattr(headers, "get") else (lambda _k: None)
+    if getattr(client, "exhausted", False) or code == 429 or (
+            code == 403 and (hget("X-RateLimit-Remaining") == "0" or hget("Retry-After"))):
+        return RATE_LIMITED
+    if code == 403 and hasattr(err, "read"):
+        try:
+            body = err.read().decode("utf-8", "replace")
+        except Exception:
+            body = ""
+        if "not accessible by" in body:
+            return NO_PERMISSION
+        if "alerts are disabled" in body.lower():
+            return "HTTP 403: alerts switched off"
+    return _why(err)
+
+
 def _next_link(headers):
     """The rel="next" URL from a Link header, or None."""
     link = (headers.get("Link") if hasattr(headers, "get") else None) or ""
@@ -436,9 +465,9 @@ def read_security(client, repo, today, silent_days, use_actions=True):
             # not among the weekly token's permissions as of 2026-10-04) — unread, never
             # "no alerts". With fixes off it may also be alerts switched off for the repo;
             # either way the count is unknown, which `alerts_error` says.
-            out["alerts_error"] = _why(meta)
+            out["alerts_error"] = _refusal(client, meta)
             if out["fixes_on"]:
-                out["errors"].append("security alerts unreadable (%s)" % _why(meta))
+                out["errors"].append("security alerts unreadable (%s)" % out["alerts_error"])
             return out
         alerts.extend(data)
         url = _next_link(meta)
@@ -655,18 +684,24 @@ def alert_totals(facts):
             unread.append(name)
             reasons.add((sec or {}).get("alerts_error") or "not read")
             continue
+        # A count without its severities (facts written before 2026-10-04) is not a full
+        # reading: summing it with `or 0` would print "0 critical" about alerts nobody
+        # classified (Codex review). Unread, with that reason.
+        if not (isinstance(sec.get("open_critical"), int) and isinstance(sec.get("open_high"), int)):
+            unread.append(name)
+            reasons.add("severities not recorded")
+            continue
         read[name] = sec
     hit = {n: s for n, s in read.items() if s["alerts"] > 0}
     worst = None
     if hit:
-        worst = min(hit, key=lambda n: (-(hit[n].get("open_critical") or 0),
-                                        -(hit[n].get("open_high") or 0),
+        worst = min(hit, key=lambda n: (-hit[n]["open_critical"], -hit[n]["open_high"],
                                         -hit[n]["alerts"], n))
     # Nothing read is no count at all: None, so a JSON reader cannot mistake it for zero.
     some = bool(read)
     return {"open": sum(s["alerts"] for s in read.values()) if some else None,
-            "critical": sum(s.get("open_critical") or 0 for s in read.values()) if some else None,
-            "high": sum(s.get("open_high") or 0 for s in read.values()) if some else None,
+            "critical": sum(s["open_critical"] for s in read.values()) if some else None,
+            "high": sum(s["open_high"] for s in read.values()) if some else None,
             "repos_with_alerts": len(hit),
             "repos_read": len(read),
             "worst": worst,

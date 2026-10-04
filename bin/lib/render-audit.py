@@ -633,11 +633,20 @@ def security_line(doc):
         return "Security alerts: not checked this week."
     a = doc["security_alerts"]
     unread = a.get("unread") or []
-    reasons = a.get("unread_reasons") or []
-    token = bool(reasons) and all(r == "HTTP 403" for r in reasons)
+    reasons = set(a.get("unread_reasons") or [])
+    # The cause is named only when the scanner SAW it (its _refusal()): GitHub's own
+    # "not accessible" message for the permission, or the rate limiter. A bare 403 is
+    # neither, and only gets a pointer at the likeliest cause (Codex review, 2026-10-04).
+    token = bool(reasons) and reasons <= {"HTTP 403: no permission"}
     if not a.get("repos_read"):
         if token:
             return "Security alerts unreadable (%s), so there is no count." % TOKEN_GAP
+        if reasons and reasons <= {"rate limited"}:
+            return ("Security alerts unreadable this week (GitHub's hourly limit ran out), so "
+                    "there is no count, not a zero.")
+        if reasons and all(r.startswith("HTTP 403") for r in reasons):
+            return ("Security alerts unreadable (every read was refused; check the token has "
+                    "Dependabot alerts: read), so there is no count.")
         return "Security alerts unreadable this week, so there is no count, not a zero."
     if not a.get("open"):
         line = "Security alerts: none open in %d %s" % (a["repos_read"], _plural(a["repos_read"], "repo"))

@@ -208,6 +208,32 @@ S = lambda alerts, crit=0, high=0, err=None: {"alerts": alerts, "open_critical":
 out["totals"] = tot({"a": S(10, 0, 9), "b": S(3, 1, 0), "c": S(0), "d": S(None, err="HTTP 403")}, ["a", "b", "c", "d", "e"])
 out["totals_tie"] = tot({"x": S(5, 1, 2), "y": S(9, 1, 2), "z": S(9, 1, 2)})["worst"]
 out["totals_blind"] = tot({"a": S(None, err="HTTP 403"), "b": S(None, err="HTTP 403")})
+# Facts written before severities were recorded: a count, but no severities. Unread, not "0 critical".
+out["totals_legacy"] = tot({"old": {"alerts": 7, "alerts_error": None}, "new": S(2, 1, 1)})
+
+# _refusal: the cause is named only when GitHub showed it.
+class HE:
+    def __init__(self, code, headers=None, body=b""):
+        self.code, self.headers, self._b = code, headers or {}, body
+    def read(self): return self._b
+class C: exhausted = False
+class CX: exhausted = True
+out["refusal"] = [ls._refusal(C(), HE(403, body=b'{"message":"Resource not accessible by personal access token"}')),
+                  ls._refusal(C(), HE(403, {"X-RateLimit-Remaining": "0"}, b'{"message":"API rate limit exceeded"}')),
+                  ls._refusal(C(), HE(403, {"Retry-After": "60"}, b'{"message":"secondary rate limit"}')),
+                  ls._refusal(C(), HE(429)),
+                  ls._refusal(CX(), None),
+                  ls._refusal(C(), HE(403, body=b'{"message":"Dependabot alerts are disabled for this repository."}')),
+                  ls._refusal(C(), HE(403, body=b'{"message":"Forbidden"}')),
+                  ls._refusal(C(), E403),
+                  ls._refusal(C(), HE(500))]
+class Refused(Paged):
+    def get(self, path):
+        if "dependabot/alerts" in path:
+            return None, HE(403, body=b'{"message":"Resource not accessible by personal access token"}')
+        return Paged.get(self, path)
+rf = ls.read_security(Refused({}), "o/r", today, 14)
+out["refused_end_to_end"] = [rf["alerts_error"], rf["errors"]]
 
 # The Actions fallback (a token that cannot read check runs): every job, no de-dup by
 # name, and a required name found nowhere is UNREAD — it may be another app's check run.
@@ -270,6 +296,12 @@ say "more than ten pages: unread, never a floor read as a total" "$(j .endless)"
 say "alert totals: read repos summed, unread named with why, worst by critical" "$(j .totals)" \
   '{"critical":1,"high":9,"open":13,"repos_read":3,"repos_with_alerts":2,"unread":["d","e"],"unread_reasons":["HTTP 403","not read"],"worst":"b"}'
 say "…ties on critical and high go to the most open, then the name" "$(j .totals_tie)" '"y"'
+say "facts without severities: that repo is unread, never '0 critical'" "$(j '.totals_legacy | [.open, .critical, .repos_read, .unread, .unread_reasons]')" \
+  '[2,1,1,["old"],["severities not recorded"]]'
+say "refusals: permission, rate limit (3 ways), exhausted, alerts off, other 403s, other codes" "$(j .refusal)" \
+  '["HTTP 403: no permission","rate limited","rate limited","rate limited","rate limited","HTTP 403: alerts switched off","HTTP 403","HTTP 403","HTTP 500"]'
+say "…and the permission reason reaches alerts_error and the loops' errors" "$(j .refused_end_to_end)" \
+  '["HTTP 403: no permission",["security alerts unreadable (HTTP 403: no permission)"]]'
 say "…and nothing readable is zero repos read, never zero alerts" "$(j '.totals_blind | [.repos_read, .open, .unread_reasons]')" \
   '[0,null,["HTTP 403"]]'
 say "fallback: every leg counts, another app's check is unread, a status is read" "$(j .fallback)" \
@@ -418,16 +450,26 @@ printf '%s\n' "$FULL" > "$WORK/loops-full.json"
 has "everything read: a plain total, no 'at least'" \
     "$(render --mode digest --loops "$WORK/loops-full.json" --word-cap 400 <<< "$QUIET")" \
     "Security alerts: 134 open (5 critical, 46 high) in 5 repos; worst: echo."
-jq '.security_alerts = {"open": null, "critical": null, "high": null, "repos_with_alerts": 0, "repos_read": 0, "worst": null, "unread": ["a","b"], "unread_reasons": ["HTTP 403"]}' "$LOOPS" > "$WORK/loops-blind.json"
-BLIND=$(render --mode digest --loops "$WORK/loops-blind.json" --word-cap 400 <<< "$QUIET")
-has "every alert read refused: the token's missing permission, named" "$BLIND" \
+blind() {  # blind <reason>… : a scan in which no repo's alerts could be read
+  jq --argjson r "$(printf '%s\n' "$@" | jq -R . | jq -sc .)" \
+     '.security_alerts = {"open": null, "critical": null, "high": null, "repos_with_alerts": 0, "repos_read": 0, "worst": null, "unread": ["a","b"], "unread_reasons": $r}' \
+     "$LOOPS" > "$WORK/loops-blind.json"
+  render --mode digest --loops "$WORK/loops-blind.json" --word-cap 400 <<< "$QUIET"
+}
+BLIND=$(blind "HTTP 403: no permission")
+has "every read refused with GitHub's no-permission message: the token's gap, named" "$BLIND" \
     "Security alerts unreadable (token lacks Dependabot alerts: read), so there is no count."
 hasnt "…and never a zero" "$BLIND" "0 open"
+has "a bare 403 is not proof of the permission: a pointer, not a claim" "$(blind "HTTP 403")" \
+    "Security alerts unreadable (every read was refused; check the token has Dependabot alerts: read), so there is no count."
+has "the rate limiter's 403 says rate limit, never the permission" "$(blind "rate limited")" \
+    "Security alerts unreadable this week (GitHub's hourly limit ran out), so there is no count, not a zero."
+hasnt "…and does not blame the token" "$(blind "rate limited" "HTTP 403: no permission")" "token lacks"
 jq '.security_alerts = {"open": null, "critical": null, "high": null, "repos_with_alerts": 0, "repos_read": 0, "worst": null, "unread": ["a"], "unread_reasons": ["no response"]}' "$LOOPS" > "$WORK/loops-noresp.json"
 has "nothing read for another reason: no count, not a zero, and no guess at why" \
     "$(render --mode digest --loops "$WORK/loops-noresp.json" --word-cap 400 <<< "$QUIET")" \
     "Security alerts unreadable this week, so there is no count, not a zero."
-jq '.security_alerts.unread = ["charlie"] | .security_alerts.unread_reasons = ["HTTP 403"]' "$LOOPS" > "$WORK/loops-some403.json"
+jq '.security_alerts.unread = ["charlie"] | .security_alerts.unread_reasons = ["HTTP 403: no permission"]' "$LOOPS" > "$WORK/loops-some403.json"
 has "some repos refused: still 'at least', with the permission named" \
     "$(render --mode digest --loops "$WORK/loops-some403.json" --word-cap 400 <<< "$QUIET")" \
     "; 1 repo unreadable (token lacks Dependabot alerts: read)."
@@ -457,16 +499,41 @@ if grep -qE '^Open loops, oldest first:$' <<< "$WD" && ! grep -qE '^1\. ' <<< "$
   nope "a loops header with no numbered line under it"; echo "$WD"
 else pass "no loops header without a numbered line"; fi
 # Exempt from the cap: at every cap the line is there, and the rest of the message is cut
-# exactly as it would be with no security line at all.
-jq 'del(.security_alerts)' "$WORK/loops-read.json" > "$WORK/loops-read-old.json"
+# exactly as it would be with no line at all (an empty one) or a forty-word one. Comparing against the
+# "not checked" wording was blind to a charge of up to seven words (Codex review,
+# 2026-10-04), so the line is swapped in-process for an empty and a 41-word one, at caps
+# where the lists really are being cut.
 for cap in 60 110 150 170; do
-  WITH=$(render --mode digest --loops "$WORK/loops-read.json" --word-cap "$cap" < bin/lib/fixtures/audit/rows-wide.jsonl)
-  WITHOUT=$(render --mode digest --loops "$WORK/loops-read-old.json" --word-cap "$cap" < bin/lib/fixtures/audit/rows-wide.jsonl)
-  has "cap $cap: the security line is still there" "$WITH" "Security alerts: at least 134 open"
-  if [ "$(grep -v '^Security alerts' <<< "$WITH")" = "$(grep -v '^Security alerts' <<< "$WITHOUT")" ]; then
-    pass "cap $cap: …and costs the rest of the message nothing"
-  else nope "cap $cap: the security line pushed something else out"; diff <(echo "$WITH") <(echo "$WITHOUT") || true; fi
+  has "cap $cap: the security line is still there" \
+      "$(render --mode digest --loops "$WORK/loops-read.json" --word-cap "$cap" < bin/lib/fixtures/audit/rows-wide.jsonl)" \
+      "Security alerts: at least 134 open"
 done
+say "the security line costs the rest of the message nothing, at caps that cut both lists" \
+    "$(python3 - "$WORK/loops-read.json" <<'PYEOF'
+import importlib.util, io, json, os, sys, datetime as dt
+spec = importlib.util.spec_from_file_location("r", os.path.join("bin", "lib", "render-audit.py"))
+r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
+doc = r.load_loops(sys.argv[1])
+rows = [json.loads(l) for l in open("bin/lib/fixtures/audit/rows-wide.jsonl") if l.strip()]
+def body(line, cap):
+    r.security_line = lambda _doc: line
+    buf = io.StringIO()
+    r.render_digest(rows, "khglynn", "2026-09-01", 300, buf, today=dt.date(2026, 9, 22),
+                    loops=doc, word_cap=cap)
+    out = buf.getvalue().splitlines()
+    assert line in out, "line missing at cap %d" % cap
+    return [ln for ln in out if ln != line and ln.strip()]
+# An empty line is zero words whether it is counted or not: the true "no line" baseline.
+long = "Security " + "alert " * 40
+bad = [cap for cap in (110, 130, 150, 170, 200) if body("", cap) != body(long, cap)]
+# …and an absolute check, which a comparison cannot give: a cap one word above the length
+# of the uncut message (line left out) must cut nothing. Any charge for the line, even a
+# constant one that hits both sides of the comparison above, makes it cut something.
+full = body(long, 10000)
+fits = body(long, sum(len(ln.split()) for ln in full) + 1) == full
+print("ok" if not bad and fits else "differs at caps %s; uncut fits: %s" % (bad, fits))
+PYEOF
+)" "ok"
 TIGHT=$(render --mode digest --loops "$LOOPS" --word-cap 170 <<< "$QUIET")
 if grep -qE '^And [0-9]+ more open loops?\.$' <<< "$TIGHT"; then
   pass "a cut loop list says how many it left out"
