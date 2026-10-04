@@ -5,7 +5,7 @@
     directory: "{{DIRECTORY}}"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
     open-pull-requests-limit: 5
     # See npm.yml for the reasoning behind the cooldown numbers — same soak, same why.
     cooldown:

@@ -56,7 +56,7 @@ Each repo keeps a ten-line file that points at it. Fix a rule here, every repo g
 | Major bump (`1.2.3 → 2.0.0`) | Labelled `major-review-needed`, waits for you |
 | A mix it can't classify | Labelled `dependabot-needs-human`, waits for you |
 | Anything, in a repo with no CI | Labelled `no-ci-gate`, waits for you, with a comment saying why |
-| A patch or minor whose tests then **fail** | Stays queued. Listed in the Monday digest's open loops; labelled `dependabot-ci-failed` at once only in a repo that has turned the watch on (off by default, since 2026-09-22) |
+| A patch or minor whose tests then **fail** | Stays queued. Listed in the Thursday digest's open loops; labelled `dependabot-ci-failed` at once only in a repo that has turned the watch on (off by default, since 2026-09-22) |
 
 Two deliberate details behind that table:
 
@@ -70,7 +70,7 @@ instead.
 **A queued update whose tests go red is said out loud.** The workflow runs when the pull
 request opens, seconds before its tests finish, so until 2026-09-22 a patch or minor update
 that then went red simply sat there: auto-merge queued, GitHub waiting forever, no label, no
-message. One grouped update did that for six days. Now the Monday digest lists every such
+message. One grouped update did that for six days. Now the Thursday digest lists every such
 update under its open loops. For a same-day message there is also a **failed-test watch,
 OFF by default**: the workflow waits for the required checks and labels a failure
 `dependabot-ci-failed`, which a verdict routine then posts about. It ships off because the
@@ -287,7 +287,7 @@ bin/audit --digest
 ```
 
 The same facts as the table, written for a person rather than a spreadsheet. This is what
-lands in `#dependabot` every Monday morning (the routine that posts it is described in
+lands in `#dependabot` every Thursday morning (the routine that posts it is described in
 [`routines/weekly-digest.md`](routines/weekly-digest.md)). It answers three questions and
 nothing else:
 
@@ -370,7 +370,7 @@ each says how many it left out; the notes never do, since a note that vanishes r
 exactly like a week in which there was nothing to report. On the busy real week of
 2026-09-22 that left room for ONE numbered loop line plus "And 18 more open loops." (the
 "To act:" line still named the most urgent one); `bin/audit --digest --word-cap 220` fitted
-five. Raising it is the one-flag change to make in the weekly job if a longer Monday
+five. Raising it is the one-flag change to make in the weekly job if a longer Thursday
 message is fine. When not even one line fits, the block becomes a single sentence with
 the count and the oldest age, never a heading over nothing.
 

@@ -6,7 +6,7 @@
     directory: "{{DIRECTORY}}"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
     open-pull-requests-limit: 5
     # Cooldown: Dependabot will not propose a version published more recently than this.
     # It is the supply-chain soak — most malicious-package incidents are caught and yanked
