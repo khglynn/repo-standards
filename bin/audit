@@ -12,7 +12,8 @@
 #                   Much faster when all you want is the enrolment picture. Every output
 #                   then says those things were NOT MEASURED rather than reporting zero.
 #   --word-cap N    the digest's ceiling in words (default 150). The two lists give way
-#                   to it; the notes never do.
+#                   to it; the notes never do. The "Security alerts:" line is always
+#                   printed and not counted against it (2026-10-04).
 #   --skip-loops    no open-loops scan (bin/lib/loops-scan.py). Every output then says the
 #                   open loops were NOT CHECKED, rather than showing an empty list.
 #
@@ -368,6 +369,22 @@ if [ "$SKIP_LOOPS" = "no" ]; then
     loops_arg="failed"
     echo "open-loops scan FAILED; the output will say so" >&2
   fi
+fi
+
+# The failed reads the scanners RECORD, one line each, to STDERR. They live in their JSON,
+# which dies with $TMP, and the outputs only ever say "could not be read in N repos" — so
+# for weeks "security fixes could not be checked in 40 repos" had no traceable cause. The
+# weekly job keeps stderr as its audit-log artifact (since 2026-10-04); this is what makes
+# that log say WHICH call failed and how: repo names and the scanners' own error strings,
+# never a token. Not covered: a pull request's unreadable checks, which read_checks() marks
+# unread without keeping a reason (they are counted in the digest's own note).
+jq -r '.repos // {} | to_entries[] | .key as $r | (.value.errors // [])[] | "actions: \($r): \(.)"' \
+  "$TMP/scan.json" >&2 2>/dev/null || true
+# One line, so check-loops.sh can lift the real program out of this file and run it.
+# shellcheck disable=SC2016  # $r and $v are jq variables, not the shell's
+LOOPS_ERRORS_JQ='((.errors // [])[] | "loops: \(.)"), (.facts.repos // {} | to_entries[] | .key as $r | .value as $v | (($v.rules.errors // []) + ($v.security.errors // []) + (if ($v.security.fixes_on != true) and $v.security.alerts_error then ["security alerts unreadable (\($v.security.alerts_error))"] else [] end))[] | "loops: \($r): \(.)")'
+if [ -f "$TMP/loops.json" ]; then
+  jq -r "$LOOPS_ERRORS_JQ" "$TMP/loops.json" >&2 2>/dev/null || true
 fi
 
 # How the minutes were measured — and, when they were not, WHICH kind of not. The

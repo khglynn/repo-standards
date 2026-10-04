@@ -1,3 +1,4 @@
-{"_about": "A week in which the open-loops scan ran, read everything, and found nothing. check-audit.sh passes this to every older digest assertion, so they keep testing exactly what they tested before open loops existed (2026-09-22).",
+{"_about": "A week in which the open-loops scan ran, read everything, and found nothing. check-audit.sh passes this to every older digest assertion, so they keep testing exactly what they tested before open loops existed (2026-09-22). Since 2026-10-04 it also carries the account's alert totals, read in full and all zero, so the digest's security line reads 'none open' rather than 'not checked'.",
  "loops": [], "measured": {"prs": true, "checks_unread": [], "rules_unread": [], "security_unread": [], "skipped": []},
+ "security_alerts": {"open": 0, "critical": 0, "high": 0, "repos_with_alerts": 0, "repos_read": 40, "worst": null, "unread": [], "unread_reasons": []},
  "stale_days": 7, "silent_days": 14, "errors": []}

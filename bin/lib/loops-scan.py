@@ -132,6 +132,36 @@ def _why(err):
     return scan._why(err)
 
 
+# What a refused alert read SAYS, so the digest names a cause only when one was shown.
+# Codex reviews, 2026-10-04: a bare "HTTP 403" was being read as "the token lacks the
+# permission", but GitHub's rate limiters answer 403 too, and a header-based guess at which
+# limiter it was misfired both ways. So the cause comes from GitHub's own message and
+# nothing else: "Resource not accessible by personal access token" is the missing
+# permission; any "rate limit" message (primary or secondary) is a rate limit; "alerts are
+# disabled" is the repo's switch. Everything else stays a plain code. The one exception is
+# the client's exhausted short-circuit, which returns no error at all — that IS the limit.
+NO_PERMISSION = "HTTP 403: no permission"
+RATE_LIMITED = "rate limited"
+
+
+def _refusal(client, err):
+    if err is None:
+        return RATE_LIMITED if getattr(client, "exhausted", False) else _why(err)
+    body = ""
+    try:
+        if getattr(err, "code", None) in (403, 429):
+            body = err.read().decode("utf-8", "replace").lower()
+    except Exception:  # a closed or absent body (HTTPError(fp=None) raises even on hasattr)
+        body = ""
+    if "not accessible by" in body:
+        return NO_PERMISSION
+    if "rate limit" in body:
+        return RATE_LIMITED
+    if "alerts are disabled" in body:
+        return "HTTP 403: alerts switched off"
+    return _why(err)
+
+
 def _next_link(headers):
     """The rel="next" URL from a Link header, or None."""
     link = (headers.get("Link") if hasattr(headers, "get") else None) or ""
@@ -399,12 +429,23 @@ def read_checks(client, gql, owner, repo, number, head_sha, required, use_action
 def read_security(client, repo, today, silent_days, use_actions=True):
     """Are Dependabot security fixes on here, and are they actually running?
 
-    Three reads, each only when the one before says it matters: the switch, then the open
-    alerts, then Dependabot's own runs. Every field is None when it could not be read.
+    Three reads: the switch, then the open alerts, then (only when fixes are on and some
+    alert is fixable) Dependabot's own runs. Every field is None when it could not be read.
+
+    The alerts are read WHATEVER the switch says (2026-10-04). They used to be read only
+    when security fixes were on, which was enough for the silent-fixes loop but not for
+    the digest's "Security alerts: N open" line: a repo with fixes off (a fork, by GitHub's
+    default) would have dropped out of the total in silence and made it read low. A failed
+    alert read lands in `alerts_error` always, and in `errors` (the loops' "could not be
+    checked" list) only where it hides something that loop needs.
+
+    `critical`/`high` count FIXABLE alerts — the silent-fixes loop's numbers.
+    `open_critical`/`open_high` count EVERY open alert — the digest's security line.
     """
     out = {"fixes_on": None, "alerts": None, "fixable": None, "fixable_runtime": None,
-           "critical": None, "high": None, "oldest_fixable": None,
-           "last_run": None, "runs_recent": None, "errors": []}
+           "critical": None, "high": None, "open_critical": None, "open_high": None,
+           "oldest_fixable": None, "last_run": None, "runs_recent": None,
+           "alerts_error": None, "errors": []}
     data, err = client.get("repos/%s/automated-security-fixes" % repo)
     if isinstance(data, dict):
         out["fixes_on"] = bool(data.get("enabled")) and not data.get("paused")
@@ -412,9 +453,6 @@ def read_security(client, repo, today, silent_days, use_actions=True):
         out["fixes_on"] = False
     else:
         out["errors"].append("security-fix switch unreadable (%s)" % _why(err))
-        return out
-    if not out["fixes_on"]:
-        return out
 
     # Cursor pagination only: this endpoint answers HTTP 400 to a `page=` parameter (found
     # on the first live run, 2026-09-22), so the next page is whatever the Link header says.
@@ -423,18 +461,31 @@ def read_security(client, repo, today, silent_days, use_actions=True):
         # `get` returns (data, headers) on success and (None, the error) on failure.
         data, meta = client.get(url)
         if not isinstance(data, list):
-            # Security fixes cannot be on while alerts are off, so a refusal here is this
-            # token not being allowed to look ("Dependabot alerts: read" is not among the
-            # weekly token's permissions as of 2026-09-22) — unread, never "no alerts".
-            out["errors"].append("security alerts unreadable (%s)" % _why(meta))
+            # Unread, never "no alerts". The likeliest cause is the token not being allowed
+            # to look ("Dependabot alerts: read" was not among the weekly token's
+            # permissions as of 2026-10-04), but a rate limit or a repo with alerts off
+            # refuses too, so _refusal() records only the cause GitHub's message shows.
+            out["alerts_error"] = _refusal(client, meta)
+            if out["fixes_on"]:
+                out["errors"].append("security alerts unreadable (%s)" % out["alerts_error"])
             return out
         alerts.extend(data)
         url = _next_link(meta)
         if not url:
             break
+    else:
+        # Ten full pages and still a next link: a count from here would be a floor printed
+        # as a total. Say unread instead (1,000+ open alerts in one repo is its own alarm).
+        out["alerts_error"] = "more than 1,000 open alerts"
+        if out["fixes_on"]:
+            out["errors"].append("security alerts unreadable (more than 1,000 open)")
+        return out
     fixable = [a for a in alerts
                if ((a.get("security_vulnerability") or {}).get("first_patched_version") or {}).get("identifier")]
     out["alerts"] = len(alerts)
+    every = [((a.get("security_advisory") or {}).get("severity") or "").lower() for a in alerts]
+    out["open_critical"] = every.count("critical")
+    out["open_high"] = every.count("high")
     out["fixable"] = len(fixable)
     out["fixable_runtime"] = sum(1 for a in fixable if (a.get("dependency") or {}).get("scope") == "runtime")
     sev = [((a.get("security_advisory") or {}).get("severity") or "").lower() for a in fixable]
@@ -442,7 +493,7 @@ def read_security(client, repo, today, silent_days, use_actions=True):
     out["high"] = sev.count("high")
     created = sorted(a.get("created_at") for a in fixable if a.get("created_at"))
     out["oldest_fixable"] = created[0][:10] if created else None
-    if not fixable or not use_actions:
+    if not out["fixes_on"] or not fixable or not use_actions:
         return out
 
     # Dependabot's OWN workflow's runs, found by path. Reading the newest 100 `dynamic`
@@ -611,6 +662,53 @@ def derive_loops(facts, stale_days=STALE_DAYS):
     return loops, measured
 
 
+# ------------------------------------------------------------------ the account's alert count
+def alert_totals(facts):
+    """Every open Dependabot alert across the account, for the digest's security line.
+
+    Pure, like derive_loops. Added 2026-10-04, when ~330 open alerts had sat for weeks under
+    a digest that never once said how many there were: the alerts were read for the
+    silent-fixes loop and then only ever used to decide whether that loop fired.
+
+    A repo counts as READ only when its alert list was actually read; everything else is
+    listed in `unread` with the reason, so the renderer can say "at least" — or, when
+    nothing was read, that there is no count at all. Never a zero for a count nobody took.
+    The worst repo is the one with the most critical alerts, then high, then open.
+    """
+    repos = facts.get("repos") or {}
+    names = facts.get("repo_names") or sorted(repos)
+    read, unread, reasons = {}, [], set()
+    for name in names:
+        sec = (repos.get(name) or {}).get("security")
+        if not isinstance(sec, dict) or not isinstance(sec.get("alerts"), int):
+            unread.append(name)
+            reasons.add((sec or {}).get("alerts_error") or "not read")
+            continue
+        # A count without its severities (facts written before 2026-10-04) is not a full
+        # reading: summing it with `or 0` would print "0 critical" about alerts nobody
+        # classified (Codex review). Unread, with that reason.
+        if not (isinstance(sec.get("open_critical"), int) and isinstance(sec.get("open_high"), int)):
+            unread.append(name)
+            reasons.add("severities not recorded")
+            continue
+        read[name] = sec
+    hit = {n: s for n, s in read.items() if s["alerts"] > 0}
+    worst = None
+    if hit:
+        worst = min(hit, key=lambda n: (-hit[n]["open_critical"], -hit[n]["open_high"],
+                                        -hit[n]["alerts"], n))
+    # Nothing read is no count at all: None, so a JSON reader cannot mistake it for zero.
+    some = bool(read)
+    return {"open": sum(s["alerts"] for s in read.values()) if some else None,
+            "critical": sum(s["open_critical"] for s in read.values()) if some else None,
+            "high": sum(s["open_high"] for s in read.values()) if some else None,
+            "repos_with_alerts": len(hit),
+            "repos_read": len(read),
+            "worst": worst,
+            "unread": sorted(unread),
+            "unread_reasons": sorted(reasons)}
+
+
 # ------------------------------------------------------------------ the scan
 def gather(client, gql, owner, repos, today, stale_days, silent_days, use_actions, workers,
            progress=False):
@@ -728,6 +826,7 @@ def main():
 
     loops, measured = derive_loops(facts, facts.get("stale_days", args.stale_days))
     json.dump({"facts": facts, "loops": loops, "measured": measured,
+               "security_alerts": alert_totals(facts),
                "stale_days": facts.get("stale_days", args.stale_days),
                "silent_days": facts.get("silent_days", args.silent_days),
                "errors": facts.get("errors") or []},
