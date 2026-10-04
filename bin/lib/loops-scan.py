@@ -461,11 +461,10 @@ def read_security(client, repo, today, silent_days, use_actions=True):
         # `get` returns (data, headers) on success and (None, the error) on failure.
         data, meta = client.get(url)
         if not isinstance(data, list):
-            # Security fixes cannot be on while alerts are off, so with fixes on a refusal
-            # here is this token not being allowed to look ("Dependabot alerts: read" was
-            # not among the weekly token's permissions as of 2026-10-04) — unread, never
-            # "no alerts". With fixes off it may also be alerts switched off for the repo;
-            # either way the count is unknown, which `alerts_error` says.
+            # Unread, never "no alerts". The likeliest cause is the token not being allowed
+            # to look ("Dependabot alerts: read" was not among the weekly token's
+            # permissions as of 2026-10-04), but a rate limit or a repo with alerts off
+            # refuses too, so _refusal() records only the cause GitHub's message shows.
             out["alerts_error"] = _refusal(client, meta)
             if out["fixes_on"]:
                 out["errors"].append("security alerts unreadable (%s)" % out["alerts_error"])

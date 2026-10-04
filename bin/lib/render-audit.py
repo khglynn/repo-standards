@@ -622,8 +622,10 @@ def security_line(doc):
 
     Same rule as everything else here: a count nobody took is never a zero. Not checked
     says so; nothing readable says why; some repos unread makes the number "at least".
-    An HTTP 403 on every read is the weekly token missing its Dependabot alerts permission
-    (the state the 2026-10-04 diagnosis found), so that case names the permission.
+    The cause is named only when loops-scan's _refusal() read it in GitHub's own message:
+    "not accessible by" is the token missing Dependabot alerts: read (the state the
+    2026-10-04 diagnosis found), "rate limit" is a rate limit. A bare 403 gets a pointer at
+    the permission, never the claim.
     """
     st = doc.get("state")
     if st == "failed":
