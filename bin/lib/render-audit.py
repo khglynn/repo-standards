@@ -609,6 +609,49 @@ def loop_notes(doc):
     return notes
 
 
+TOKEN_GAP = "token lacks Dependabot alerts: read"
+
+
+def security_line(doc):
+    """The digest's one line about open security alerts (2026-10-04).
+
+    ALWAYS printed and EXEMPT from the word cap: about 330 alerts sat open for weeks under
+    a digest that never said how many there were, and a line that can give way to the cap
+    is a line that can vanish on exactly the busy week it matters. It reads the totals
+    loops-scan.py's alert_totals() computed from the alerts it already reads.
+
+    Same rule as everything else here: a count nobody took is never a zero. Not checked
+    says so; nothing readable says why; some repos unread makes the number "at least".
+    An HTTP 403 on every read is the weekly token missing its Dependabot alerts permission
+    (the state the 2026-10-04 diagnosis found), so that case names the permission.
+    """
+    st = doc.get("state")
+    if st == "failed":
+        return "Security alerts: not checked, because the open-loops scan failed."
+    if st != "ok" or not isinstance(doc.get("security_alerts"), dict):
+        # No scan, a skipped one, or a scan file from before this line existed.
+        return "Security alerts: not checked this week."
+    a = doc["security_alerts"]
+    unread = a.get("unread") or []
+    reasons = a.get("unread_reasons") or []
+    token = bool(reasons) and all(r == "HTTP 403" for r in reasons)
+    if not a.get("repos_read"):
+        if token:
+            return "Security alerts unreadable (%s), so there is no count." % TOKEN_GAP
+        return "Security alerts unreadable this week, so there is no count, not a zero."
+    if not a.get("open"):
+        line = "Security alerts: none open in %d %s" % (a["repos_read"], _plural(a["repos_read"], "repo"))
+    else:
+        line = ("Security alerts: %s%d open (%d critical, %d high) in %d %s; worst: %s"
+                % ("at least " if unread else "", a["open"], a.get("critical") or 0,
+                   a.get("high") or 0, a["repos_with_alerts"],
+                   _plural(a["repos_with_alerts"], "repo"), a.get("worst")))
+    if unread:
+        line += "; %d %s unreadable%s" % (len(unread), _plural(len(unread), "repo"),
+                                          " (%s)" % TOKEN_GAP if token else "")
+    return line + "."
+
+
 def loop_act(doc):
     """The "To act:" line when an open loop is the most useful thing to do this week.
 
@@ -769,6 +812,11 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     else:
         line += " No updates are waiting."
     head.append(line)
+    # The security line sits under the headline and is never cut: see security_line().
+    # Its words are left out of the count below, so it costs the rest of the message none.
+    sec_line = security_line(loops)
+    head.append(sec_line)
+    exempt = len(sec_line.split())
 
     # The build-time sentence, and the one rule it lives by: it may only state a figure
     # this run actually measured. A skipped or failed measurement says so in the same
@@ -943,7 +991,8 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     # So the cap is enforced rather than aimed at, and the thing that gives way is the
     # repo list — the only part that is enumerable, is already sorted worst-first, and
     # says out loud how many it left out. The notes never give way: each one exists
-    # because its absence would read as "nothing wrong here".
+    # because its absence would read as "nothing wrong here". The security line is outside
+    # the count altogether (`exempt`, 2026-10-04), so it never pushes anything else out.
     #
     # Since 2026-09-22 there are two such lists — the repos, and the numbered open loops —
     # and the REPO list gives way first. Its lines are counts ("5 waiting, oldest 6 days")
@@ -959,7 +1008,7 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
         # `<`, not `<=`: the README, the routine prompt and check-audit.sh all promise
         # UNDER the cap, and the old `<=` let a message of exactly 150 words through
         # (found when the loop notes first pushed a fixture to 150, 2026-09-22).
-        if _words(parts) < word_cap or (keep == 0 and lkeep == 0):
+        if _words(parts) - exempt < word_cap or (keep == 0 and lkeep == 0):
             break
         if keep > 0:
             keep -= 1
@@ -986,7 +1035,8 @@ def main():
     ap.add_argument("--note", default="", help="a caveat to print alongside the minutes")
     ap.add_argument("--word-cap", type=int, default=WORD_CAP,
                     help="the digest's ceiling in words (default %d). Only the two lists "
-                         "give way to it; the notes never do" % WORD_CAP)
+                         "give way to it; the notes never do, and the security line is not "
+                         "counted" % WORD_CAP)
     ap.add_argument("--loops", default=None,
                     help="bin/lib/loops-scan.py's output file, or the word 'skipped'. "
                          "Left out, the open loops read as NOT CHECKED — never as none")
@@ -1011,6 +1061,10 @@ def main():
                    "minutes": {k: (v.isoformat() if hasattr(v, "isoformat") else v)
                                for k, v in minutes_picture(rows, args.since,
                                                            args.method, today).items()},
+                   "security_alerts": dict(
+                       loops.get("security_alerts") if loops.get("state") == "ok"
+                       and isinstance(loops.get("security_alerts"), dict) else {},
+                       line=security_line(loops)),
                    "open_loops": {"checked": loops.get("state") == "ok",
                                   "state": loops.get("state"),
                                   "loops": loops.get("loops") if loops.get("state") == "ok" else None,

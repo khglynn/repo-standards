@@ -12,7 +12,8 @@
 #                   Much faster when all you want is the enrolment picture. Every output
 #                   then says those things were NOT MEASURED rather than reporting zero.
 #   --word-cap N    the digest's ceiling in words (default 150). The two lists give way
-#                   to it; the notes never do.
+#                   to it; the notes never do. The "Security alerts:" line is always
+#                   printed and not counted against it (2026-10-04).
 #   --skip-loops    no open-loops scan (bin/lib/loops-scan.py). Every output then says the
 #                   open loops were NOT CHECKED, rather than showing an empty list.
 #

@@ -330,6 +330,15 @@ message cannot see. A build file nobody could read gets its own note for the sam
 That is the whole point of the digest: a number you can act on, or an admission — never a
 confident zero standing in for a measurement nobody took.
 
+**How many security alerts are open?** (since 2026-10-04) One line under the headline —
+"Security alerts: N open (C critical, H high) in R repos; worst: some-repo" — always
+printed and never counted against the word limit, because about 330 alerts once sat open
+for weeks under a digest that never said how many there were. It totals every open alert,
+fixable or not, including repos whose security fixes are off. Some repos unread makes the
+number "at least …; 2 repos unreadable"; none readable prints "Security alerts unreadable
+(token lacks Dependabot alerts: read), so there is no count" when every read was refused
+(the weekly token's state on 2026-10-04), and never a zero.
+
 **What has been left hanging?** (the open loops, since 2026-09-22) Agents open pull
 requests and nobody notices when they stall, so the digest now lists the loose ends, one
 numbered line per reason, oldest first:
@@ -358,13 +367,15 @@ test results from the Actions jobs instead — same names, same answers for any 
 an Actions job — and reports a check it cannot see, like a Vercel status, as not read. It
 also cannot read security alerts until the token is given **Dependabot alerts: read** (and
 Vercel-style statuses need **Commit statuses: read**); until then the digest carries a
-note saying the security-fix check did not run.
+note saying the security-fix check did not run, and its security line says the alerts are
+unreadable and names that permission.
 
 It closes with one line beginning "To act:" — the single most useful thing to do that week.
 When an open loop is the answer, the most urgent one wins, not the oldest: security fixes
 that never run on critical alerts, then an update queued behind failing tests.
 
-**It is always under 150 words**, because a message you skim is a message you read. When
+**It is always under 150 words** (not counting the security line, which is exempt), because
+a message you skim is a message you read. When
 there is more to say than that, the repo list gives way first and then the open loops, and
 each says how many it left out; the notes never do, since a note that vanishes reads
 exactly like a week in which there was nothing to report. On the busy real week of

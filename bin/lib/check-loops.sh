@@ -156,6 +156,58 @@ class NeverRan(Paged):
         return Paged.get(self, path)
 nr = ls.read_security(NeverRan({}), "o/r", today, 14)
 out["never_ran"] = [nr["last_run"], nr["runs_recent"], nr["errors"]]
+out["blind_error"] = ls.read_security(Fake({"automated-security-fixes": ({"enabled": True}, {}),
+                                            "dependabot/alerts": (None, E403)}), "o/r", today, 14)["alerts_error"]
+
+# The account's alert count (2026-10-04). Every open alert's severity counts for the
+# digest's line, fixable or not; the silent-fixes loop keeps its fixable-only numbers.
+class Mixed(Paged):
+    def get(self, path):
+        if "dependabot/alerts" in path:
+            return [alert("critical", "runtime", False), alert("high", "runtime", True),
+                    alert("high", "development", False), alert("medium", "runtime", True)], {}
+        return Paged.get(self, path)
+mx = ls.read_security(Mixed({}), "o/r", today, 14)
+out["open_vs_fixable"] = {k: mx[k] for k in ("alerts", "open_critical", "open_high", "critical", "high", "fixable")}
+# Fixes OFF: the alerts are still counted (a fork's would otherwise drop out of the total
+# in silence), and Dependabot's runs are not read — nothing would use them.
+class OffButAlerts(Mixed):
+    def get(self, path):
+        if "automated-security-fixes" in path: return {"enabled": False}, {}
+        if "actions/" in path: raise AssertionError("runs read with security fixes off")
+        return Mixed.get(self, path)
+off = ls.read_security(OffButAlerts({}), "o/r", today, 14)
+out["off_counts"] = [off["fixes_on"], off["alerts"], off["open_critical"], off["runs_recent"], off["errors"]]
+# …and a refused alert read with fixes off is an unknown count, but NOT a loops "could not
+# be checked" (there is no fix to check): alerts_error only.
+off403 = ls.read_security(Fake({"automated-security-fixes": ({"enabled": False}, {}),
+                                "dependabot/alerts": (None, E403)}), "o/r", today, 14)
+out["off_refused"] = [off403["alerts"], off403["alerts_error"], off403["errors"]]
+# A switch nobody could read no longer stops the count.
+class SwitchBlind(Mixed):
+    def get(self, path):
+        if "automated-security-fixes" in path: return None, E403
+        if "actions/" in path: raise AssertionError("runs read with the switch unknown")
+        return Mixed.get(self, path)
+sb = ls.read_security(SwitchBlind({}), "o/r", today, 14)
+out["switch_blind"] = [sb["fixes_on"], sb["alerts"], sb["errors"]]
+# Ten full pages and still more: unread, never a floor printed as a total.
+class Endless(Paged):
+    def get(self, path):
+        if "dependabot/alerts" in path:
+            return [alert("high", "runtime", True)], {"Link": '<https://api.github.com/repos/o/r/dependabot/alerts?after=more>; rel="next"'}
+        return Paged.get(self, path)
+en = ls.read_security(Endless({}), "o/r", today, 14)
+out["endless"] = [en["alerts"], en["alerts_error"], en["errors"]]
+
+# alert_totals: pure. Read repos summed; unread ones listed with why; worst = most critical.
+tot = lambda repos, names=None: ls.alert_totals({"repos": {n: {"security": s} for n, s in repos.items()},
+                                                 "repo_names": names or sorted(repos)})
+S = lambda alerts, crit=0, high=0, err=None: {"alerts": alerts, "open_critical": crit if alerts is not None else None,
+                                              "open_high": high if alerts is not None else None, "alerts_error": err}
+out["totals"] = tot({"a": S(10, 0, 9), "b": S(3, 1, 0), "c": S(0), "d": S(None, err="HTTP 403")}, ["a", "b", "c", "d", "e"])
+out["totals_tie"] = tot({"x": S(5, 1, 2), "y": S(9, 1, 2), "z": S(9, 1, 2)})["worst"]
+out["totals_blind"] = tot({"a": S(None, err="HTTP 403"), "b": S(None, err="HTTP 403")})
 
 # The Actions fallback (a token that cannot read check runs): every job, no de-dup by
 # name, and a required name found nowhere is UNREAD — it may be another app's check run.
@@ -204,8 +256,22 @@ say "classic protection refused: unknown, not 0"       "$(j .classic_403)" 'null
 say "security: cursor pages, fixable only, runtime, severities, Dependabot runs only" "$(j .security)" \
   '{"alerts":3,"critical":1,"fixable":2,"fixable_runtime":2,"high":1,"last_run":"2026-09-01","runs_recent":0}'
 say "alerts refused: an error, never zero alerts"      "$(j .security_blind)" '["security alerts unreadable (HTTP 403)"]'
-say "security fixes off: nothing more is read"          "$(j .security_off)" 'false'
+say "security fixes off: read as off"          "$(j .security_off)" 'false'
 say "no Dependabot workflow at all: a measured never"   "$(j .never_ran)" '[null,0,[]]'
+say "alerts refused: the reason is kept for the digest's line" "$(j .blind_error)" '"HTTP 403"'
+say "every open alert's severity counts, fixable or not; the loop keeps fixable-only" "$(j .open_vs_fixable)" \
+  '{"alerts":4,"critical":0,"fixable":2,"high":1,"open_critical":1,"open_high":2}'
+say "security fixes off: alerts still counted, Dependabot runs not read" "$(j .off_counts)" '[false,4,1,null,[]]'
+say "fixes off and alerts refused: unknown count, not a loops unread" "$(j .off_refused)" '[null,"HTTP 403",[]]'
+say "an unreadable fix switch no longer stops the count" "$(j .switch_blind)" \
+  '[null,4,["security-fix switch unreadable (HTTP 403)"]]'
+say "more than ten pages: unread, never a floor read as a total" "$(j .endless)" \
+  '[null,"more than 1,000 open alerts",["security alerts unreadable (more than 1,000 open)"]]'
+say "alert totals: read repos summed, unread named with why, worst by critical" "$(j .totals)" \
+  '{"critical":1,"high":9,"open":13,"repos_read":3,"repos_with_alerts":2,"unread":["d","e"],"unread_reasons":["HTTP 403","not read"],"worst":"b"}'
+say "…ties on critical and high go to the most open, then the name" "$(j .totals_tie)" '"y"'
+say "…and nothing readable is zero repos read, never zero alerts" "$(j '.totals_blind | [.repos_read, .open, .unread_reasons]')" \
+  '[0,null,["HTTP 403"]]'
 say "fallback: every leg counts, another app's check is unread, a status is read" "$(j .fallback)" \
   '{"failing":["checks"],"missing":[],"passed":["Vercel"],"source":"actions","unread":["CodeQL"]}'
 
@@ -343,6 +409,32 @@ has "…and the To act line reads one alert as one alert" "$ONCE_D" \
     "To act: switch security updates off and back on in echo to start fixes for its 1 fixable alert (2 critical)."
 if grep -qE '<[^ ]' <<< "$DG"; then nope "the loops block contains angle brackets (Slack link markup)"
 else pass "no angle brackets"; fi
+# ---- the security line (2026-10-04): always there, never cut, never a zero nobody counted.
+has "security line: the account total, 'at least' when some repos went unread, the worst repo" "$DG" \
+    "Security alerts: at least 134 open (5 critical, 46 high) in 5 repos; worst: echo; 2 repos unreadable."
+has "…and it sits right under the headline" "$(sed -n '4p' <<< "$DG")" "Security alerts:"
+FULL=$(jq '.security_alerts.unread = [] | .security_alerts.unread_reasons = []' "$LOOPS")
+printf '%s\n' "$FULL" > "$WORK/loops-full.json"
+has "everything read: a plain total, no 'at least'" \
+    "$(render --mode digest --loops "$WORK/loops-full.json" --word-cap 400 <<< "$QUIET")" \
+    "Security alerts: 134 open (5 critical, 46 high) in 5 repos; worst: echo."
+jq '.security_alerts = {"open": null, "critical": null, "high": null, "repos_with_alerts": 0, "repos_read": 0, "worst": null, "unread": ["a","b"], "unread_reasons": ["HTTP 403"]}' "$LOOPS" > "$WORK/loops-blind.json"
+BLIND=$(render --mode digest --loops "$WORK/loops-blind.json" --word-cap 400 <<< "$QUIET")
+has "every alert read refused: the token's missing permission, named" "$BLIND" \
+    "Security alerts unreadable (token lacks Dependabot alerts: read), so there is no count."
+hasnt "…and never a zero" "$BLIND" "0 open"
+jq '.security_alerts = {"open": null, "critical": null, "high": null, "repos_with_alerts": 0, "repos_read": 0, "worst": null, "unread": ["a"], "unread_reasons": ["no response"]}' "$LOOPS" > "$WORK/loops-noresp.json"
+has "nothing read for another reason: no count, not a zero, and no guess at why" \
+    "$(render --mode digest --loops "$WORK/loops-noresp.json" --word-cap 400 <<< "$QUIET")" \
+    "Security alerts unreadable this week, so there is no count, not a zero."
+jq '.security_alerts.unread = ["charlie"] | .security_alerts.unread_reasons = ["HTTP 403"]' "$LOOPS" > "$WORK/loops-some403.json"
+has "some repos refused: still 'at least', with the permission named" \
+    "$(render --mode digest --loops "$WORK/loops-some403.json" --word-cap 400 <<< "$QUIET")" \
+    "; 1 repo unreadable (token lacks Dependabot alerts: read)."
+jq 'del(.security_alerts)' "$LOOPS" > "$WORK/loops-old.json"
+has "a scan file from before the line existed reads as not checked" \
+    "$(render --mode digest --loops "$WORK/loops-old.json" --word-cap 400 <<< "$QUIET")" \
+    "Security alerts: not checked this week."
 # The drifter still outranks every loop: finishing enrolment is the digest's first job.
 DRIFT=$(render --mode digest --loops "$LOOPS" --word-cap 400 < bin/lib/fixtures/audit/rows.jsonl)
 has "a half-set-up repo still wins the To act line" "$DRIFT" "To act: finish setting up list-maker"
@@ -353,8 +445,9 @@ has "a half-set-up repo still wins the To act line" "$DRIFT" "To act: finish set
 READ_ALL=$(jq '.measured |= (.checks_unread = [] | .rules_unread = [] | .security_unread = [])' "$LOOPS")
 printf '%s\n' "$READ_ALL" > "$WORK/loops-read.json"
 WD=$(render --mode digest --loops "$WORK/loops-read.json" < bin/lib/fixtures/audit/rows-wide.jsonl)
-n=$(wc -w <<< "$WD" | tr -d ' ')
-if [ "$n" -lt 150 ]; then pass "account-sized digest with loops is $n words (cap 150)"
+# The security line is exempt from the cap (2026-10-04), so it is left out of the count.
+n=$(grep -v '^Security alerts' <<< "$WD" | wc -w | tr -d ' ')
+if [ "$n" -lt 150 ]; then pass "account-sized digest with loops is $n words (cap 150, security line exempt)"
 else nope "account-sized digest with loops is $n words, cap is 150"; echo "$WD"; fi
 # At account size there must be SOMETHING about the loops: a numbered line, or the one-line
 # count. A header over an orphaned "And N more" is what the first cut printed.
@@ -363,6 +456,17 @@ else nope "the account-sized digest lost the loops entirely"; echo "$WD"; fi
 if grep -qE '^Open loops, oldest first:$' <<< "$WD" && ! grep -qE '^1\. ' <<< "$WD"; then
   nope "a loops header with no numbered line under it"; echo "$WD"
 else pass "no loops header without a numbered line"; fi
+# Exempt from the cap: at every cap the line is there, and the rest of the message is cut
+# exactly as it would be with no security line at all.
+jq 'del(.security_alerts)' "$WORK/loops-read.json" > "$WORK/loops-read-old.json"
+for cap in 60 110 150 170; do
+  WITH=$(render --mode digest --loops "$WORK/loops-read.json" --word-cap "$cap" < bin/lib/fixtures/audit/rows-wide.jsonl)
+  WITHOUT=$(render --mode digest --loops "$WORK/loops-read-old.json" --word-cap "$cap" < bin/lib/fixtures/audit/rows-wide.jsonl)
+  has "cap $cap: the security line is still there" "$WITH" "Security alerts: at least 134 open"
+  if [ "$(grep -v '^Security alerts' <<< "$WITH")" = "$(grep -v '^Security alerts' <<< "$WITHOUT")" ]; then
+    pass "cap $cap: …and costs the rest of the message nothing"
+  else nope "cap $cap: the security line pushed something else out"; diff <(echo "$WITH") <(echo "$WITHOUT") || true; fi
+done
 TIGHT=$(render --mode digest --loops "$LOOPS" --word-cap 170 <<< "$QUIET")
 if grep -qE '^And [0-9]+ more open loops?\.$' <<< "$TIGHT"; then
   pass "a cut loop list says how many it left out"
@@ -396,10 +500,13 @@ for how in absent skipped unreadable; do
     unreadable) T=$(render --mode digest --loops "$WORK/no-such-file.json" <<< "$QUIET") ;;
   esac
   has "digest ($how): says open loops were not checked" "$T" "Note: open loops were not checked this week."
+  has "digest ($how): …and the security line says not checked, never a count" "$T" "Security alerts: not checked this week."
   hasnt "digest ($how): no loops block pretending to be complete" "$T" "Open loops, oldest first:"
 done
 has "a scan that FAILED says so, in its own words" "$(render --mode digest --loops failed <<< "$QUIET")" \
     "Note: the open-loops scan failed this week, so none are listed."
+has "…and the security line says why it has no count" "$(render --mode digest --loops failed <<< "$QUIET")" \
+    "Security alerts: not checked, because the open-loops scan failed."
 has "…and the table does not call it --skip-loops" "$(render --mode table --loops failed <<< "$QUIET")" \
     "the open-loops scan FAILED"
 jq '.errors = ["something nobody planned for"] | .measured |= (.checks_unread = [] | .rules_unread = [] | .security_unread = [])' "$LOOPS" > "$WORK/loops-err.json"
@@ -416,6 +523,7 @@ has "one repo's unreadable pull requests are said" \
 CLEAN=$(render --mode digest --loops "$FX/none.json" <<< "$QUIET")
 hasnt "a measured week with no loops prints no block" "$CLEAN" "Open loops"
 hasnt "…and no not-checked note" "$CLEAN" "not checked"
+has "…and a fully read week with no alerts says so" "$CLEAN" "Security alerts: none open in 40 repos."
 
 TB=$(render --mode table --loops "$LOOPS" <<< "$QUIET")
 has "table: every loop, oldest first"       "$TB" "**Open loops — 11, oldest first**"
@@ -434,6 +542,9 @@ has "table: not checked, said"              "$(render --mode table <<< "$QUIET")
 JS=$(render --mode json --loops "$LOOPS" <<< "$QUIET")
 say "json: checked"           "$(jq '.open_loops.checked' <<< "$JS")" "true"
 say "json: every loop"        "$(jq '.open_loops.loops | length' <<< "$JS")" "11"
+say "json: the alert totals and the line the digest printed" \
+    "$(jq -c '.security_alerts | [.open, .critical, .worst, .line]' <<< "$JS")" \
+    '[134,5,"echo","Security alerts: at least 134 open (5 critical, 46 high) in 5 repos; worst: echo; 2 repos unreadable."]'
 JN=$(render --mode json <<< "$QUIET")
 say "json: not checked"       "$(jq '.open_loops.checked' <<< "$JN")" "false"
 say "json: loops null, not []" "$(jq '.open_loops.loops' <<< "$JN")" "null"

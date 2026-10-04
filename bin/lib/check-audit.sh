@@ -90,7 +90,9 @@ if grep -qE '<[^ ]' <<< "$DIGEST"; then nope "digest contains angle brackets"; f
 else pass "no angle brackets"; fi
 
 # The headline is everything before the first repo line, and it has to stay glanceable.
-words=$(sed -n '/^- /q;p' <<< "$DIGEST" | wc -w | tr -d ' ')
+# The security line is exempt from every word count (2026-10-04): it is never cut, and it
+# must cost the rest of the message nothing. check-loops.sh pins both halves of that.
+words=$(sed -n '/^- /q;p' <<< "$DIGEST" | grep -v '^Security alerts' | wc -w | tr -d ' ')
 if [ "$words" -lt 120 ]; then pass "headline is $words words (cap 120)"
 else nope "headline is $words words, cap is 120"; fail=1; fi
 
@@ -101,8 +103,8 @@ else nope "headline is $words words, cap is 120"; fail=1; fi
 # updates waiting, both warnings live, one repo capped.
 cap_words() {
   local label="$1" text="$2" n
-  n=$(wc -w <<< "$text" | tr -d ' ')
-  if [ "$n" -lt 150 ]; then pass "$label digest is $n words (cap 150)"
+  n=$(grep -v '^Security alerts' <<< "$text" | wc -w | tr -d ' ')
+  if [ "$n" -lt 150 ]; then pass "$label digest is $n words (cap 150, security line exempt)"
   else nope "$label digest is $n words, cap is 150"; echo "$text"; fail=1; fi
 }
 WIDE=bin/lib/fixtures/audit/rows-wide.jsonl
