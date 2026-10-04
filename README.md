@@ -335,9 +335,11 @@ confident zero standing in for a measurement nobody took.
 printed and never counted against the word limit, because about 330 alerts once sat open
 for weeks under a digest that never said how many there were. It totals every open alert,
 fixable or not, including repos whose security fixes are off. Some repos unread makes the
-number "at least …; 2 repos unreadable"; none readable prints "Security alerts unreadable
-(token lacks Dependabot alerts: read), so there is no count" when every read was refused
-(the weekly token's state on 2026-10-04), and never a zero.
+number "at least …; 2 repos unreadable". None readable prints "Security alerts unreadable
+(token lacks Dependabot alerts: read), so there is no count" when GitHub's refusal says the
+token may not look (the weekly token's state on 2026-10-04), names the rate limit when that
+was the cause, and never prints a zero. Each failed read is also written to stderr, which
+the weekly job keeps as its `audit-log` artifact.
 
 **What has been left hanging?** (the open loops, since 2026-09-22) Agents open pull
 requests and nobody notices when they stall, so the digest now lists the loose ends, one
