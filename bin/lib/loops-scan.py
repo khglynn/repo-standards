@@ -133,31 +133,32 @@ def _why(err):
 
 
 # What a refused alert read SAYS, so the digest names a cause only when one was shown.
-# Codex review, 2026-10-04: a bare "HTTP 403" was being read as "the token lacks the
-# permission", but GitHub's rate limiter answers 403 too. The permission gap is claimed only
-# when GitHub's own message says the token may not look; a rate limit says so; any other
-# refusal stays a plain code. The fine-grained-token wording ("Resource not accessible by
-# personal access token") is GitHub's standard 403 for a missing permission.
+# Codex reviews, 2026-10-04: a bare "HTTP 403" was being read as "the token lacks the
+# permission", but GitHub's rate limiters answer 403 too, and a header-based guess at which
+# limiter it was misfired both ways. So the cause comes from GitHub's own message and
+# nothing else: "Resource not accessible by personal access token" is the missing
+# permission; any "rate limit" message (primary or secondary) is a rate limit; "alerts are
+# disabled" is the repo's switch. Everything else stays a plain code. The one exception is
+# the client's exhausted short-circuit, which returns no error at all — that IS the limit.
 NO_PERMISSION = "HTTP 403: no permission"
 RATE_LIMITED = "rate limited"
 
 
 def _refusal(client, err):
-    code = getattr(err, "code", None)
-    headers = getattr(err, "headers", None)
-    hget = headers.get if hasattr(headers, "get") else (lambda _k: None)
-    if getattr(client, "exhausted", False) or code == 429 or (
-            code == 403 and (hget("X-RateLimit-Remaining") == "0" or hget("Retry-After"))):
+    if err is None:
+        return RATE_LIMITED if getattr(client, "exhausted", False) else _why(err)
+    body = ""
+    try:
+        if getattr(err, "code", None) in (403, 429):
+            body = err.read().decode("utf-8", "replace").lower()
+    except Exception:  # a closed or absent body (HTTPError(fp=None) raises even on hasattr)
+        body = ""
+    if "not accessible by" in body:
+        return NO_PERMISSION
+    if "rate limit" in body:
         return RATE_LIMITED
-    if code == 403 and hasattr(err, "read"):
-        try:
-            body = err.read().decode("utf-8", "replace")
-        except Exception:
-            body = ""
-        if "not accessible by" in body:
-            return NO_PERMISSION
-        if "alerts are disabled" in body.lower():
-            return "HTTP 403: alerts switched off"
+    if "alerts are disabled" in body:
+        return "HTTP 403: alerts switched off"
     return _why(err)
 
 

@@ -218,14 +218,20 @@ class HE:
     def read(self): return self._b
 class C: exhausted = False
 class CX: exhausted = True
-out["refusal"] = [ls._refusal(C(), HE(403, body=b'{"message":"Resource not accessible by personal access token"}')),
-                  ls._refusal(C(), HE(403, {"X-RateLimit-Remaining": "0"}, b'{"message":"API rate limit exceeded"}')),
-                  ls._refusal(C(), HE(403, {"Retry-After": "60"}, b'{"message":"secondary rate limit"}')),
-                  ls._refusal(C(), HE(429)),
+class Closed:  # urllib's HTTPError(fp=None): even hasattr(err, "read") raises
+    code = 403
+    def __getattr__(self, name): raise KeyError("file")
+NOPERM = b'{"message":"Resource not accessible by personal access token"}'
+out["refusal"] = [ls._refusal(C(), HE(403, body=NOPERM)),
+                  ls._refusal(C(), HE(403, {"X-RateLimit-Remaining": "0"}, b'{"message":"API rate limit exceeded for user ID 1."}')),
+                  ls._refusal(C(), HE(403, {"X-RateLimit-Remaining": "4999"}, b'{"message":"You have exceeded a secondary rate limit."}')),
+                  ls._refusal(C(), HE(429, body=b'{"message":"You have exceeded a secondary rate limit."}')),
                   ls._refusal(CX(), None),
+                  ls._refusal(CX(), HE(403, body=NOPERM)),
+                  ls._refusal(C(), HE(403, {"Retry-After": "60"}, b'{"message":"Forbidden"}')),
                   ls._refusal(C(), HE(403, body=b'{"message":"Dependabot alerts are disabled for this repository."}')),
-                  ls._refusal(C(), HE(403, body=b'{"message":"Forbidden"}')),
                   ls._refusal(C(), E403),
+                  ls._refusal(C(), Closed()),
                   ls._refusal(C(), HE(500))]
 class Refused(Paged):
     def get(self, path):
@@ -298,8 +304,8 @@ say "alert totals: read repos summed, unread named with why, worst by critical" 
 say "…ties on critical and high go to the most open, then the name" "$(j .totals_tie)" '"y"'
 say "facts without severities: that repo is unread, never '0 critical'" "$(j '.totals_legacy | [.open, .critical, .repos_read, .unread, .unread_reasons]')" \
   '[2,1,1,["old"],["severities not recorded"]]'
-say "refusals: permission, rate limit (3 ways), exhausted, alerts off, other 403s, other codes" "$(j .refusal)" \
-  '["HTTP 403: no permission","rate limited","rate limited","rate limited","rate limited","HTTP 403: alerts switched off","HTTP 403","HTTP 403","HTTP 500"]'
+say "refusals come from GitHub's own message: permission, primary and secondary limits, the exhausted short-circuit, a permission refusal while another worker exhausted the budget, a bare 403 with Retry-After, alerts off, no body, a closed body, other codes" "$(j .refusal)" \
+  '["HTTP 403: no permission","rate limited","rate limited","rate limited","rate limited","HTTP 403: no permission","HTTP 403","HTTP 403: alerts switched off","HTTP 403","HTTP 403","HTTP 500"]'
 say "…and the permission reason reaches alerts_error and the loops' errors" "$(j .refused_end_to_end)" \
   '["HTTP 403: no permission",["security alerts unreadable (HTTP 403: no permission)"]]'
 say "…and nothing readable is zero repos read, never zero alerts" "$(j '.totals_blind | [.repos_read, .open, .unread_reasons]')" \
@@ -463,7 +469,7 @@ hasnt "…and never a zero" "$BLIND" "0 open"
 has "a bare 403 is not proof of the permission: a pointer, not a claim" "$(blind "HTTP 403")" \
     "Security alerts unreadable (every read was refused; check the token has Dependabot alerts: read), so there is no count."
 has "the rate limiter's 403 says rate limit, never the permission" "$(blind "rate limited")" \
-    "Security alerts unreadable this week (GitHub's hourly limit ran out), so there is no count, not a zero."
+    "Security alerts unreadable this week (GitHub rate-limited the scan), so there is no count, not a zero."
 hasnt "…and does not blame the token" "$(blind "rate limited" "HTTP 403: no permission")" "token lacks"
 jq '.security_alerts = {"open": null, "critical": null, "high": null, "repos_with_alerts": 0, "repos_read": 0, "worst": null, "unread": ["a"], "unread_reasons": ["no response"]}' "$LOOPS" > "$WORK/loops-noresp.json"
 has "nothing read for another reason: no count, not a zero, and no guess at why" \

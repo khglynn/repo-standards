@@ -371,11 +371,13 @@ if [ "$SKIP_LOOPS" = "no" ]; then
   fi
 fi
 
-# Every read that failed, one line each, to STDERR. The scanners record them in their JSON,
+# The failed reads the scanners RECORD, one line each, to STDERR. They live in their JSON,
 # which dies with $TMP, and the outputs only ever say "could not be read in N repos" — so
 # for weeks "security fixes could not be checked in 40 repos" had no traceable cause. The
 # weekly job keeps stderr as its audit-log artifact (since 2026-10-04); this is what makes
-# that log say WHICH call failed and how. Repo names and HTTP codes only, never a token.
+# that log say WHICH call failed and how: repo names and the scanners' own error strings,
+# never a token. Not covered: a pull request's unreadable checks, which read_checks() marks
+# unread without keeping a reason (they are counted in the digest's own note).
 jq -r '.repos // {} | to_entries[] | .key as $r | (.value.errors // [])[] | "actions: \($r): \(.)"' \
   "$TMP/scan.json" >&2 2>/dev/null || true
 # One line, so check-loops.sh can lift the real program out of this file and run it.

@@ -642,7 +642,7 @@ def security_line(doc):
         if token:
             return "Security alerts unreadable (%s), so there is no count." % TOKEN_GAP
         if reasons and reasons <= {"rate limited"}:
-            return ("Security alerts unreadable this week (GitHub's hourly limit ran out), so "
+            return ("Security alerts unreadable this week (GitHub rate-limited the scan), so "
                     "there is no count, not a zero.")
         if reasons and all(r.startswith("HTTP 403") for r in reasons):
             return ("Security alerts unreadable (every read was refused; check the token has "
