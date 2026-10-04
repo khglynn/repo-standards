@@ -36,16 +36,16 @@ as written. The fallback in step 2 cannot see any of it and should not try.
 **How it differs from the verdict routines.** Those fire on a GitHub event, one routine per
 repo, and speak about a single pull request. This one is on a clock, covers every repo at
 once, and speaks about the account. They do not overlap: a Dependabot pull request that is
-still open on Monday gets one line here and keeps whatever verdict it already got.
+still open on Thursday gets one line here and keeps whatever verdict it already got.
 
 ---
 
 ## Form values — create it by hand at claude.ai/code/routines/new
 
 The click-by-click recipe that works in this form is in BUILD-LOG, 2026-09-13 22:44. The
-schedule card, first filled in on 2026-09-14: pressing **Weekly** selects Monday by itself
+schedule card, first filled in on 2026-09-14: pressing **Weekly** selects Monday by itself (change the day to Thursday)
 and shows a plain `At` time box; the timezone is the browser's own and the card confirms
-it in words ("Runs every Monday at 8:00 AM CDT"). The GitHub connector appears in the
+it in words ("Runs every Thursday at 8:00 AM CDT"). The GitHub connector appears in the
 "Add connector" list under the name **Github+**. Typing a name into that list's search box
 and clicking the one match is the reliable way to add a connector.
 
@@ -55,7 +55,7 @@ and clicking the one match is the reliable way to add a connector.
 | Instructions | the prompt below, pasted verbatim |
 | Model | `Opus 5` |
 | Repository | `khglynn/repo-standards-audit` (the private repo that holds `latest-digest.md`) |
-| Trigger | **Schedule**, weekly, **Monday**, **08:00**, timezone **America/Chicago** |
+| Trigger | **Schedule**, weekly, **Thursday**, **08:00**, timezone **America/Chicago** |
 | Connectors | **Slack** and **Github+**, and nothing else |
 | Auto-fix | off |
 
@@ -70,7 +70,7 @@ checkout only to read `latest-digest.md`, which the weekly job commits there. Ev
 about the other repos is already inside that file.
 
 **Verify on the routine's page after saving:** the name, `Default · Opus 5`, the schedule
-line reading Monday 08:00 America/Chicago, `khglynn/repo-standards-audit`, exactly two
+line reading Thursday 08:00 America/Chicago, `khglynn/repo-standards-audit`, exactly two
 connectors (Slack, Github+), and the phrase "latest-digest.md" somewhere in the instructions.
 Then press "Run now" once and read the run: it should show the file being read, or say
 plainly why it fell back.
@@ -79,7 +79,7 @@ plainly why it fell back.
 
 ## Prompt (paste verbatim)
 
-Every Monday morning you post one short status message about Kevin's repositories to
+Every Thursday morning you post one short status message about Kevin's repositories to
 Slack. Kevin owns these repos and is a product person, not a developer: he wants to know
 whether anything needs him this week, and he should not have to know what a runner, a
 lockfile or a build minute is to understand the answer.
