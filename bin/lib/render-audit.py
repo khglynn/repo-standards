@@ -793,8 +793,55 @@ def _assemble(head, repo_lines, keep, collapsed, tail, act, loop_lines=(), lkeep
     return [head, body, block, tail, [act]]
 
 
+PEN_CARD_WINDOW_DAYS = 8  # a card run is "last week's" when its status is at most this old
+
+
+def pen_card_note(path, today):
+    """The one digest note about the weekly Pen card job (repo-standards-audit's
+    upkeep-card.yml), or None.
+
+    The card job writes pen-card/status.json on every run, a quiet week included, so the
+    file says one of three things the digest must not keep quiet about. Without this
+    note, a dead card job and a week with nothing to act on look identical in the Pen,
+    which is the same blind spot the rest of this digest exists to close (2026-10-05).
+
+      no path, or no file   the job is not installed: no note
+      unreadable or not an object, or no readable date
+                            say it could not be read; never assume the card was written
+      ok is false, dated within the window
+                            last week's card failed
+      dated before the window, ok or not
+                            the job has stopped reporting (a disabled schedule, a lost
+                            secret, a deleted workflow)
+      ok, within the window no note; a skipped or quiet week is the job doing its work
+    """
+    if not path:
+        return None
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        doc = None
+    try:
+        when = dt.date.fromisoformat(str(doc.get("date"))[:10]) if isinstance(doc, dict) else None
+    except ValueError:
+        when = None
+    if when is None:
+        return ("Note: the Pen card job's status file could not be read, so this message "
+                "cannot say whether last week's card was written.")
+    if (today - when).days > PEN_CARD_WINDOW_DAYS:
+        return ("Note: the Pen card job has not reported since %s; check the upkeep-card "
+                "runs in repo-standards-audit." % when.strftime("%-d %b"))
+    if doc.get("ok") is not True:
+        return ("Note: last week's Pen card could not be written; see the upkeep-card run "
+                "in repo-standards-audit.")
+    return None
+
+
 def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=None,
-                  loops=None, word_cap=WORD_CAP):
+                  loops=None, word_cap=WORD_CAP, pen_card_status=None):
     c = counts(rows)
     loops = loops if loops is not None else {"state": "absent"}
     m = minutes_picture(rows, since, method, today)
@@ -951,6 +998,11 @@ def render_digest(rows, owner, since, cap, out, method="jobs", note="", today=No
     # The open-loops block's own "could not see" notes. They sit with the others, and like
     # the others they never give way to the word cap (2026-09-22).
     tail.extend(loop_notes(loops))
+    # The weekly Pen card's outcome (2026-10-05): a note like the others, so it never gives
+    # way to the word cap either. See pen_card_note().
+    card_note = pen_card_note(pen_card_status, m["today"])
+    if card_note:
+        tail.append(card_note)
     loop_lines = loop_items(loops) if loops.get("state") == "ok" else []
 
     # ---- the one thing worth doing
@@ -1051,6 +1103,10 @@ def main():
     ap.add_argument("--loops", default=None,
                     help="bin/lib/loops-scan.py's output file, or the word 'skipped'. "
                          "Left out, the open loops read as NOT CHECKED — never as none")
+    ap.add_argument("--pen-card-status", default=None,
+                    help="repo-standards-audit's pen-card/status.json. The digest adds a "
+                         "note when last week's card failed, the job stopped reporting, or "
+                         "the file is unreadable; a missing file adds nothing")
     ap.add_argument("--today", default=None,
                     help="pin the run date (YYYY-MM-DD) instead of using the clock. The "
                          "projection divides by days elapsed, so fixtures tuned against "
@@ -1085,7 +1141,8 @@ def main():
         print()
     elif args.mode == "digest":
         render_digest(rows, args.owner, args.since, args.cap, sys.stdout,
-                      args.method, args.note, today, loops, args.word_cap)
+                      args.method, args.note, today, loops, args.word_cap,
+                      args.pen_card_status)
     else:
         render_table(rows, args.owner, args.since, args.cap, sys.stdout,
                      args.method, args.note, today, loops)

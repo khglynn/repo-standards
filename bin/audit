@@ -2,7 +2,7 @@
 # audit — one read-only picture of where every repo stands.
 #
 #   bin/audit [--owner khglynn] [--json | --digest] [--cap 300] [--skip-actions] [--skip-loops]
-#                 [--word-cap 150]
+#                 [--word-cap 150] [--pen-card-status FILE]
 #
 #   (no flag)       the markdown table: one row per repo, one status word at the end
 #   --digest        the weekly Slack block, in plain English, for a person
@@ -16,6 +16,11 @@
 #                   printed and not counted against it (2026-10-04).
 #   --skip-loops    no open-loops scan (bin/lib/loops-scan.py). Every output then says the
 #                   open loops were NOT CHECKED, rather than showing an empty list.
+#   --pen-card-status FILE
+#                   the weekly Pen card job's status.json (repo-standards-audit's
+#                   pen-card/status.json). The digest adds one note when last week's card
+#                   failed, when the job has gone quiet, or when the file is unreadable.
+#                   A missing file means the job is not installed: no note (2026-10-05).
 #
 # OPEN LOOPS (added 2026-09-22): open pull requests older than a week in any repo and the
 # one reason each is stuck; Dependabot updates queued to merge behind a failed check; branch
@@ -63,6 +68,7 @@ CAP=300
 SKIP_ACTIONS=no
 SKIP_LOOPS=no
 WORD_CAP=150
+PEN_CARD_STATUS=""
 STD_PATH="khglynn/repo-standards/.github/workflows/dependabot-automerge.yml"
 
 while [ $# -gt 0 ]; do
@@ -75,6 +81,9 @@ while [ $# -gt 0 ]; do
     --skip-loops) SKIP_LOOPS=yes; shift ;;
     --word-cap) WORD_CAP="${2:-150}"; shift 2
                 case "$WORD_CAP" in ''|*[!0-9]*) echo "--word-cap needs a whole number" >&2; exit 1 ;; esac ;;
+    --pen-card-status) PEN_CARD_STATUS="${2:-}"
+                [ -n "$PEN_CARD_STATUS" ] || { echo "--pen-card-status needs a file path" >&2; exit 1; }
+                shift 2 ;;
     # The header block itself, not a hard-coded line range: bin/enroll's identical range
     # silently truncated its help mid-sentence the moment its header grew (2026-09-14).
     -h|--help) awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "${BASH_SOURCE[0]}"; exit 0 ;;
@@ -401,4 +410,5 @@ note=$(jq -r '.note // ""' "$TMP/scan.json")
 
 python3 "$HERE/bin/lib/render-audit.py" --mode "$MODE" --owner "$OWNER" \
         --since "$SINCE" --cap "$CAP" --method "$method" --note "$note" \
-        --loops "$loops_arg" --word-cap "$WORD_CAP" < "$TMP/rows.jsonl"
+        --loops "$loops_arg" --word-cap "$WORD_CAP" \
+        ${PEN_CARD_STATUS:+--pen-card-status "$PEN_CARD_STATUS"} < "$TMP/rows.jsonl"
