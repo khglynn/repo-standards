@@ -341,6 +341,15 @@ token may not look (the weekly token's state on 2026-10-04), names the rate limi
 was the cause, and never prints a zero. Each failed read is also written to stderr, which
 the weekly job keeps as its `audit-log` artifact.
 
+**Did the weekly Pen card land?** (since 2026-10-05) A separate Thursday job in
+`repo-standards-audit` turns this digest into one card in Kevin's Notion task list, and
+writes its outcome to `pen-card/status.json` every run, a quiet week included. With
+`--pen-card-status <that file>` (which the weekly job passes), the digest adds one note when
+last week's card could not be written, when the job has not reported for more than eight
+days, or when the file cannot be read. It adds nothing while the job is not installed (no
+file) or when the card worked. Without the note, a dead card job and a week with nothing to
+do would look the same.
+
 **What has been left hanging?** (the open loops, since 2026-09-22) Agents open pull
 requests and nobody notices when they stall, so the digest now lists the loose ends, one
 numbered line per reason, oldest first:

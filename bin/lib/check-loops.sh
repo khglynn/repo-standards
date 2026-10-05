@@ -642,6 +642,57 @@ if [ -z "$LEJ" ]; then nope "LOOPS_ERRORS_JQ not found in bin/audit"; else
       "loops: a scan-wide error|loops: charlie: security alerts unreadable (HTTP 403)|loops: delta: rules unreadable (HTTP 403)|loops: hotel: security alerts unreadable (HTTP 403)"
 fi
 
+# ---- the Pen card's status note (2026-10-05). The weekly upkeep card job in
+# repo-standards-audit writes pen-card/status.json on every run; the digest must say when
+# last week's card failed or the job went quiet, because otherwise a dead job and a week
+# with nothing to act on look the same. render() pins today to 2026-09-22.
+card() {  # card <json or raw text> : the digest with that status file
+  printf '%s\n' "$1" > "$WORK/pen-card.json"
+  render --mode digest --loops "$LOOPS" --word-cap 400 --pen-card-status "$WORK/pen-card.json" <<< "$QUIET"
+}
+FAILED_NOTE="Note: last week's Pen card could not be written; see the upkeep-card run in repo-standards-audit."
+hasnt "no status file: the job is not installed, so no note" \
+    "$(render --mode digest --loops "$LOOPS" --word-cap 400 --pen-card-status "$WORK/no-such-file.json" <<< "$QUIET")" "Pen card"
+hasnt "…and no flag at all is the same" "$DG" "Pen card"
+has "a failed card five days ago is said" "$(card '{"ok": false, "date": "2026-09-17", "why": "Notion 502"}')" "$FAILED_NOTE"
+has "…and eight days ago is still last week's" "$(card '{"ok": false, "date": "2026-09-14"}')" "$FAILED_NOTE"
+has "nine days is already quiet: one missed Thursday plus a late cron" \
+    "$(card '{"ok": false, "date": "2026-09-13"}')" "Note: the Pen card job has not reported since 13 Sep"
+hasnt "a card that worked says nothing" "$(card '{"ok": true, "date": "2026-09-17", "action": "created"}')" "Pen card"
+hasnt "…nor does a quiet week" "$(card '{"ok": true, "date": "2026-09-17", "action": "quiet"}')" "Pen card"
+has "a job silent for twelve days has stopped reporting, ok or not" \
+    "$(card '{"ok": true, "date": "2026-09-10"}')" \
+    "Note: the Pen card job has not reported since 10 Sep; check the upkeep-card runs in repo-standards-audit."
+hasnt "…and an old failure is not called last week's" "$(card '{"ok": false, "date": "2026-09-10"}')" "$FAILED_NOTE"
+UNREAD="Note: the Pen card job's status file could not be read, so this message cannot say whether last week's card was written."
+has "a status file that is not JSON is said, never read as fine" "$(card 'not json {')" "$UNREAD"
+has "…nor is one that is not an object" "$(card '[1, 2]')" "$UNREAD"
+has "…nor one with no date" "$(card '{"ok": true}')" "$UNREAD"
+has "…nor one with a date nobody can read" "$(card '{"ok": true, "date": "Thursday"}')" "$UNREAD"
+has "…nor one dated in the future" "$(card '{"ok": true, "date": "2026-09-30"}')" "$UNREAD"
+has "…nor one whose ok is not a true or false" "$(card '{"ok": "true", "date": "2026-09-17"}')" "$UNREAD"
+has "…nor one with no ok at all" "$(card '{"date": "2026-09-17"}')" "$UNREAD"
+python3 -c 'print("[" * 200000 + "]" * 200000)' > "$WORK/pen-card-deep.json"
+has "absurdly nested JSON is unreadable, and the digest still renders" \
+    "$(render --mode digest --loops "$LOOPS" --word-cap 400 --pen-card-status "$WORK/pen-card-deep.json" <<< "$QUIET")" "$UNREAD"
+has "a seed status from the day the job was installed says nothing" \
+    "$(card '{"ok": true, "date": "2026-09-21", "why": "installed; the card job has not run yet"}')" "To act:"
+hasnt "…not even about the card" "$(card '{"ok": true, "date": "2026-09-21", "why": "installed; the card job has not run yet"}')" "Pen card"
+has "a full ISO timestamp still reads as a date" "$(card '{"ok": false, "date": "2026-09-17T14:02:11Z"}')" "$FAILED_NOTE"
+printf '%s\n' '{"ok": false, "date": "2026-09-17"}' > "$WORK/pen-card.json"
+has "the note never gives way to the word cap" \
+    "$(render --mode digest --loops "$LOOPS" --word-cap 40 --pen-card-status "$WORK/pen-card.json" <<< "$QUIET")" "$FAILED_NOTE"
+# bin/audit: the flag needs a value, refused before any network call, and the render call
+# passes it through only when it was given.
+if out=$(bin/audit --pen-card-status 2>&1); then nope "bin/audit accepted --pen-card-status with no path"
+else has "bin/audit refuses --pen-card-status with no path" "$out" "--pen-card-status needs a file path"; fi
+# The render call itself (from `python3 "$HERE/bin/lib/render-audit.py"` to its stdin
+# redirect), so text in a comment cannot satisfy this.
+RENDER_CALL=$(awk '/^python3 "\$HERE\/bin\/lib\/render-audit.py"/ {on=1} on {print} on && /rows.jsonl"$/ {exit}' bin/audit)
+# shellcheck disable=SC2016  # literal bin/audit text, not an expansion
+has "bin/audit's render call hands the file over only when it was given" "$RENDER_CALL" \
+    '${PEN_CARD_STATUS:+--pen-card-status "$PEN_CARD_STATUS"}'
+
 echo "--- 4. the workflow's watch rule, taken straight out of the shared workflow"
 WF=.github/workflows/dependabot-automerge.yml
 WATCH=$(sed -n "/WATCH_JQ='/,/end'\$/p" "$WF" | sed -e "s/^.*WATCH_JQ='//" -e "s/'\$//")
