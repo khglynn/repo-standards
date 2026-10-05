@@ -805,14 +805,17 @@ def pen_card_note(path, today):
     note, a dead card job and a week with nothing to act on look identical in the Pen,
     which is the same blind spot the rest of this digest exists to close (2026-10-05).
 
-      no path, or no file   the job is not installed: no note
-      unreadable or not an object, or no readable date
+      no path, or no file   the job is not installed: no note. repo-standards-audit
+                            commits a seed status when it installs the job, so from
+                            then on a job that never runs ages into the next row
+      unreadable, not an object, `ok` not a true/false, or a date that is missing,
+      unreadable or in the future
                             say it could not be read; never assume the card was written
-      ok is false, dated within the window
-                            last week's card failed
       dated before the window, ok or not
                             the job has stopped reporting (a disabled schedule, a lost
                             secret, a deleted workflow)
+      ok is false, dated within the window
+                            last week's card failed
       ok, within the window no note; a skipped or quiet week is the job doing its work
     """
     if not path:
@@ -822,19 +825,23 @@ def pen_card_note(path, today):
             doc = json.load(f)
     except FileNotFoundError:
         return None
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
+        # RecursionError: absurdly nested JSON. One optional input must never take the
+        # whole digest down with it.
         doc = None
     try:
         when = dt.date.fromisoformat(str(doc.get("date"))[:10]) if isinstance(doc, dict) else None
     except ValueError:
         when = None
-    if when is None:
+    # A future date or a non-boolean `ok` means the writer and this reader disagree about
+    # the file's shape. That is "could not be read", not a verdict on the card.
+    if when is None or when > today or not isinstance(doc.get("ok"), bool):
         return ("Note: the Pen card job's status file could not be read, so this message "
                 "cannot say whether last week's card was written.")
     if (today - when).days > PEN_CARD_WINDOW_DAYS:
         return ("Note: the Pen card job has not reported since %s; check the upkeep-card "
                 "runs in repo-standards-audit." % when.strftime("%-d %b"))
-    if doc.get("ok") is not True:
+    if not doc["ok"]:
         return ("Note: last week's Pen card could not be written; see the upkeep-card run "
                 "in repo-standards-audit.")
     return None

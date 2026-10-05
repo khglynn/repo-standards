@@ -656,6 +656,8 @@ hasnt "no status file: the job is not installed, so no note" \
 hasnt "…and no flag at all is the same" "$DG" "Pen card"
 has "a failed card five days ago is said" "$(card '{"ok": false, "date": "2026-09-17", "why": "Notion 502"}')" "$FAILED_NOTE"
 has "…and eight days ago is still last week's" "$(card '{"ok": false, "date": "2026-09-14"}')" "$FAILED_NOTE"
+has "nine days is already quiet: one missed Thursday plus a late cron" \
+    "$(card '{"ok": false, "date": "2026-09-13"}')" "Note: the Pen card job has not reported since 13 Sep"
 hasnt "a card that worked says nothing" "$(card '{"ok": true, "date": "2026-09-17", "action": "created"}')" "Pen card"
 hasnt "…nor does a quiet week" "$(card '{"ok": true, "date": "2026-09-17", "action": "quiet"}')" "Pen card"
 has "a job silent for twelve days has stopped reporting, ok or not" \
@@ -667,6 +669,15 @@ has "a status file that is not JSON is said, never read as fine" "$(card 'not js
 has "…nor is one that is not an object" "$(card '[1, 2]')" "$UNREAD"
 has "…nor one with no date" "$(card '{"ok": true}')" "$UNREAD"
 has "…nor one with a date nobody can read" "$(card '{"ok": true, "date": "Thursday"}')" "$UNREAD"
+has "…nor one dated in the future" "$(card '{"ok": true, "date": "2026-09-30"}')" "$UNREAD"
+has "…nor one whose ok is not a true or false" "$(card '{"ok": "true", "date": "2026-09-17"}')" "$UNREAD"
+has "…nor one with no ok at all" "$(card '{"date": "2026-09-17"}')" "$UNREAD"
+python3 -c 'print("[" * 200000 + "]" * 200000)' > "$WORK/pen-card-deep.json"
+has "absurdly nested JSON is unreadable, and the digest still renders" \
+    "$(render --mode digest --loops "$LOOPS" --word-cap 400 --pen-card-status "$WORK/pen-card-deep.json" <<< "$QUIET")" "$UNREAD"
+has "a seed status from the day the job was installed says nothing" \
+    "$(card '{"ok": true, "date": "2026-09-21", "why": "installed; the card job has not run yet"}')" "To act:"
+hasnt "…not even about the card" "$(card '{"ok": true, "date": "2026-09-21", "why": "installed; the card job has not run yet"}')" "Pen card"
 has "a full ISO timestamp still reads as a date" "$(card '{"ok": false, "date": "2026-09-17T14:02:11Z"}')" "$FAILED_NOTE"
 printf '%s\n' '{"ok": false, "date": "2026-09-17"}' > "$WORK/pen-card.json"
 has "the note never gives way to the word cap" \
@@ -675,8 +686,11 @@ has "the note never gives way to the word cap" \
 # passes it through only when it was given.
 if out=$(bin/audit --pen-card-status 2>&1); then nope "bin/audit accepted --pen-card-status with no path"
 else has "bin/audit refuses --pen-card-status with no path" "$out" "--pen-card-status needs a file path"; fi
+# The render call itself (from `python3 "$HERE/bin/lib/render-audit.py"` to its stdin
+# redirect), so text in a comment cannot satisfy this.
+RENDER_CALL=$(awk '/^python3 "\$HERE\/bin\/lib\/render-audit.py"/ {on=1} on {print} on && /rows.jsonl"$/ {exit}' bin/audit)
 # shellcheck disable=SC2016  # literal bin/audit text, not an expansion
-has "bin/audit hands the file to the renderer only when it was given" "$(cat bin/audit)" \
+has "bin/audit's render call hands the file over only when it was given" "$RENDER_CALL" \
     '${PEN_CARD_STATUS:+--pen-card-status "$PEN_CARD_STATUS"}'
 
 echo "--- 4. the workflow's watch rule, taken straight out of the shared workflow"
