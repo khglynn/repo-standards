@@ -555,10 +555,10 @@ is the workflow's own token reading checks with the two read lines granted, or t
 reaching a verdict routine.
 
 **2026-11-12 — before anything merges, ask OSV about the versions it would install (step 4b,
-on by default).** Kevin's yes in chat at 22:00 CT, to self-merge for three private repos
-"with Google's OSV-Scanner added to the self-merge step", where a real finding fails closed
-and a scanner failure "should label needs-human, not silently merge" (as relayed in the
-orchestrator's brief; this repo's BUILD-LOG entry for that night has the rest). The cooldown
+on by default).** Kevin asked for it that night, when he said yes to self-merge in more of
+his repos: add OSV-Scanner to the self-merge step, refuse on a real finding, and label a
+scanner failure for a person rather than merge past it. (Paraphrased: this repo is public,
+and his words stay in his own notes.) The cooldown
 outwaits a hijacked release that is pulled within hours, but security updates skip the
 cooldown and a bad release can outlive a week. [OSV](https://osv.dev) is Google's open
 vulnerability database, and it carries the OpenSSF malicious-package reports as `MAL-` ids.
@@ -570,8 +570,8 @@ What the step does, and why each part is that way:
   for Rust runs build scripts, and manifest resolution are both switched off. It runs with an
   empty environment, so the job's write token is not in its environment.
 - **Only advisories the PR adds stop it**, keyed on file, ecosystem, package and advisory id.
-  Every one of Kevin's repos had unfixed advisories on main that night (4 to 38 per lockfile in
-  sync-bot, notion-souped-up-mcp, hevy-mcp and track), so stopping on any advisory would stop
+  Every repo checked that night had unfixed advisories on main (4 to 38 per lockfile across
+  the four checked), so stopping on any advisory would stop
   every update everywhere. Keying on the id rather than the version means a bump that leaves an
   old advisory standing has not added it. A `MAL-` report stops it even if it was there before.
 - **Fail closed, and say which way.** A finding gets `dependabot-osv-flagged` and a comment
@@ -579,8 +579,18 @@ What the step does, and why each part is that way:
   download failed or did not match its checksum, a lockfile would not parse or read as empty,
   or OSV was unreachable. OSV-Scanner exits 127 then and still writes a JSON file, so the step
   trusts the exit code, and checks the scanner's log says it read at least one package from each
-  file. Either way an earlier head's queued auto-merge is turned off, because a Dependabot rebase
-  keeps it queued.
+  file.
+- **A new head starts unqueued (step 1b).** A Dependabot rebase keeps the auto-merge an
+  earlier head queued, since GitHub drops it on a push only from someone without write
+  access. Left alone, the new head would merge on CI alone while this run was still scanning
+  (the gap a Codex review found in round 2). So the run's first real step takes the queue off,
+  and the approval step puts it back only once this head has passed everything, OSV
+  included. A read or removal that fails turns the run red and labels it. **What's left:** a
+  few seconds, from Dependabot's push to that step (a job start and one API call), inside
+  which the new head's required CI would have to start and finish. Closing that too needs a
+  required check this workflow reports itself, which means a `statuses: write` grant in
+  every stub and the check added to every enrolled repo's ruleset. That's a bigger change,
+  not made here.
 - **Pinned to v2.7.0 by version and SHA-256**, the way fetch-metadata is pinned by commit.
   v2.7.1 had been out three days, so the pin takes the same 7-day soak the updates get.
   `bin/lib/check-osv.sh --live` re-downloads it in CI and checks the sum against the release's

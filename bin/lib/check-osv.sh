@@ -100,6 +100,21 @@ def check(cond, good, failed):
 order = [s.get("id") or s.get("name") for s in steps]
 check(order.index("osv") < order.index("Approve and enable auto-merge"),
       "the scan runs before anything is approved", "the scan moved after the approval")
+# Step 1b (round 2 of the 2026-11-12 review): a rebase keeps an earlier head's auto-merge
+# queued, so it has to come off before anything slow, or the new head merges unscanned.
+UNQUEUE = "Take an earlier head's queued auto-merge off before deciding anything"
+check(UNQUEUE in by_name, "a new head's queued auto-merge is taken off (step 1b exists)", "step 1b is gone")
+if UNQUEUE in by_name:
+    un = by_name[UNQUEUE]
+    check(order.index(UNQUEUE) < order.index("Make sure the labels exist (idempotent)") < order.index("osv"),
+          "…as the first step after the input check, before the labels and the scan",
+          "step 1b moved later: " + str(order.index(UNQUEUE)))
+    check(un.get("if") == "github.event.action != 'opened'",
+          "…on every event but a PR's opening (which has no earlier queue)",
+          "step 1b's condition changed: " + str(un.get("if")))
+    check("gh pr merge --disable-auto" in un["run"] and un["run"].count("exit 1") == 2,
+          "…and it turns the run red when it cannot read or remove the queue",
+          "step 1b no longer fails red on both a failed read and a failed removal")
 check(osv.get("if") == "steps.gate.outputs.ok == 'true'",
       "the scan runs whenever the CI gate is clear", "the scan's condition changed: " + str(osv.get("if")))
 for name in ("Approve and enable auto-merge", "Note (and optionally nudge) a PR that is stale and red",
@@ -146,6 +161,7 @@ if [ "${1:-}" = "--live" ]; then
   if [ -n "${OSV_LOCAL_SCANNER:-}" ]; then cp "$OSV_LOCAL_SCANNER" "$WORK/osv-scanner"; fi
   if { [ "$(uname -s)/$(uname -m)" = "Linux/x86_64" ] || [ -n "${OSV_LOCAL_SCANNER:-}" ]; } && [ -s "$WORK/osv-scanner" ]; then
     chmod +x "$WORK/osv-scanner"
+    have_scanner=1
     pkg() { printf '"node_modules/%s":{"version":"%s","resolved":"https://registry.npmjs.org/%s/-/%s-%s.tgz","integrity":"sha512-fixture"}' "$1" "$2" "$1" "$1" "$2"; }
     lock() {  # <file> <entries...>
       mkdir -p "$(dirname "$1")"
@@ -198,6 +214,118 @@ if [ "${1:-}" = "--live" ]; then
   else
     echo "skip: the live scan runs only on Linux x86_64 (this is $(uname -s)/$(uname -m)); the checksum was still checked"
   fi
+fi
+
+# ------------------------------------------------- 5. the steps' own bash, with stand-in gh and curl
+# Pulled out of the workflow and run as they are, against a stand-in `gh` that serves a pull
+# request from files in $DATA and records every call, and a stand-in `curl` that serves the
+# scanner from $WORK (or fails, to be an outage). The parts that need no scanner always run;
+# the scans run where --live found one (Linux, or OSV_LOCAL_SCANNER).
+step_run() {  # <step name or id> <file to write>
+  python3 - "$WF" "$1" "$2" <<'PY'
+import sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["automerge"]["steps"]
+s = next(x for x in steps if x.get("id") == sys.argv[2] or x.get("name") == sys.argv[2])
+open(sys.argv[3], "w").write(s["run"])
+PY
+}
+SH="$WORK/shims"; mkdir -p "$SH"
+step_run "Take an earlier head's queued auto-merge off before deciding anything" "$WORK/unqueue.sh"
+step_run osv "$WORK/osv.sh"
+cat > "$SH/gh" <<'EOF'
+#!/bin/bash
+# stand-in gh: one pull request, served from $DATA; every call goes to $DATA/gh.log
+echo "gh $*" >> "$DATA/gh.log"
+a="$*"
+case "$a" in
+  "pr view"*autoMergeRequest*) case "$(cat "$DATA/automerge" 2>/dev/null)" in unreadable) exit 1 ;; stuck|true) echo true ;; *) echo false ;; esac ;;
+  "pr view"*labels*) cat "$DATA/labels" 2>/dev/null ;;
+  "pr merge --disable-auto"*) [ "$(cat "$DATA/automerge")" = stuck ] && exit 1; echo false > "$DATA/automerge" ;;
+  "pr edit"*) : ;;
+  *"/pulls/7/files"*) cat "$DATA/files.json" ;;
+  *"/compare/"*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
+  *"/contents/"*"ref=aaaa"*) p=${a#*contents/}; p=${p%%\?ref=*}; cat "$DATA/head/$p" 2>/dev/null || exit 1 ;;
+  *"/contents/"*"ref=bbbb"*) p=${a#*contents/}; p=${p%%\?ref=*}; cat "$DATA/base/$p" 2>/dev/null || exit 1 ;;
+  *) echo "stand-in gh: unexpected call: $a" >&2; exit 9 ;;
+esac
+EOF
+cat > "$SH/curl" <<'EOF'
+#!/bin/bash
+# stand-in curl: serves $CURL_SERVES to -o, or fails like an outage when it is unset
+[ -n "${CURL_SERVES:-}" ] || exit 22
+while [ $# -gt 0 ]; do [ "$1" = -o ] && { cp "$CURL_SERVES" "$2"; exit; }; shift; done
+exit 2
+EOF
+command -v timeout > /dev/null || printf '#!/bin/bash\nshift; exec "$@"\n' > "$SH/timeout"
+command -v sha256sum > /dev/null || printf '#!/bin/bash\nexec shasum -a 256 "$@"\n' > "$SH/sha256sum"
+chmod +x "$SH"/*
+case_dir() { rm -rf "$WORK/case"; mkdir -p "$WORK/case/head" "$WORK/case/base" "$WORK/case/runner"; : > "$WORK/case/gh.log"; : > "$WORK/case/out"; echo "$WORK/case"; }
+run_step() {  # <script> [VAR=value...]; exit code in $rc
+  local script=$1; shift
+  rc=0
+  env -i PATH="$SH:$PATH" HOME="$HOME" DATA="$WORK/case" GITHUB_OUTPUT="$WORK/case/out" RUNNER_TEMP="$WORK/case/runner" \
+    REPO=khglynn/fixture PR_URL=https://github.com/khglynn/fixture/pull/7 PR_NUMBER=7 \
+    HEAD_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa BASE_BRANCH=main IN_OSV_SCAN=true \
+    LABEL_OSV=dependabot-osv-flagged LABEL_UNPARSED=dependabot-needs-human \
+    OSV_VERSION=v2.7.0 OSV_SHA256="${STUB_SUM:-none}" "$@" bash "$script" > "$WORK/case/stdout" 2>&1 || rc=$?
+}
+out_has() { grep -qxF "$1" "$WORK/case/out"; }
+
+# The race the 2026-11-12 round-2 review found: a rebase arrives with an earlier head queued.
+D=$(case_dir); echo true > "$D/automerge"; run_step "$WORK/unqueue.sh"
+if [ "$rc" = 0 ] && grep -q "^gh pr merge --disable-auto" "$D/gh.log" && [ "$(cat "$D/automerge")" = false ]; then
+  ok "stand-in: a new head arriving while an earlier one is queued has its auto-merge taken off before any scan"
+else nope "stand-in: a queued earlier head was not taken off (exit $rc)"; cat "$D/stdout" "$D/gh.log"; fi
+D=$(case_dir); echo false > "$D/automerge"; run_step "$WORK/unqueue.sh"
+if [ "$rc" = 0 ] && ! grep -q "disable-auto" "$D/gh.log"; then ok "stand-in: nothing queued, nothing taken off"
+else nope "stand-in: an unqueued PR was touched (exit $rc)"; cat "$D/gh.log"; fi
+D=$(case_dir); echo unreadable > "$D/automerge"; run_step "$WORK/unqueue.sh"
+if [ "$rc" != 0 ]; then ok "stand-in: when it cannot tell whether a merge is queued, the run goes red"
+else nope "stand-in: an unreadable queue state passed quietly"; fi
+D=$(case_dir); echo stuck > "$D/automerge"; run_step "$WORK/unqueue.sh"
+if [ "$rc" != 0 ]; then ok "stand-in: when the queue will not come off, the run goes red"
+else nope "stand-in: a queue that would not come off passed quietly"; fi
+
+# The scan step's own shell, before any scanner runs.
+D=$(case_dir); run_step "$WORK/osv.sh" IN_OSV_SCAN=false
+if out_has verdict=off && out_has clear=true; then ok "stand-in: osv-scan: false clears without scanning"; else nope "stand-in: osv-scan: false said $(tr '\n' ' ' < "$D/out")"; fi
+D=$(case_dir); echo '[[{"filename":".github/workflows/ci.yml","status":"modified"}]]' > "$D/files.json"; run_step "$WORK/osv.sh"
+if out_has verdict=nothing && out_has clear=true; then ok "stand-in: a GitHub Actions bump has nothing to scan, and clears"; else nope "stand-in: an Actions-only PR said $(tr '\n' ' ' < "$D/out")"; fi
+# Round 2's second finding: an ADDED requirements/base.txt has an empty base. With tab-split
+# fields its parser hint slid into the base slot and the step went looking for a root
+# requirements.txt at the merge base. Now it must reach the download (failed here on purpose).
+D=$(case_dir); mkdir -p "$D/head/requirements"; printf 'django==2.2.0\n' > "$D/head/requirements/base.txt"
+echo '[[{"filename":"requirements/base.txt","status":"added"}]]' > "$D/files.json"; run_step "$WORK/osv.sh"
+if out_has verdict=unread && grep -q "could not download OSV-Scanner" "$D/stdout" && ! grep -q "ref=bbbb" "$D/gh.log"; then
+  ok "stand-in: an added requirements/base.txt keeps its empty base: no merge-base fetch, straight on to the scanner"
+  ok "stand-in: the scanner unreachable (download failed) is unread, not clear"
+else nope "stand-in: the added requirements file went wrong: $(grep -E 'warning|osv:' "$D/stdout" | head -2)"; cat "$D/gh.log"; fi
+
+# With a scanner: the whole step, ending in a verdict.
+if [ "${have_scanner:-0}" = 1 ]; then
+  if command -v sha256sum > /dev/null; then STUB_SUM=$(sha256sum "$WORK/osv-scanner" | cut -d' ' -f1)
+  else STUB_SUM=$(shasum -a 256 "$WORK/osv-scanner" | cut -d' ' -f1); fi
+  files_modified='[[{"filename":"package-lock.json","status":"modified"},{"filename":"package.json","status":"modified"}]]'
+  D=$(case_dir); echo "$files_modified" > "$D/files.json"
+  lock "$D/base/package-lock.json" "$(pkg ms 2.1.3)" "$(pkg lodash 4.17.15)"; lock "$D/head/package-lock.json" "$(pkg ms 2.1.3)" "$(pkg lodash 4.17.20)"
+  echo dependabot-needs-human > "$D/labels"
+  run_step "$WORK/osv.sh" CURL_SERVES="$WORK/osv-scanner" STUB_SUM="$STUB_SUM"
+  if out_has verdict=clean && out_has clear=true && grep -q -- "--remove-label dependabot-needs-human" "$D/gh.log"; then
+    ok "stand-in live: a bump that keeps lodash's old advisories is clean, and an earlier run's needs-human comes off"
+  else nope "stand-in live: the keep-old-advisories case said $(tr '\n' ' ' < "$D/out")"; tail -5 "$D/stdout"; fi
+  D=$(case_dir); echo "$files_modified" > "$D/files.json"
+  lock "$D/base/package-lock.json" "$(pkg ms 2.1.3)"; lock "$D/head/package-lock.json" "$(pkg ms 2.1.3)" "$(pkg flatmap-stream 0.1.1)"
+  run_step "$WORK/osv.sh" CURL_SERVES="$WORK/osv-scanner" STUB_SUM="$STUB_SUM"
+  mal=$(awk '/^findings<<OSV_FINDINGS_EOF$/{f=1;next} /^OSV_FINDINGS_EOF$/{f=0} f' "$D/out" | grep '^MAL-' | head -1)
+  fields=$(printf '%s' "$mal" | awk -F $'\x1f' '{print NF}')
+  if out_has verdict=flagged && out_has clear=false && [ "$fields" = 5 ]; then
+    ok "stand-in live: a malicious package the PR brings in is flagged, its finding in five unit-separated fields"
+  else nope "stand-in live: the malicious-package case said $(tr '\n' ' ' < "$D/out" | cut -c1-200)"; fi
+  D=$(case_dir); mkdir -p "$D/head/requirements"; printf 'django==2.2.0\n' > "$D/head/requirements/base.txt"
+  echo '[[{"filename":"requirements/base.txt","status":"added"}]]' > "$D/files.json"
+  run_step "$WORK/osv.sh" CURL_SERVES="$WORK/osv-scanner" STUB_SUM="$STUB_SUM"
+  if out_has verdict=flagged; then ok "stand-in live: an added requirements/base.txt is read as requirements.txt, and every advisory in it counts as added"
+  else nope "stand-in live: the added requirements file said $(tr '\n' ' ' < "$D/out" | cut -c1-200)"; tail -5 "$D/stdout"; fi
 fi
 
 if [ "$fail" -ne 0 ]; then echo; echo "check-osv: FAILED"; exit 1; fi

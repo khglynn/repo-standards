@@ -247,6 +247,41 @@ jobs:
           fi
           echo "inputs ok: patch=$IN_MERGE_PATCH minor=$IN_MERGE_MINOR method=$IN_MERGE_METHOD require-ci=$IN_REQUIRE_CI stale=$IN_STALE_STRATEGY watch=${IN_WATCH_MINUTES}m osv=$IN_OSV_SCAN"
 
+      # ---------------------------------------------------------------------------------
+      # 1b. A NEW HEAD STARTS UNQUEUED (added 2026-11-12, after a review found the hole).
+      #
+      # A Dependabot rebase keeps the auto-merge an earlier head queued: GitHub turns
+      # auto-merge off on a push only by someone without write access, and Dependabot has
+      # it. So until this run decides, the new head is queued to merge on CI alone,
+      # classified by nobody and scanned by nobody, and a CI faster than this run would
+      # land it. This step takes the queue off first, before anything slow; step 5 puts it
+      # back only once this head has passed every check below, OSV's included.
+      #
+      # What's left is a window of seconds: from Dependabot's push to this step, a job start
+      # and one API call. The new head's required CI has to start and finish inside it.
+      # Closing that too takes a required check this workflow reports itself, which every
+      # enrolled repo's ruleset and stub would need (repo-standards README, 2026-11-12).
+      #
+      # A read or a removal that fails turns the run red (the last step labels it), since
+      # an earlier queue left standing is exactly the case this is for.
+      # ---------------------------------------------------------------------------------
+      - name: Take an earlier head's queued auto-merge off before deciding anything
+        if: github.event.action != 'opened'
+        run: |
+          set -uo pipefail
+          on=$(timeout 60 gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null' 2>/dev/null)
+          case "$on" in
+            true)
+              if timeout 60 gh pr merge --disable-auto "$PR_URL"; then
+                echo "auto-merge taken off: an earlier head queued it, and this head ($HEAD_SHA) is not decided yet"
+              else
+                echo "::error title=Could not take off auto-merge::an earlier head's queued merge is still on, and this head is unchecked"; exit 1
+              fi
+              ;;
+            false) echo "no auto-merge queued on this PR" ;;
+            *) echo "::error title=Could not read auto-merge::cannot tell whether an earlier head's merge is queued"; exit 1 ;;
+          esac
+
       - name: Make sure the labels exist (idempotent)
         run: |
           set -euo pipefail
@@ -602,7 +637,9 @@ jobs:
             timeout 60 gh api -H "Accept: application/vnd.github.raw+json" "repos/$REPO/contents/$enc?ref=$2" > "$3"
           }
           head_args=(); base_args=()
-          while IFS=$'\t' read -r path base as; do
+          # Fields split on the unit separator (\x1f), not a tab: bash folds two tabs into
+          # one, so an added file's empty base shifted its parser hint into the base slot.
+          while IFS=$'\x1f' read -r path base as; do
             prefix=""; [ -z "$as" ] || prefix="$as:"
             fetch "$path" "$HEAD_SHA" "$work/head/$path" || unread "could not read $path at the PR's head"
             head_args+=(-L "$prefix$work/head/$path")
@@ -610,7 +647,7 @@ jobs:
               fetch "$base" "$merge_base" "$work/base/$path" || unread "could not read $base at the merge base"
               base_args+=(-L "$prefix$work/base/$path")
             fi
-          done < <(jq -r '.[] | [.path, (.base // ""), (.as // "")] | @tsv' <<< "$targets")
+          done < <(jq -r '.[] | [.path, (.base // ""), (.as // "")] | map(gsub("[\u0000-\u001f]"; "?")) | join("\u001f")' <<< "$targets")
 
           # 3. The scanner, checked against its pin before it runs.
           timeout 120 curl -fsSL --retry 2 -o "$work/bin/osv-scanner" \
@@ -644,8 +681,10 @@ jobs:
             done
             return 0
           }
-          scan head "${head_args[@]}" || unread "OSV-Scanner could not scan this PR's lockfiles (its log is above)"
-          scan base "${base_args[@]}" || unread "OSV-Scanner could not scan the same lockfiles at the merge base (its log is above)"
+          # ${a[@]+"${a[@]}"}: an empty list (every lockfile newly added) expands to nothing
+          # under `set -u` on any bash, including the 3.2 that check-osv.sh meets on a Mac.
+          scan head ${head_args[@]+"${head_args[@]}"} || unread "OSV-Scanner could not scan this PR's lockfiles (its log is above)"
+          scan base ${base_args[@]+"${base_args[@]}"} || unread "OSV-Scanner could not scan the same lockfiles at the merge base (its log is above)"
 
           # 4. Which advisories does the PR ADD? bin/lib/check-osv.sh pins this against
           #    fixtures. jq's IN compares the four-part arrays by value.
@@ -686,7 +725,7 @@ jobs:
           out "verdict=flagged" "clear=false"
           {
             echo "findings<<OSV_FINDINGS_EOF"
-            jq -r '.[] | [.id, .ecosystem, .name, .version, .file] | @tsv' <<< "$new"
+            jq -r '.[] | [.id, .ecosystem, .name, .version, .file] | map(tostring | gsub("[\u0000-\u001f]"; "?")) | join("\u001f")' <<< "$new"
             echo "OSV_FINDINGS_EOF"
           } >> "$GITHUB_OUTPUT"
           echo "osv: FLAGGED. This PR adds $n_new advisory(ies):"
@@ -699,8 +738,8 @@ jobs:
         run: |
           set -euo pipefail
           gh pr edit "$PR_URL" --add-label "$LABEL_OSV"
-          # A Dependabot rebase keeps an earlier head's auto-merge queued. Take it off, or
-          # that queue would land this head. If this fails the run goes red, on purpose.
+          # Step 1b already took off an earlier head's queue; this is the second look, in
+          # case something queued one since. If this fails the run goes red, on purpose.
           if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
             gh pr merge --disable-auto "$PR_URL"
             echo "auto-merge turned off: an earlier head had queued it"
@@ -713,7 +752,7 @@ jobs:
               echo "$marker"
               echo "**Not auto-merging this one.** [OSV](https://osv.dev) has an advisory for a version this update brings in:"
               echo ""
-              while IFS=$'\t' read -r id eco name version file; do
+              while IFS=$'\x1f' read -r id eco name version file; do
                 [ -n "$id" ] || continue
                 # Text from a lockfile goes inside code spans; strip what could close one.
                 eco=${eco//[^A-Za-z0-9 ._:-]/}; name=${name//\`/}; version=${version//\`/}; file=${file//\`/}

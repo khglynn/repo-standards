@@ -1894,8 +1894,8 @@ check-loops.sh: 135 assertions.
 
 ## 2026-11-12 22:00–23:30 CT — OSV in the shared workflow (step 4b), on Kevin's yes (orchestrator worker, Opus 5.5)
 
-Kevin's yes in chat at 22:00 CT: self-merge for sync-bot, notion-souped-up-mcp and remembrall,
-"with Google's OSV-Scanner added to the self-merge step". Built as step 4b, between the CI-gate
+Kevin's yes in chat that night to self-merge in more of his repos, with OSV-Scanner added to
+the self-merge step (paraphrased; this repo is public). Built as step 4b, between the CI-gate
 lookup and the approval. The design and its reasons are in the README's 2026-11-12 decision.
 
 What was measured before writing it (OSV-Scanner v2.7.0, darwin_amd64, on the Air):
@@ -1907,9 +1907,9 @@ What was measured before writing it (OSV-Scanner v2.7.0, darwin_amd64, on the Ai
 - A malformed lockfile exits 127; mixed with a good one, still 127.
 - OSV unreachable (a dead proxy) exits 127 AND writes a 124-byte JSON file, so the file alone
   proves nothing: the step trusts the exit code.
-- Real main-branch lockfiles: sync-bot uv.lock 42 packages / 4 advisories; notion-souped-up-mcp
-  pnpm-lock.yaml 628 / 28; hevy-mcp package-lock.json 291 / 38; track package-lock.json
-  244 / 5. Hence "only advisories the PR adds".
+- Real main-branch lockfiles from four of Kevin's repos (a uv.lock, a pnpm-lock.yaml and two
+  package-lock.json files, 42 to 628 packages): every one already carried advisories, 4 to 38
+  each. Hence "only advisories the PR adds".
 - `env -i PATH HOME` is enough for the scanner to run.
 
 The step's own bash, extracted from the workflow and run with stand-in gh and curl, gave:
@@ -1930,3 +1930,14 @@ takes off a `dependabot-needs-human` left by an earlier run; the README says wha
 repo (lockfile package names and versions, to api.osv.dev) and that this repo's CI now needs
 OSV online. An apostrophe in a new jq comment had closed the shell quote around the program;
 actionlint's shellcheck caught it before the push.
+
+Round 2 (Codex) found the hole this step exists to close, from the other side: a Dependabot
+rebase keeps the auto-merge an earlier head queued, and the OSV step only took it off after
+scanning, so a new head whose CI finished first could merge unscanned. Fixed with step 1b,
+which takes any queued auto-merge off as the run's first real step (failing red if it can't
+read or remove it); the approval puts it back once the head passes. A few seconds stay open
+(the README says which, and what would close them). Also from round 2: bash folds two tabs
+into one, so an added requirements/base.txt lost its empty base field and the parser hint
+moved into it; the fields are joined with the unit separator now, and check-osv.sh runs the
+step's own shell loop (stand-in gh and curl) on exactly that case. Kevin's chat words and the
+per-repo advisory counts came out of this public README and log.
