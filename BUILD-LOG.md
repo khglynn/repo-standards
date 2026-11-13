@@ -1891,3 +1891,53 @@ tried on, and one already had its fix pull request. So:
 - the README's "no file needed, working everywhere" line carries a dated caveat: true for new
   alerts, not for alerts backfilled at enable time, and the toggle fixes those.
 check-loops.sh: 135 assertions.
+
+## 2026-11-12 22:00–23:30 CT — OSV in the shared workflow (step 4b), on Kevin's yes (orchestrator worker, Opus 5.5)
+
+Kevin's yes in chat that night to self-merge in more of his repos, with OSV-Scanner added to
+the self-merge step (paraphrased; this repo is public). Built as step 4b, between the CI-gate
+lookup and the approval. The design and its reasons are in the README's 2026-11-12 decision.
+
+What was measured before writing it (OSV-Scanner v2.7.0, darwin_amd64, on the Air):
+- A hand-written package-lock.json entry with no `resolved` URL read as a local package and
+  was not queried: lodash 4.17.15 came back clean. With `resolved` and `integrity`, as every
+  real lockfile has, it came back with five GHSAs. The live check's lockfiles carry both.
+- flatmap-stream 0.1.1 comes back with MAL-2025-20690 (plus two GHSAs), the fixture for
+  "malicious package".
+- A malformed lockfile exits 127; mixed with a good one, still 127.
+- OSV unreachable (a dead proxy) exits 127 AND writes a 124-byte JSON file, so the file alone
+  proves nothing: the step trusts the exit code.
+- Real main-branch lockfiles from four of Kevin's repos (a uv.lock, a pnpm-lock.yaml and two
+  package-lock.json files, 42 to 628 packages): every one already carried advisories, 4 to 38
+  each. Hence "only advisories the PR adds".
+- `env -i PATH HOME` is enough for the scanner to run.
+
+The step's own bash, extracted from the workflow and run with stand-in gh and curl, gave:
+clean (a bump that keeps lodash's old advisories) → clear; a new flatmap-stream → flagged
+with MAL-2025-20690 and the comment rendered; download failure → unread; a lockfile with no
+packages → unread; a workflow-only PR → nothing to scan; a stale `dependabot-osv-flagged` came
+off a clean head. `bin/lib/check-osv.sh --live` passed locally with the darwin binary standing
+in (`OSV_LOCAL_SCANNER`), including the pinned linux checksum against the release's SHA256SUMS.
+
+Not seen yet: the step on a real Dependabot pull request, through the workflow token.
+
+Round 1 of the gate's review (Claude Opus, on the PC) asked for one fix, Kevin's words quoted in
+the README entry, and made four comments. Taken: requirement files named `*requirements*.txt`
+or sitting in a `requirements/` folder are scanned now (measured: v2.7.0 reads every
+`*requirements*.txt` name by itself, and `requirements/base.txt` only as
+`-L requirements.txt:<path>`, whose log line still names the plain path); a clean scan also
+takes off a `dependabot-needs-human` left by an earlier run; the README says what leaves the
+repo (lockfile package names and versions, to api.osv.dev) and that this repo's CI now needs
+OSV online. An apostrophe in a new jq comment had closed the shell quote around the program;
+actionlint's shellcheck caught it before the push.
+
+Round 2 (Codex) found the hole this step exists to close, from the other side: a Dependabot
+rebase keeps the auto-merge an earlier head queued, and the OSV step only took it off after
+scanning, so a new head whose CI finished first could merge unscanned. Fixed with step 1b,
+which takes any queued auto-merge off as the run's first real step (failing red if it can't
+read or remove it); the approval puts it back once the head passes. A few seconds stay open
+(the README says which, and what would close them). Also from round 2: bash folds two tabs
+into one, so an added requirements/base.txt lost its empty base field and the parser hint
+moved into it; the fields are joined with the unit separator now, and check-osv.sh runs the
+step's own shell loop (stand-in gh and curl) on exactly that case. Kevin's chat words and the
+per-repo advisory counts came out of this public README and log.

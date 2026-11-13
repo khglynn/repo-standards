@@ -527,6 +527,7 @@ label "major-review-needed"    "d93f0b" "Major version bump — a human must rev
 label "dependabot-needs-human" "b60205" "Auto-merge could not classify this update (or the run broke)"
 label "no-ci-gate"             "fbca04" "No required status check on the base branch, so nothing was auto-merged"
 label "dependabot-opted-out"   "c5def5" "Classified fine, but this repo opted out of auto-merging that tier"
+label "dependabot-osv-flagged"  "d73a4a" "OSV knows a vulnerability or malicious-package report for a version this update adds"
 
 # ------------------------------------------------------- 3. which ecosystems is this?
 step "Ecosystems"

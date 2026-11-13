@@ -51,3 +51,6 @@ jobs:
     #   label-unparsed: dependabot-needs-human
     #   label-no-ci: no-ci-gate
     #   label-opted-out: dependabot-opted-out
+    #   osv-scan: false                # on by default: stop when OSV knows the update adds a vulnerability or a malicious package.
+    #                                  # Turn off only where the scan cannot work, with the reason on the line.
+    #   label-osv: dependabot-osv-flagged

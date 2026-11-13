@@ -1,0 +1,27 @@
+{
+  "_about": "An OSV-Scanner v2 JSON result for the merge-base side, in the shape v2.7.0 writes (checked 2026-11-12). Paths carry the /W/base/ prefix the workflow strips. Read with scan-head.json by bin/lib/check-osv.sh: see the comments there for what each package proves.",
+  "results": [
+    {
+      "source": {"path": "/W/base/package-lock.json", "type": "lockfile"},
+      "packages": [
+        {
+          "package": {"name": "lodash", "version": "4.17.15", "ecosystem": "npm"},
+          "vulnerabilities": [{"id": "GHSA-fixt-ure0-old1"}, {"id": "GHSA-fixt-ure0-gone"}]
+        },
+        {
+          "package": {"name": "flatmap-stream", "version": "0.1.1", "ecosystem": "npm"},
+          "vulnerabilities": [{"id": "MAL-2025-20690"}]
+        }
+      ]
+    },
+    {
+      "source": {"path": "/W/base/api/requirements-dev.txt", "type": "lockfile"},
+      "packages": [
+        {
+          "package": {"name": "django", "version": "4.2.1", "ecosystem": "PyPI"},
+          "vulnerabilities": [{"id": "PYSEC-fixture-1"}]
+        }
+      ]
+    }
+  ]
+}

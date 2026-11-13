@@ -2,7 +2,7 @@
 
 **One place that decides how dependency updates work across all of Kevin's repos.**
 
-Last verified: 2026-09-22 (open loops added that day, and a failed-test watch that ships switched off).
+Last verified: 2026-11-12 (the OSV check added that day; built and fixture-tested, not yet seen on a live Dependabot pull request). Before that, 2026-09-22 (open loops, and a failed-test watch that ships switched off).
 
 ---
 
@@ -56,6 +56,8 @@ Each repo keeps a ten-line file that points at it. Fix a rule here, every repo g
 | Major bump (`1.2.3 → 2.0.0`) | Labelled `major-review-needed`, waits for you |
 | A mix it can't classify | Labelled `dependabot-needs-human`, waits for you |
 | Anything, in a repo with no CI | Labelled `no-ci-gate`, waits for you, with a comment saying why |
+| A patch or minor whose lockfile brings in a version OSV already has an advisory for (a known vulnerability the update *adds*, or any malicious-package report) | Labelled `dependabot-osv-flagged`, waits for you, with a comment naming each advisory (since 2026-11-12) |
+| A patch or minor the OSV check could not scan (download, parse or OSV outage) | Labelled `dependabot-needs-human`, waits; re-running the workflow tries again |
 | A patch or minor whose tests then **fail** | Stays queued. Listed in the Thursday digest's open loops; labelled `dependabot-ci-failed` at once only in a repo that has turned the watch on (off by default, since 2026-09-22) |
 
 Two deliberate details behind that table:
@@ -233,9 +235,10 @@ end; the audit will flag it as `drift: still has its own private copy of the mer
 |---|---|---|
 | `dependencies` | Dependabot opened it. Applied to everything. | Nothing |
 | `major-review-needed` | Major version bump. Something may genuinely break. | Read the changelog, test, merge or close |
-| `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed, or it could not read the branch's protection settings. | Look at the PR's checks tab |
+| `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed, or it could not read the branch's protection settings, or (since 2026-11-12) the OSV scan could not run. | Look at the PR's checks tab; for an OSV warning, re-run the workflow |
 | `dependabot-opted-out` | Classified fine, but this repo has that tier switched off in its stub (`merge-minor: false`, say). Nothing is broken. | Read it and merge it yourself, or change the stub |
 | `no-ci-gate` | The repo has no required status check, so auto-merge would have been instant-merge. | Merge by hand, or give the repo a CI check and re-run `enroll` |
+| `dependabot-osv-flagged` | The OSV check found an advisory for a version this update adds: a known vulnerability, or a malicious package (`MAL-`). The comment on the PR names each one | Open the advisory links. Merge by hand if it doesn't apply, or close the PR |
 | `dependabot-ci-failed` | A patch or minor update was queued to merge and a required check then failed. Still queued: it lands by itself if a fix goes green. | Read the verdict in `#dependabot`; fix the test, or close the pull request |
 
 ---
@@ -551,6 +554,71 @@ reads `failed:<check>`, a green one `passed`, a moved head `moved`); what has no
 is the workflow's own token reading checks with the two read lines granted, or the label
 reaching a verdict routine.
 
+**2026-11-12 — before anything merges, ask OSV about the versions it would install (step 4b,
+on by default).** Kevin asked for it that night, when he said yes to self-merge in more of
+his repos: add OSV-Scanner to the self-merge step, refuse on a real finding, and label a
+scanner failure for a person rather than merge past it. (Paraphrased: this repo is public,
+and his words stay in his own notes.) The cooldown
+outwaits a hijacked release that is pulled within hours, but security updates skip the
+cooldown and a bad release can outlive a week. [OSV](https://osv.dev) is Google's open
+vulnerability database, and it carries the OpenSSF malicious-package reports as `MAL-` ids.
+What the step does, and why each part is that way:
+
+- **It reads the lockfiles the PR changed, at the PR's head and at its merge base**, through
+  the contents API, as data. There is still no checkout, and the scanner (a release binary of
+  [OSV-Scanner](https://github.com/google/osv-scanner)) only parses them: call analysis, which
+  for Rust runs build scripts, and manifest resolution are both switched off. It runs with an
+  empty environment, so the job's write token is not in its environment.
+- **Only advisories the PR adds stop it**, keyed on file, ecosystem, package and advisory id.
+  Every repo checked that night had unfixed advisories on main (4 to 38 per lockfile across
+  the four checked), so stopping on any advisory would stop
+  every update everywhere. Keying on the id rather than the version means a bump that leaves an
+  old advisory standing has not added it. A `MAL-` report stops it even if it was there before.
+- **Fail closed, and say which way.** A finding gets `dependabot-osv-flagged` and a comment
+  naming each advisory. A scan that could not happen gets `dependabot-needs-human`: the
+  download failed or did not match its checksum, a lockfile would not parse or read as empty,
+  or OSV was unreachable. OSV-Scanner exits 127 then and still writes a JSON file, so the step
+  trusts the exit code, and checks the scanner's log says it read at least one package from each
+  file.
+- **A new head starts unqueued (step 1b).** A Dependabot rebase keeps the auto-merge an
+  earlier head queued, since GitHub drops it on a push only from someone without write
+  access. Left alone, the new head would merge on CI alone while this run was still scanning
+  (the gap a Codex review found in round 2). So the run's first real step takes the queue off,
+  and the approval step puts it back only once this head has passed everything, OSV
+  included. A read or removal that fails turns the run red and labels it. **What's left:** a
+  few seconds, from Dependabot's push to that step (a job start and one API call), inside
+  which the new head's required CI would have to start and finish. Closing that too needs a
+  required check this workflow reports itself, which means a `statuses: write` grant in
+  every stub and the check added to every enrolled repo's ruleset. That's a bigger change,
+  not made here.
+- **Pinned to v2.7.0 by version and SHA-256**, the way fetch-metadata is pinned by commit.
+  v2.7.1 had been out three days, so the pin takes the same 7-day soak the updates get.
+  `bin/lib/check-osv.sh --live` re-downloads it in CI and checks the sum against the release's
+  own `SHA256SUMS`, so a typo in the pin fails this repo's CI rather than every enrolled repo.
+- **What it does not see:** a PR that changes no lockfile (a GitHub Actions bump, a repo with
+  only a manifest) has nothing to scan, and the log says so. It asks once, when the run
+  fires, so an advisory published after the PR was queued goes unseen until Dependabot pushes
+  again. `bin/classify-pr` does not predict it, since it runs no scanner.
+- **What leaves the repo:** the package names and versions in the PR's lockfiles, private
+  repos included, go to Google's OSV API (`api.osv.dev`) on every update. That is the check
+  Kevin asked for; nothing else from the repo is sent.
+- **Labels on a later head:** a clean scan takes off `dependabot-osv-flagged` and
+  `dependabot-needs-human` left by an earlier run, since the run is about to queue the merge
+  (if it then breaks, the failure step puts `dependabot-needs-human` back). An OSV outage
+  reaches the verdict routines as `dependabot-needs-human`, like any run that could not
+  finish.
+- **This repo's own CI now needs OSV online:** `check-osv.sh --live` downloads the scanner
+  from GitHub and asks api.osv.dev, so an outage of either turns this repo's CI red for an
+  unrelated change. Re-run it.
+- **Reaching Slack:** the verdict routines fire on their label filter, which does not yet name
+  `dependabot-osv-flagged`; until a repo's routine adds it, a flagged PR shows in the PR list
+  and in the Thursday digest's open loops after a week.
+
+**⚠ Unverified until the first live run (2026-11-12):** every rule above was run against
+fixtures and, with the real scanner, against generated lockfiles and real lockfiles from four
+of the repos (this repo's BUILD-LOG). What hasn't been seen yet is the step on a real
+Dependabot pull request, reading lockfiles through the workflow token.
+
 ---
 
 ## What is in here
@@ -565,7 +633,7 @@ reaching a verdict routine.
 | `bin/enroll` | Enroll one repo. Idempotent. Opens a PR, never pushes to `main` |
 | `bin/audit` | Read-only status of every repo |
 | `bin/classify-pr` | Read-only. "What would the workflow do with this PR?" — answers it without waiting for a run |
-| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, the Actions scanner and workflow-hygiene parser behind the audit's newer columns, the open-loops scanner (`loops-scan.py`), and the five self-checks CI runs |
+| `bin/lib/` | The ecosystem detector, the PR-job lister `enroll` validates `--ci-check` against, the fetch-metadata trailer parser, the Actions scanner and workflow-hygiene parser behind the audit's newer columns, the open-loops scanner (`loops-scan.py`), and the six self-checks CI runs (`check-osv.sh`, added 2026-11-12, pins the OSV step's two rules and its scanner pin) |
 | `bin/lib/fixtures/` | Worked examples the self-checks assert against — each file says at the top what it is supposed to prove |
 | `routines/` | The prompts for the scheduled Claude routines that post to `#dependabot`: a per-pull-request verdict, and the weekly digest |
 | `BUILD-LOG.md` | What was built and what was found, as it happened |
