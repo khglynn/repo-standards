@@ -45,10 +45,10 @@ PY
 FILES_JQ=$(from_step OSV_FILES_JQ)
 if [ -z "$FILES_JQ" ]; then echo "FAIL: could not find OSV_FILES_JQ in $WF — renamed?"; exit 1; fi
 got=$(jq -c "$FILES_JQ" "$FX/pr-files.json")
-want='[{"path":"package-lock.json","base":"package-lock.json","safe":true},{"path":"app/uv.lock","base":null,"safe":true},{"path":"api/requirements-dev.txt","base":"api/requirements.txt","safe":true},{"path":"pkgs/a/pnpm-lock.yaml","base":null,"safe":true},{"path":"evil/../package-lock.json","base":"evil/../package-lock.json","safe":false}]'
+want='[{"path":"package-lock.json","base":"package-lock.json","as":null,"safe":true},{"path":"app/uv.lock","base":null,"as":null,"safe":true},{"path":"api/requirements-dev.txt","base":"api/requirements.txt","as":null,"safe":true},{"path":"notrequirements.txt","base":"notrequirements.txt","as":null,"safe":true},{"path":"requirements/base.txt","base":"requirements/base.txt","as":"requirements.txt","safe":true},{"path":"pkgs/a/pnpm-lock.yaml","base":null,"as":null,"safe":true},{"path":"evil/../package-lock.json","base":"evil/../package-lock.json","as":null,"safe":false}]'
 if [ "$got" = "$want" ]; then
-  ok "the file rule picks the five lockfiles across both pages: a renamed one is read at its old name, an added or copied one has no base copy, and a '..' path is marked unsafe (the step then refuses to scan rather than skipping it)"
-  ok "…and leaves out package.json, a workflow file, a removed yarn.lock, notrequirements.txt and docs/uv.lock.md"
+  ok "the file rule picks the seven lockfiles across both pages: a renamed one is read at its old name, an added or copied one has no base copy, any *requirements*.txt name, a requirements/ folder's base.txt told to read as requirements.txt, and a '..' path marked unsafe (the step then refuses to scan rather than skipping it)"
+  ok "…and leaves out package.json, a workflow file, a removed yarn.lock, docs/notes.txt and docs/uv.lock.md"
 else
   nope "the file rule changed what it picks"; echo "  got:  $got"; echo "  want: $want"
 fi
@@ -185,6 +185,12 @@ if [ "${1:-}" = "--live" ]; then
     else
       nope "live: end to end the rule found $got new findings"
     fi
+
+    mkdir -p "$WORK/live/req/requirements"; printf 'django==2.2.0\n' > "$WORK/live/req/requirements/base.txt"
+    rc=$(run_scan "$WORK/req.json" "$WORK/req.log" "requirements.txt:$WORK/live/req/requirements/base.txt")
+    n=$(read_count "$WORK/req.log" "$WORK/live/req/requirements/base.txt")
+    if [ "$rc" = 1 ] && [ "$n" = 1 ]; then ok "live: requirements/base.txt read as requirements.txt finds Django 2.2.0's advisories, and the log names the plain path"
+    else nope "live: requirements/base.txt as requirements.txt exited $rc, read '$n' packages"; cat "$WORK/req.log"; fi
 
     rc=$(run_scan "$WORK/broken.json" "$WORK/broken.log" "$WORK/live/broken/package-lock.json")
     if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then ok "live: a broken lockfile exits $rc, which the step reads as a scan that did not happen"

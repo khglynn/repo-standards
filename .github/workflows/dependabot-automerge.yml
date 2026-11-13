@@ -562,14 +562,19 @@ jobs:
                    "bun.lock", "uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock",
                    "Cargo.lock", "go.mod", "Gemfile.lock", "composer.lock", "pubspec.lock",
                    "mix.lock", "gradle.lockfile")
-                or test("^requirements[^/]*[.]txt$");
+                or test("requirements[^/]*[.]txt$");
+            def in_requirements_dir: split("/") | (length > 1 and .[-2] == "requirements" and (last | endswith(".txt")));
             def safe: (startswith("/") or (split("/") | any(. == ".." or . == "." or . == ""))) | not;
             [ .[][]
-              | select(.status != "removed" and (.filename | scannable))
+              | select(.status != "removed" and (.filename | scannable or in_requirements_dir))
               | { path: .filename,
                   base: (if .status == "added" or .status == "copied" then null
                          elif .status == "renamed" then .previous_filename
-                         else .filename end) }
+                         else .filename end),
+                  # The scanner knows a file by its name: a base.txt inside a requirements
+                  # folder it reads only when told what it is (measured on v2.7.0, 2026-11-12).
+                  # No apostrophes in this program: it sits inside single quotes.
+                  as: (if .filename | scannable then null else "requirements.txt" end) }
               | .safe = ((.path | safe) and (.base == null or (.base | safe))) ]'
           files=$(timeout 60 gh api --paginate --slurp "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100") \
             || unread "could not list the files this PR changed"
@@ -597,14 +602,15 @@ jobs:
             timeout 60 gh api -H "Accept: application/vnd.github.raw+json" "repos/$REPO/contents/$enc?ref=$2" > "$3"
           }
           head_args=(); base_args=()
-          while IFS=$'\t' read -r path base; do
+          while IFS=$'\t' read -r path base as; do
+            prefix=""; [ -z "$as" ] || prefix="$as:"
             fetch "$path" "$HEAD_SHA" "$work/head/$path" || unread "could not read $path at the PR's head"
-            head_args+=(-L "$work/head/$path")
+            head_args+=(-L "$prefix$work/head/$path")
             if [ -n "$base" ]; then
               fetch "$base" "$merge_base" "$work/base/$path" || unread "could not read $base at the merge base"
-              base_args+=(-L "$work/base/$path")
+              base_args+=(-L "$prefix$work/base/$path")
             fi
-          done < <(jq -r '.[] | [.path, (.base // "")] | @tsv' <<< "$targets")
+          done < <(jq -r '.[] | [.path, (.base // ""), (.as // "")] | @tsv' <<< "$targets")
 
           # 3. The scanner, checked against its pin before it runs.
           timeout 120 curl -fsSL --retry 2 -o "$work/bin/osv-scanner" \
@@ -632,6 +638,7 @@ jobs:
             # that quietly yielded nothing would turn "could not read" into "clean".
             for arg in "$@"; do
               [ "$arg" = "-L" ] && continue
+              arg=${arg#requirements.txt:}   # the log names the file, not how it was read
               n=$(grep -F "Scanned $arg file and found " "$work/$side.log" | tail -1 | sed 's/.* and found //; s/ .*//')
               case "$n" in ''|*[!0-9]*|0) echo "  osv-scanner ($side): read no packages from $arg"; return 1 ;; esac
             done
@@ -664,12 +671,16 @@ jobs:
             out "verdict=clean" "clear=true"
             n_old=$(jq '[.results[]?.packages[]?.vulnerabilities[]?] | length' "$work/head.json" 2>/dev/null || echo "?")
             echo "osv: clean. This PR adds no advisory OSV knows of (the lockfiles carry $n_old older one(s), which were there before it)."
-            # A label left by an earlier head no longer describes this one.
+            # Labels an earlier run left (a flag, or a scan that could not run) no longer
+            # describe this head, which is about to be queued. If this run breaks after
+            # here, the failure step puts dependabot-needs-human back.
             labels=$(timeout 60 gh pr view "$PR_URL" --json labels --jq '.labels[].name' 2>/dev/null)
-            if grep -qxF "$LABEL_OSV" <<< "$labels"; then
-              timeout 60 gh pr edit "$PR_URL" --remove-label "$LABEL_OSV" > /dev/null \
-                && echo "removed '$LABEL_OSV': it described an earlier head"
-            fi
+            for stale in "$LABEL_OSV" "$LABEL_UNPARSED"; do
+              if grep -qxF "$stale" <<< "$labels"; then
+                timeout 60 gh pr edit "$PR_URL" --remove-label "$stale" > /dev/null \
+                  && echo "removed '$stale': it described an earlier run"
+              fi
+            done
             exit 0
           fi
           out "verdict=flagged" "clear=false"

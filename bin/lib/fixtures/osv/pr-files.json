@@ -6,7 +6,9 @@
     {"filename": "api/requirements-dev.txt", "status": "renamed", "previous_filename": "api/requirements.txt"},
     {"filename": "web/yarn.lock", "status": "removed"},
     {"filename": ".github/workflows/ci.yml", "status": "modified"},
-    {"filename": "notrequirements.txt", "status": "modified"}
+    {"filename": "notrequirements.txt", "status": "modified"},
+    {"filename": "requirements/base.txt", "status": "modified"},
+    {"filename": "docs/notes.txt", "status": "modified"}
   ],
   [
     {"filename": "pkgs/a/pnpm-lock.yaml", "status": "copied", "previous_filename": "pnpm-lock.yaml"},

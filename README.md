@@ -235,7 +235,7 @@ end; the audit will flag it as `drift: still has its own private copy of the mer
 |---|---|---|
 | `dependencies` | Dependabot opened it. Applied to everything. | Nothing |
 | `major-review-needed` | Major version bump. Something may genuinely break. | Read the changelog, test, merge or close |
-| `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed, or it could not read the branch's protection settings. | Look at the PR's checks tab |
+| `dependabot-needs-human` | The workflow could not classify this PR — or the workflow run itself failed, or it could not read the branch's protection settings, or (since 2026-11-12) the OSV scan could not run. | Look at the PR's checks tab; for an OSV warning, re-run the workflow |
 | `dependabot-opted-out` | Classified fine, but this repo has that tier switched off in its stub (`merge-minor: false`, say). Nothing is broken. | Read it and merge it yourself, or change the stub |
 | `no-ci-gate` | The repo has no required status check, so auto-merge would have been instant-merge. | Merge by hand, or give the repo a CI check and re-run `enroll` |
 | `dependabot-osv-flagged` | The OSV check found an advisory for a version this update adds: a known vulnerability, or a malicious package (`MAL-`). The comment on the PR names each one | Open the advisory links. Merge by hand if it doesn't apply, or close the PR |
@@ -555,7 +555,10 @@ is the workflow's own token reading checks with the two read lines granted, or t
 reaching a verdict routine.
 
 **2026-11-12 — before anything merges, ask OSV about the versions it would install (step 4b,
-on by default).** Kevin's yes that night, while enrolling four more repos. The cooldown
+on by default).** Kevin's yes in chat at 22:00 CT, to self-merge for three private repos
+"with Google's OSV-Scanner added to the self-merge step", where a real finding fails closed
+and a scanner failure "should label needs-human, not silently merge" (as relayed in the
+orchestrator's brief; this repo's BUILD-LOG entry for that night has the rest). The cooldown
 outwaits a hijacked release that is pulled within hours, but security updates skip the
 cooldown and a bad release can outlive a week. [OSV](https://osv.dev) is Google's open
 vulnerability database, and it carries the OpenSSF malicious-package reports as `MAL-` ids.
@@ -586,6 +589,17 @@ What the step does, and why each part is that way:
   only a manifest) has nothing to scan, and the log says so. It asks once, when the run
   fires, so an advisory published after the PR was queued goes unseen until Dependabot pushes
   again. `bin/classify-pr` does not predict it, since it runs no scanner.
+- **What leaves the repo:** the package names and versions in the PR's lockfiles, private
+  repos included, go to Google's OSV API (`api.osv.dev`) on every update. That is the check
+  Kevin asked for; nothing else from the repo is sent.
+- **Labels on a later head:** a clean scan takes off `dependabot-osv-flagged` and
+  `dependabot-needs-human` left by an earlier run, since the run is about to queue the merge
+  (if it then breaks, the failure step puts `dependabot-needs-human` back). An OSV outage
+  reaches the verdict routines as `dependabot-needs-human`, like any run that could not
+  finish.
+- **This repo's own CI now needs OSV online:** `check-osv.sh --live` downloads the scanner
+  from GitHub and asks api.osv.dev, so an outage of either turns this repo's CI red for an
+  unrelated change. Re-run it.
 - **Reaching Slack:** the verdict routines fire on their label filter, which does not yet name
   `dependabot-osv-flagged`; until a repo's routine adds it, a flagged PR shows in the PR list
   and in the Thursday digest's open loops after a week.

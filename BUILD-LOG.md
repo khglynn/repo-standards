@@ -1920,3 +1920,13 @@ off a clean head. `bin/lib/check-osv.sh --live` passed locally with the darwin b
 in (`OSV_LOCAL_SCANNER`), including the pinned linux checksum against the release's SHA256SUMS.
 
 Not seen yet: the step on a real Dependabot pull request, through the workflow token.
+
+Round 1 of the gate's review (Claude Opus, on the PC) asked for one fix, Kevin's words quoted in
+the README entry, and made four comments. Taken: requirement files named `*requirements*.txt`
+or sitting in a `requirements/` folder are scanned now (measured: v2.7.0 reads every
+`*requirements*.txt` name by itself, and `requirements/base.txt` only as
+`-L requirements.txt:<path>`, whose log line still names the plain path); a clean scan also
+takes off a `dependabot-needs-human` left by an earlier run; the README says what leaves the
+repo (lockfile package names and versions, to api.osv.dev) and that this repo's CI now needs
+OSV online. An apostrophe in a new jq comment had closed the shell quote around the program;
+actionlint's shellcheck caught it before the push.
