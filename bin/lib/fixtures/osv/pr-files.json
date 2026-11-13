@@ -1,0 +1,16 @@
+[
+  [
+    {"filename": "package-lock.json", "status": "modified"},
+    {"filename": "package.json", "status": "modified"},
+    {"filename": "app/uv.lock", "status": "added"},
+    {"filename": "api/requirements-dev.txt", "status": "renamed", "previous_filename": "api/requirements.txt"},
+    {"filename": "web/yarn.lock", "status": "removed"},
+    {"filename": ".github/workflows/ci.yml", "status": "modified"},
+    {"filename": "notrequirements.txt", "status": "modified"}
+  ],
+  [
+    {"filename": "pkgs/a/pnpm-lock.yaml", "status": "copied", "previous_filename": "pnpm-lock.yaml"},
+    {"filename": "evil/../package-lock.json", "status": "modified"},
+    {"filename": "docs/uv.lock.md", "status": "modified"}
+  ]
+]

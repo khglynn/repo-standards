@@ -57,7 +57,7 @@ jobs:
                      bin/lib/verdict-matrix.sh bin/lib/check-evidence.sh \
                      bin/lib/evidence-matrix.sh bin/lib/check-classifier.sh \
                      bin/lib/check-workflow-hygiene.sh bin/lib/check-audit.sh \
-                     bin/lib/check-loops.sh
+                     bin/lib/check-loops.sh bin/lib/check-osv.sh
           python3 -m py_compile bin/lib/*.py
 
       # The one rule that exists in two places and cannot be deduplicated: the shared
@@ -90,6 +90,13 @@ jobs:
       # shared workflow's failed-test watch and the scanner agree on what "failed" means.
       - name: The open loops are found, worded, and never reported as none when unread
         run: bin/lib/check-loops.sh
+
+      # The OSV scan (2026-11-12): which lockfiles it reads, which advisories count as ADDED
+      # by the PR (the only ones that stop a merge), that nothing merges unless it said
+      # clear, and, live, that the pinned scanner still matches its checksum and still
+      # finds a known vulnerability and a known malicious package. Needs api.osv.dev.
+      - name: The OSV check still stops what it should, and only that
+        run: bin/lib/check-osv.sh --live
 
       # A fixture run of the ecosystem detector: proves it still says what we think it says,
       # independently of any live repo. If this ever disagrees, enroll is about to write the

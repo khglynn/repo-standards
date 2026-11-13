@@ -1891,3 +1891,32 @@ tried on, and one already had its fix pull request. So:
 - the README's "no file needed, working everywhere" line carries a dated caveat: true for new
   alerts, not for alerts backfilled at enable time, and the toggle fixes those.
 check-loops.sh: 135 assertions.
+
+## 2026-11-12 22:00–23:30 CT — OSV in the shared workflow (step 4b), on Kevin's yes (orchestrator worker, Opus 5.5)
+
+Kevin's yes in chat at 22:00 CT: self-merge for sync-bot, notion-souped-up-mcp and remembrall,
+"with Google's OSV-Scanner added to the self-merge step". Built as step 4b, between the CI-gate
+lookup and the approval. The design and its reasons are in the README's 2026-11-12 decision.
+
+What was measured before writing it (OSV-Scanner v2.7.0, darwin_amd64, on the Air):
+- A hand-written package-lock.json entry with no `resolved` URL read as a local package and
+  was not queried: lodash 4.17.15 came back clean. With `resolved` and `integrity`, as every
+  real lockfile has, it came back with five GHSAs. The live check's lockfiles carry both.
+- flatmap-stream 0.1.1 comes back with MAL-2025-20690 (plus two GHSAs), the fixture for
+  "malicious package".
+- A malformed lockfile exits 127; mixed with a good one, still 127.
+- OSV unreachable (a dead proxy) exits 127 AND writes a 124-byte JSON file, so the file alone
+  proves nothing: the step trusts the exit code.
+- Real main-branch lockfiles: sync-bot uv.lock 42 packages / 4 advisories; notion-souped-up-mcp
+  pnpm-lock.yaml 628 / 28; hevy-mcp package-lock.json 291 / 38; track package-lock.json
+  244 / 5. Hence "only advisories the PR adds".
+- `env -i PATH HOME` is enough for the scanner to run.
+
+The step's own bash, extracted from the workflow and run with stand-in gh and curl, gave:
+clean (a bump that keeps lodash's old advisories) → clear; a new flatmap-stream → flagged
+with MAL-2025-20690 and the comment rendered; download failure → unread; a lockfile with no
+packages → unread; a workflow-only PR → nothing to scan; a stale `dependabot-osv-flagged` came
+off a clean head. `bin/lib/check-osv.sh --live` passed locally with the darwin binary standing
+in (`OSV_LOCAL_SCANNER`), including the pinned linux checksum against the release's SHA256SUMS.
+
+Not seen yet: the step on a real Dependabot pull request, through the workflow token.

@@ -52,3 +52,6 @@ jobs:
     #   label-no-ci: no-ci-gate
     #   label-opted-out: dependabot-opted-out
     #   label-ci-failed: dependabot-ci-failed
+    #   osv-scan: false                # on by default: stop when OSV knows the update adds a vulnerability or a malicious package.
+    #                                  # Turn off only where the scan cannot work, with the reason on the line.
+    #   label-osv: dependabot-osv-flagged
