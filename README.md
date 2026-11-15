@@ -193,7 +193,10 @@ Leaving the flag off means "I am not naming a check", not "this branch has none"
 `enroll` creates the labels, **opens a pull request** (it never pushes to `main`), turns on
 the repo's "allow auto-merge" setting and its "Actions may approve pull requests" switch,
 and adds a rule requiring your check on the default branch — with **you** able to bypass it,
-so pushing straight to `main` still works exactly as it does today.
+so pushing straight to `main` still works exactly as it does today. A `--ci-check` is pinned to
+GitHub Actions (since 2026-11-15): only a workflow run can pass it, on GitHub's runners or your
+own, so a bot or agent with write access can't pass it by posting a status of the same name. An
+`--external-check` stays open to any reporter (see the comment in `bin/enroll`).
 
 Then **you merge the pull request.** Nothing takes effect before that: GitHub will only run
 a workflow that is already on the default branch.

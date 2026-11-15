@@ -1941,3 +1941,22 @@ into one, so an added requirements/base.txt lost its empty base field and the pa
 moved into it; the fields are joined with the unit separator now, and check-osv.sh runs the
 step's own shell loop (stand-in gh and curl) on exactly that case. Kevin's chat words and the
 per-repo advisory counts came out of this public README and log.
+
+## 2026-11-15 — a `--ci-check` gate is pinned to GitHub Actions
+
+Why: `standards-ci` named its required check with no app pinned, so anyone with write access
+could pass the gate by posting a commit status of that name, no workflow run needed (GitHub's
+rulesets docs: with "any source", "Any person or integration with write permissions to a
+repository can set the state of any status check"). Bots and agent workers with write access
+are routine on these repos now, and for them the gate is the protection. So a `--ci-check` is
+pinned to GitHub Actions, integration id 15368: the same id in every repo, and the reporter of a
+workflow job whether it runs on GitHub's runners or self-hosted ones. An `--external-check` stays
+unpinned, for the reason the old comment gave (per-vendor app ids to look up and keep true).
+
+GitHub accepts a pin only from an app that has reported a check in the repo recently, so a repo
+whose CI never ran gets its ruleset unpinned, with a warning, and the next `enroll` pins it.
+
+Checked: the jq body for both kinds (`[{"context":"x","integration_id":15368}]` and
+`[{"context":"x"}]`); `bash -n bin/enroll`; a `--dry-run` against one enrolled repo prints
+"reported only by GitHub Actions". Not seen yet: a live PUT with the pin (each repo's is a
+ruleset change, so its owner's step).
