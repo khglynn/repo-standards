@@ -810,15 +810,24 @@ else
   # what keeps him unblocked while the bot (github-actions, not an admin) still has to
   # satisfy the check. actor_id 5 / RepositoryRole is the built-in repository-admin role.
   #
-  # NO `integration_id` ON THE REQUIRED CHECK, deliberately. GitHub lets a required check
-  # name the app that must report it, which would stop any other app satisfying the name.
-  # Pinning it needs that app's numeric id, looked up per vendor (Vercel, Cloudflare,
-  # Netlify…) and re-looked-up whenever one changes — a lookup table this tool would have
-  # to carry and keep true. Left off, ANY app that reports the context satisfies the gate.
-  # The exposure is narrow: an attacker would already need write access to install an app
-  # in Kevin's repo, at which point the gate is not what is protecting him. Revisit if an
-  # external check is ever the only thing standing between a bot and production.
-  ruleset_body=$(jq -n --arg check "$REQUIRED_CHECK" '{
+  # WHO MAY REPORT THE CHECK. GitHub lets a required check name the app that must report it;
+  # without one, anyone with write access satisfies it by posting a commit status of that
+  # name, no tests run.
+  #   --ci-check: pinned to GitHub Actions (app id 15368). The job is this repo's own
+  #     workflow, so Actions is always its reporter, on GitHub's runners and self-hosted ones
+  #     alike, and the id is the same everywhere: no lookup table. Pinned since 2026-11-15:
+  #     bots and agent workers with write access are now routine on Kevin's repos, and for
+  #     them the gate IS the protection, so "passed" must mean a workflow passed.
+  #   --external-check: left unpinned. Its reporter is a vendor's app (Vercel, Cloudflare,
+  #     Netlify…) whose id would have to be looked up per vendor and kept true. Revisit if an
+  #     external check is ever the only thing standing between a bot and production.
+  # GitHub accepts a pin only from an app that has reported a check in the repo recently. On a
+  # repo whose CI has never run, the pinned write is refused; the ruleset is then written
+  # unpinned, loudly, and re-running enroll after the first CI run pins it.
+  check_app=""
+  if [ "$CHECK_KIND" = "job" ]; then check_app=15368; fi
+  ruleset_json() {
+    jq -n --arg check "$REQUIRED_CHECK" --arg app "$1" '{
     name: "standards-ci",
     target: "branch",
     enforcement: "active",
@@ -829,24 +838,39 @@ else
       parameters: {
         strict_required_status_checks_policy: false,
         do_not_enforce_on_create: false,
-        required_status_checks: [ { context: $check } ]
+        required_status_checks: [
+          { context: $check } + (if $app == "" then {} else { integration_id: ($app | tonumber) } end)
+        ]
       }
     } ]
-  }')
+  }'
+  }
+  if [ -n "$check_app" ]; then reporter="reported only by GitHub Actions"; else reporter="reported by any source"; fi
   existing_id=$(gh api "repos/$TARGET/rulesets" --jq '.[] | select(.name=="standards-ci") | .id' 2>/dev/null | head -1 || true)
+  if [ -n "$existing_id" ]; then
+    write_ruleset() { ruleset_json "$1" | gh api -X PUT "repos/$TARGET/rulesets/$existing_id" --input - --silent; }
+    done_word="updated ruleset $existing_id:"
+  else
+    write_ruleset() { ruleset_json "$1" | gh api -X POST "repos/$TARGET/rulesets" --input - --silent; }
+    done_word="created ruleset 'standards-ci':"
+  fi
   if $DRY_RUN; then
     if [ -n "$existing_id" ]; then
       say "   would UPDATE existing ruleset id $existing_id"
     else
       say "   would CREATE ruleset 'standards-ci'"
     fi
-    say "   requiring check '$REQUIRED_CHECK' on $DEFAULT_BRANCH, repository admins bypass always"
-  elif [ -n "$existing_id" ]; then
-    printf '%s' "$ruleset_body" | gh api -X PUT "repos/$TARGET/rulesets/$existing_id" --input - --silent
-    say "   updated ruleset $existing_id: '$REQUIRED_CHECK' required on $DEFAULT_BRANCH"
+    say "   requiring check '$REQUIRED_CHECK' ($reporter) on $DEFAULT_BRANCH, repository admins bypass always"
+  elif write_ruleset "$check_app"; then
+    say "   $done_word '$REQUIRED_CHECK' required on $DEFAULT_BRANCH ($reporter)"
+  elif [ -n "$check_app" ]; then
+    say "   GitHub refused to pin '$REQUIRED_CHECK' to GitHub Actions (it accepts a pin only once"
+    say "   Actions has reported a check in this repo). Writing it unpinned instead: ANYONE with"
+    say "   write access can satisfy it until you re-run enroll after the first CI run."
+    write_ruleset ""
+    say "   $done_word '$REQUIRED_CHECK' required on $DEFAULT_BRANCH (unpinned, for now)"
   else
-    printf '%s' "$ruleset_body" | gh api -X POST "repos/$TARGET/rulesets" --input - --silent
-    say "   created ruleset 'standards-ci': '$REQUIRED_CHECK' required on $DEFAULT_BRANCH"
+    die "couldn't write the 'standards-ci' ruleset on $TARGET"
   fi
 fi
 
