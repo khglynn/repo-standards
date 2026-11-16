@@ -55,3 +55,5 @@ jobs:
     #   osv-scan: false                # on by default: stop when OSV knows the update adds a vulnerability or a malicious package.
     #                                  # Turn off only where the scan cannot work, with the reason on the line.
     #   label-osv: dependabot-osv-flagged
+    #   runner: my-runner-label        # private repos only, for a runner not named by KEVIN_RUNNER (which is read
+    #                                  # already). Empty (default): KEVIN_RUNNER, else ubuntu-latest. Public: always ubuntu-latest.

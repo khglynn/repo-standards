@@ -143,6 +143,14 @@ on:
           read something; this one means the scan worked and found something.
         type: string
         default: dependabot-osv-flagged
+      runner:
+        description: >-
+          Which runner label this job asks for in a PRIVATE repo, for a caller whose runner
+          isn't named by the KEVIN_RUNNER variable (gabby routes with GABBY_RUNNER). Empty,
+          the default, means "use the caller's KEVIN_RUNNER variable, else ubuntu-latest".
+          A PUBLIC repo ignores this and always gets ubuntu-latest: see the job's runs-on.
+        type: string
+        default: ""
 
 # NO `permissions:` BLOCK HERE, ON PURPOSE (2026-09-22). A called workflow may only narrow
 # what its caller granted — and asking for one scope the caller did NOT grant is not a
@@ -162,7 +170,25 @@ jobs:
     # Belt and suspenders. The caller's trigger fires for every PR in the repo; this job
     # only ever acts on pull requests Dependabot itself opened.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    # WHICH MACHINE (2026-11-15). GitHub's paid runners are off for budget, so Kevin's
+    # private repos run their jobs on his PC's self-hosted runners, each repo naming its
+    # label in the repo variable KEVIN_RUNNER (`kevin-pc`). In a called workflow `vars` is
+    # the CALLER's: "For reusable workflows, the variables from the caller workflow's
+    # repository are used" (docs.github.com/en/actions/reference/workflows-and-actions/variables,
+    # read 2026-11-15). So the stubs need no edit: each repo's own variable reaches here.
+    # A stub can still name a label with the `runner` input (gabby, whose variable differs).
+    #
+    # PUBLIC REPOS NEVER GET A SELF-HOSTED RUNNER from this line, whatever is set: a runner
+    # on Kevin's PC must never run a job a stranger can start, and a public repo's PRs can
+    # come from anyone. The `if:` above already skips every non-Dependabot PR before a
+    # runner is chosen, and an unset variable already means ubuntu-latest; the
+    # `repository.private` test makes it hold even if someone sets the variable or input on
+    # a public repo later. Public repos' minutes on ubuntu-latest are free.
+    #
+    # One caution for the PC: with `watch-minutes` on, this job waits for the PR's own CI,
+    # and a repo whose PC pool has ONE runner would hold it while CI queues behind, until
+    # the timeout. No repo has the watch on (2026-11-15); give its pool a second runner first.
+    runs-on: ${{ (github.event.repository.private && (inputs.runner || vars.KEVIN_RUNNER)) || 'ubuntu-latest' }}
     # A hang with no ceiling inherits GitHub's six-hour default — an eighth of the monthly
     # private allowance for one stuck run, in every enrolled repo at once. This job makes
     # a handful of API calls and never waits on anything; ten minutes is generous. Found by
